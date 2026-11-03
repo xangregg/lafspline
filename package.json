@@ -14,7 +14,8 @@
     "serve": "python3 -m http.server 8002",
     "check:page": "node tools/check-page.mjs",
     "data:index": "node tools/data-index.mjs",
-    "bench:qp": "node tools/bench-qp.mjs"
+    "bench:qp": "node tools/bench-qp.mjs",
+    "sim:band": "node tools/sim-band.mjs"
   },
   "devDependencies": {
     "highs": "1.15.4"

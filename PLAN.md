@@ -59,6 +59,33 @@ bands for penalized splines.
   assumptions, `check(g)` (ratios, violations), and how to draw it. Aₙ comes later as a second implementation
   (phase 4).
 
+**Measured (phase 1, `npm run sim:band`):** 400 replications per row, α = 0.95, B = 1000, σ̂ from the residuals
+(ν = n − ED), λ by GCV times the factor, coverage of f checked on the whole check grid. "∋ E f̂" is the band's
+coverage of f smoothed with the same λ (the sandwich band's own target); half-width in units of the true σ.
+
+| signal | n | ∋ f: bayes 1 | bayes 1/16 | sandwich 1 | sandwich 1/16 | ∋ E f̂, sandwich 1 | half-width/σ, bayes 1 → 1/16 |
+|---|---|---|---|---|---|---|---|
+| line | 100 | 94.0% | 94.5% | 88.0% | 91.0% | 88.0% | 0.43 → 0.52 |
+| line | 500 | 95.5% | 96.8% | 88.8% | 90.5% | 88.8% | 0.19 → 0.23 |
+| sine | 100 | 96.3% | 95.3% | 90.5% | 92.0% | 93.3% | 1.11 → 1.49 |
+| sine | 500 | 97.8% | 97.8% | 88.0% | 94.8% | 93.8% | 0.54 → 0.73 |
+| ramp | 100 | 87.8% | 96.0% | 75.3% | 91.5% | 92.5% | 0.89 → 1.23 |
+| ramp | 500 | 91.3% | 98.0% | 77.5% | 93.3% | 93.8% | 0.46 → 0.63 |
+
+- **Decided: Bayesian covariance, λ = GCV choice × 1/16** (about half the equivalent bandwidth for d = 2, like
+  the earlier project's 0.5). It covers f at 94.5–98% on the smooth signals, for a band 1.2–1.4 times as wide as at the
+  GCV λ, where the ramp drops to 88–91%.
+- The sandwich band covers its own target E f̂ at 94–96% at a fixed λ (test), but only 88–94% when λ is chosen
+  on the same data (the line: E f̂ = f, 88%); the claim says λ is treated as fixed. The Bayesian band absorbs
+  that too.
+- **Jumps are not covered:** HeaviSine and Blocks are covered at 0–4% on the grid, and 0–80% even at the data
+  x only, by every configuration. More segments do not help (Blocks n = 500: 0–13% with 100 or 250
+  segments): one global λ with a second-difference penalty smooths every jump. The earlier project's local linear band
+  reached 96–98% on Blocks only by becoming nearly pointwise. The claim says jumps are not covered; Aₙ (phase 4)
+  is the region for such data.
+- Too many segments for the data (100 for n = 100) lets GCV choose near-interpolation (ED ≈ 99.6), leaving no
+  degrees of freedom for σ̂; `bandRegion` refuses with a reason. The default (≤ m/2 segments) avoids it.
+
 ### 1.3 Phase 2: the fit
 
 A second P-spline g = B̃β (the same or a denser basis), with β minimizing
@@ -137,8 +164,8 @@ is enough. Revisit after phase 2.
    conditioned. (The hard-region QP would have sidestepped this, but HiGHS's active-set QP fails on it; see §1.3.)
 3. **A data term in phase 2?** As specified, the data enter only through the region. Revisit if fits drift from
    the data in ways the center pull does not prevent.
-4. **Band type and coverage:** Bayesian or frequentist covariance; undersmoothing by default or not; covering f
-   versus E f̂ (the earlier project's band claim words this carefully; reuse it).
+4. **Band type and coverage:** decided in phase 1 (§1.2): Bayesian covariance, λ undersmoothed by 1/16. Open:
+   whether to offer the sandwich band at all (it covers E f̂, a weaker claim), and a local λ for jumps.
 5. **Check-grid density** (default 4 per segment) and whether to include the data x always (yes for now).
 6. **Aₙ in penalty form:** each Aₙ constraint |Σ_I (y − g)| ≤ c√|I| is linear in β, so it becomes the same kind
    of penalty on the excess; σ̂, interval families and calibrated τ come from the earlier project.
@@ -163,7 +190,7 @@ is enough. Revisit after phase 2.
       ~2000; compare with the iterated weights (same fit within tolerance, time, iterations). Decide the default.
 
 ### Phase 1 — The region
-- [ ] Simultaneous band on the check grid (`src/core/band.js`), Monte Carlo critical value, undersmoothing;
+- [x] Simultaneous band on the check grid (`src/core/band.js`), Monte Carlo critical value, undersmoothing;
       coverage simulation over signals × n × noise (as the earlier project's `tools/sim-band.mjs`).
 - [ ] UI: data input, the phase-1 fit and band, readouts with the claim (from the earlier project's main.js and controls.js).
 
