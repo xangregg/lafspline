@@ -115,6 +115,31 @@ export function signalValues(name, n, sd = SIGNALS[name]?.sd ?? null) {
 }
 
 /**
+ * A built-in signal as a function of t, with the same rescaling signalValues applies for sample size n, so it can be
+ * evaluated between the design points (lafspline: true f on a check grid).
+ *
+ * @param {string} name  key of SIGNALS
+ * @param {number} n     the sample size whose rescaling to use
+ * @returns {function(number): number}
+ */
+export function signalFunction(name, n) {
+    const spec = SIGNALS[name];
+    if (!spec)
+        throw new RangeError(`unknown signal '${name}'`);
+    if (spec.sd === null)
+        return t => spec.f(t);
+    const values = signalValues(name, n);
+    const t = designPoints(n);
+    let k = 0;
+    for (let i = 0; i < n; i++) {
+        if (Math.abs(spec.f(t[i])) > Math.abs(spec.f(t[k])))
+            k = i;
+    }
+    const scale = spec.f(t[k]) === 0 ? 1 : values[k] / spec.f(t[k]);
+    return u => scale * spec.f(u);
+}
+
+/**
  * Simulate y = f(tᵢ) + σ·Zᵢ.
  *
  * @param {string} name   key of SIGNALS

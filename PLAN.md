@@ -192,7 +192,7 @@ is enough. Revisit after phase 2.
 ### Phase 1 — The region
 - [x] Simultaneous band on the check grid (`src/core/band.js`), Monte Carlo critical value, undersmoothing;
       coverage simulation over signals × n × noise (as the earlier project's `tools/sim-band.mjs`).
-- [ ] UI: data input, the phase-1 fit and band, readouts with the claim (from the earlier project's main.js and controls.js).
+- [x] UI: data input, the phase-1 fit and band, readouts with the claim (from the earlier project's main.js and controls.js).
 
 ### Phase 2 — The second-phase fit
 - [ ] Objective and solver (`src/core/fit.js`); re-check against the region. Tests: a fit stays inside when κ is

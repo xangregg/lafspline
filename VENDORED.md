@@ -25,6 +25,8 @@ Not yet copied (phase 4, Aₙ as a region): `region.js`, `regions.js`, `interval
 
 `chart.js`, `layout.js`, `theme.js`, `tooltip.js`, `export.js` (+ test): unchanged.
 `lp.js`: trimmed (see below).
+`main.js` and `controls.js` are lafspline's own, patterned on the earlier project's (the data source, paste/drop and
+example loading code is the earlier project's).
 Not yet copied: `urlstate.js` (phase 2: its field table is the earlier project's and it imports the earlier project's `constraints.js`;
 it will be copied with the table rewritten), `residual.js` (Aₙ's residual view; phase 4 if needed).
 
@@ -48,3 +50,8 @@ such as the claim text and `[hidden]`, will be used), `LICENSE` (0BSD), `.gitign
 - `src/core/lp-solve.js`: `solveModel(highs, model, options, infoNames)` takes an optional list of HiGHS info
   items (e.g. `qp_iteration_count`) and returns them as `info`; an item the run did not produce is NaN. Additive.
   `src/lp-worker.js` and `src/ui/lp.js` (`solveModelInWorker`) pass it through.
+- `src/ui/chart.js`: a band and a fit may carry their own sorted abscissae `x` (lafspline's check grid, which
+  includes every data x): the band ribbon and the fit line are drawn there, such a band also sets the y scale,
+  and the tooltip looks their values up at the hovered data x. Without `x`, unchanged.
+- `src/core/signals.js`: `signalFunction(name, n)`, a signal as a function of t with the rescaling
+  `signalValues` applies for n (true f on the check grid). Additive; `test/signals.test.js` has a test for it.

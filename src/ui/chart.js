@@ -30,7 +30,9 @@ const fmt = d3.format('.4~g');
  * @property {ChartFit[]} fits      fits to draw, primary last
  * @property {{type: 'max'|'min', start: number, end: number}[]} extremes  local extremes of the primary
  * @property {Float64Array} edges   cell edges (layout.cellEdges)
- * @property {{lb: Float64Array, ub: Float64Array, label: string}|null} band  pointwise confidence band
+ * @property {{lb: Float64Array, ub: Float64Array, label: string, x?: Float64Array}|null} band  confidence band; at
+ *     the data x, or at its own sorted abscissae x (which must include every data x; the band then also sets the
+ *     y scale)
  * @property {{lb: Float64Array, ub: Float64Array, label: string}|null} [exact]  exact LP bounds, dashed
  * @property {string|null} [boxesLabel]  legend text for the Aₙ boxes layer (null: no legend item)
  * @property {{points: Array<{x: number, y: number}>, label: string, plural: string}} [markers]  features of the
@@ -49,7 +51,9 @@ const fmt = d3.format('.4~g');
  * @typedef {object} ChartFit
  * @property {string} key
  * @property {string} label
- * @property {Float64Array} g        fit at x
+ * @property {Float64Array} g        fit at x (or at the fit's own x)
+ * @property {Float64Array} [x]      the fit's own sorted abscissae (a smooth curve on a grid that includes every data
+ *                                   x); drawn as a line, not as steps
  * @property {boolean} step          draw as a step function over the cells (piecewise-constant fits)
  * @property {{start: number, end: number}[]} runs  runs of equal g (for step drawing)
  * @property {string} colorVar       CSS custom property holding the color
@@ -168,6 +172,12 @@ export function createMainChart(container) {
             lo = Math.min(lo, d3.min(fit.g));
             hi = Math.max(hi, d3.max(fit.g));
         }
+        if (m.band?.x) {
+            for (const v of [m.band.lb, m.band.ub]) {
+                lo = Math.min(lo, d3.min(v.filter(Number.isFinite)));
+                hi = Math.max(hi, d3.max(v.filter(Number.isFinite)));
+            }
+        }
         sy = d3.scaleLinear().domain([lo, hi]).nice().range([HEIGHT - MARGIN.bottom, MARGIN.top]);
 
         svg.attr('width', width);
@@ -204,16 +214,17 @@ export function createMainChart(container) {
             const clampPx = v => Math.max(y1 - 10, Math.min(y0 + 10, sy(v)));
             const px = v => (v === Infinity ? y1 - 10 : v === -Infinity ? y0 + 10 : clampPx(v));
             const { lb, ub } = m.band;
+            const bx = m.band.x ?? x;
             const ok = i => lb[i] <= ub[i];
             gBand.append('path').attr('class', 'band-fill')
-                .attr('d', d3.area().defined((_, i) => ok(i)).x((_, i) => sx(x[i]))
+                .attr('d', d3.area().defined((_, i) => ok(i)).x((_, i) => sx(bx[i]))
                     .y0((_, i) => px(lb[i])).y1((_, i) => px(ub[i]))(lb));
             gBand.append('path').attr('class', 'band-empty')
-                .attr('d', d3.area().defined((_, i) => !ok(i)).x((_, i) => sx(x[i]))
+                .attr('d', d3.area().defined((_, i) => !ok(i)).x((_, i) => sx(bx[i]))
                     .y0((_, i) => px(ub[i])).y1((_, i) => px(lb[i]))(lb));
             for (const v of [lb, ub]) {
                 gBand.append('path').attr('class', 'band-edge')
-                    .attr('d', d3.line().defined(i => Number.isFinite(v[i])).x(i => sx(x[i])).y(i => px(v[i]))(d3.range(n)));
+                    .attr('d', d3.line().defined(i => Number.isFinite(v[i])).x(i => sx(bx[i])).y(i => px(v[i]))(d3.range(bx.length)));
             }
             if (m.exact) {
                 for (const v of [m.exact.lb, m.exact.ub]) {
@@ -284,7 +295,10 @@ export function createMainChart(container) {
         for (const fit of m.fits) {
             const color = cssColor(fit.colorVar);
             let d;
-            if (fit.step) {
+            if (fit.x) {
+                d = d3.line().x((_, j) => sx(fit.x[j])).y(v => sy(v))(fit.g);
+            }
+            else if (fit.step) {
                 const st = steps(fit);
                 d = st.d;
                 if (st.dots)
@@ -411,6 +425,12 @@ export function createMainChart(container) {
             .attr('y', MARGIN.top).attr('height', HEIGHT - MARGIN.top - MARGIN.bottom);
     }
 
+    // Index into a series given at its own abscissae xs (which include every data x) for observation i; with no
+    // xs the series is at the data x.
+    function atX(xs, i) {
+        return xs ? d3.bisectLeft(xs, model.x[i]) : i;
+    }
+
     overlay.on('pointermove', event => {
         if (!model)
             return;
@@ -425,11 +445,12 @@ export function createMainChart(container) {
         if (model.f)
             rows.push([fmt(model.f[i]), 'true f', colors['series-2']]);
         for (const fit of [...model.fits].reverse())
-            rows.push([fmt(fit.g[i]), fit.label, cssColor(fit.colorVar)]);
+            rows.push([fmt(fit.g[atX(fit.x, i)]), fit.label, cssColor(fit.colorVar)]);
         if (model.band) {
             const b = model.band;
+            const k = atX(b.x, i);
             const show = v => (v === Infinity ? '+∞' : v === -Infinity ? '−∞' : fmt(v));
-            rows.push([`[${show(b.lb[i])}, ${show(b.ub[i])}]`, b.lb[i] > b.ub[i] ? 'band (empty here)' : 'band']);
+            rows.push([`[${show(b.lb[k])}, ${show(b.ub[k])}]`, b.lb[k] > b.ub[k] ? 'band (empty here)' : 'band']);
             if (model.exact)
                 rows.push([`[${show(model.exact.lb[i])}, ${show(model.exact.ub[i])}]`, 'exact LP bounds']);
         }

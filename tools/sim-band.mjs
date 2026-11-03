@@ -12,7 +12,7 @@
 
 import { bandRegion, checkBand, CHECK_TOL } from '../src/core/band.js';
 import { fitPSpline, evaluate } from '../src/core/pspline.js';
-import { simulate, signalValues, designPoints, SIGNALS } from '../src/core/signals.js';
+import { simulate, signalFunction, SIGNALS } from '../src/core/signals.js';
 
 const ALPHA = 0.95;
 const SEED_BASE = 10000; // replication r uses seed SEED_BASE + r
@@ -45,22 +45,6 @@ function parseArgs(argv) {
     return opts;
 }
 
-/** f at arbitrary points, with the same rescaling simulate() applies at the design points of size n. */
-function signalAt(name, n) {
-    const spec = SIGNALS[name];
-    if (spec.sd === null)
-        return t => spec.f(t);
-    const values = signalValues(name, n);
-    const t = designPoints(n);
-    let k = 0;
-    for (let i = 0; i < n; i++) {
-        if (Math.abs(spec.f(t[i])) > Math.abs(spec.f(t[k])))
-            k = i;
-    }
-    const scale = values[k] / spec.f(t[k]);
-    return u => scale * spec.f(u);
-}
-
 /** Is every ratio at a data x within 1 (+ the check tolerance)? The grid is sorted and contains every x. */
 function atData(band, x, ratios) {
     const index = new Map();
@@ -81,7 +65,7 @@ function main() {
     for (const name of opts.signals) {
         const sigma = SIGNALS[name].sigma;
         for (const n of opts.sizes) {
-            const fAt = signalAt(name, n);
+            const fAt = signalFunction(name, n);
             for (const config of opts.configs) {
                 let coverF = 0;
                 let coverData = 0;

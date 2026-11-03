@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SIGNALS, designPoints, signalValues, simulate } from '../src/core/signals.js';
+import { SIGNALS, designPoints, signalValues, signalFunction, simulate } from '../src/core/signals.js';
 
 function sd(v) {
     const m = v.reduce((a, b) => a + b, 0) / v.length;
@@ -47,5 +47,17 @@ test('every built-in signal simulates finite data at its defaults', () => {
         const { x, f, y } = simulate(name, spec.n, spec.sigma, 1);
         assert.equal(y.length, spec.n);
         assert.ok(y.every(Number.isFinite) && f.every(Number.isFinite) && x.every(Number.isFinite), name);
+    }
+});
+
+test('signalFunction matches signalValues at the design points, with and without rescaling', () => {
+    const TOL = 1e-12; // relative
+    for (const name of ['sine', 'blocks', 'heavisine', 'ramp']) {
+        const n = 300;
+        const f = signalFunction(name, n);
+        const values = signalValues(name, n);
+        const t = designPoints(n);
+        for (let i = 0; i < n; i++)
+            assert.ok(Math.abs(f(t[i]) - values[i]) <= TOL * Math.max(1, Math.abs(values[i])), `${name} at ${i}`);
     }
 });

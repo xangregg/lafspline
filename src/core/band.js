@@ -259,7 +259,7 @@ export function bandRegion(x, y, opts = {}) {
     const s = se.map(v => v / fit.sigma);
     const df = fit.system.n - fit.ed;
     if (!(df >= MIN_DF)) {
-        throw new RangeError(`band: the fit uses ${round(fit.ed)} of ${fit.system.n} degrees of freedom, leaving too `
+        throw new RangeError(`the fit uses ${round(fit.ed)} of ${fit.system.n} degrees of freedom, leaving too `
             + 'few to estimate σ; use fewer segments or a larger λ');
     }
     const sample = maxTSample(fit, gridBasis, s, { covariance, B, seed, df });
