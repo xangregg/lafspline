@@ -66,10 +66,11 @@ export function cancelAll() {
  *
  * @param {object} model       ModelData (with a Hessian for a QP)
  * @param {object} [options]   HiGHS options
- * @returns {Promise<{status: string, objective: number, x: Float64Array|null, ms: number}>}
+ * @param {string[]} [infoNames]  HiGHS info items to report (see lp-solve.js solveModel)
+ * @returns {Promise<{status: string, objective: number, x: Float64Array|null, ms: number, info: object}>}
  */
-export function solveModelInWorker(model, options = {}) {
-    return request({ task: 'model', model, options });
+export function solveModelInWorker(model, options = {}, infoNames = []) {
+    return request({ task: 'model', model, options, infoNames });
 }
 
 /**

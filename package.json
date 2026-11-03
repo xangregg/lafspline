@@ -13,7 +13,8 @@
     "vendor:highs": "rm -rf vendor/highs && mkdir -p vendor/highs && cp node_modules/highs/build/highs.mjs node_modules/highs/build/highs.wasm node_modules/highs/LICENSE vendor/highs/",
     "serve": "python3 -m http.server 8002",
     "check:page": "node tools/check-page.mjs",
-    "data:index": "node tools/data-index.mjs"
+    "data:index": "node tools/data-index.mjs",
+    "bench:qp": "node tools/bench-qp.mjs"
   },
   "devDependencies": {
     "highs": "1.15.4"

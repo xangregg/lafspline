@@ -82,10 +82,12 @@ export function modelStatusName(highs, code) {
  * @param {object} model       ModelData: numCols, numRows, colCost, colLower, colUpper, rowLower,
  *                             rowUpper, matrix {format, numRows, numCols, starts, indices, values}
  * @param {object} [options]   HiGHS options; solver log output is off unless overridden
- * @returns {{status: string, objective: number, x: Float64Array|null, ms: number}}  x = column
- *     values (null unless optimal); ms = wall-clock time including model setup
+ * @param {string[]} [infoNames]  HiGHS info items to report after the run, e.g. 'qp_iteration_count' (an item the
+ *     run did not produce is reported as NaN)
+ * @returns {{status: string, objective: number, x: Float64Array|null, ms: number, info: Object<string, number>}}
+ *     x = column values (null unless optimal); ms = wall-clock time including model setup
  */
-export function solveModel(highs, model, options = {}) {
+export function solveModel(highs, model, options = {}, infoNames = []) {
     const start = performance.now();
     return highs.withModel(model, mdl => {
         mdl.options.set({ output_flag: false, ...options });
@@ -103,6 +105,15 @@ export function solveModel(highs, model, options = {}) {
         const optimal = code === highs.constants.modelStatus.optimal;
         const x = optimal ? Float64Array.from(mdl.getSolution().colValue) : null;
         const objective = optimal ? mdl.getObjectiveValue() : NaN;
-        return { status: modelStatusName(highs, code), objective, x, ms: performance.now() - start };
+        const info = {};
+        for (const name of infoNames) {
+            try {
+                info[name] = Number(mdl.info.get(name));
+            }
+            catch {
+                info[name] = NaN;
+            }
+        }
+        return { status: modelStatusName(highs, code), objective, x, ms: performance.now() - start, info };
     });
 }

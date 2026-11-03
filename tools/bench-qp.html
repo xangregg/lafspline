@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>lafspline: QP risk check</title>
+    <link rel="icon" href="data:,">
+    <style>
+        body { font: 13px/1.4 ui-monospace, monospace; margin: 16px; background: #fff; color: #111; }
+        @media (prefers-color-scheme: dark) { body { background: #111; color: #eee; } }
+    </style>
+    <script type="module" src="bench-qp-page.js"></script>
+</head>
+<body>
+    <h1>Phase-0 QP risk check (browser worker)</h1>
+    <p>Iterated weights on the main thread versus the HiGHS QP in the solver worker. Serve the repository root and
+        open tools/bench-qp.html; results also go to <code>window.benchResult</code>.</p>
+    <pre id="out">running…</pre>
+</body>
+</html>

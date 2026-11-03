@@ -285,21 +285,35 @@ export function pSplineSystem(x, y, opts = {}) {
     const nseg = opts.nseg ?? defaultSegments(new Set(xs).size);
     const basis = bsplineBasis(xs, opts.xl ?? xmin, opts.xr ?? xmax, nseg, deg);
     const W = Math.max(deg, diff) + 1;
+    const { G, rhs } = weightedCrossProducts(basis, w, ys, W);
+    return { x: xs, y: ys, w, n, diff, W, basis, G, rhs };
+}
+
+/**
+ * BᵀWB (banded) and BᵀWy for a basis and weights. O(n·deg²).
+ *
+ * @param {Basis} basis
+ * @param {ArrayLike<number>} w  weight per point
+ * @param {ArrayLike<number>} y  value per point
+ * @param {number} W             band storage width, ≥ deg + 1
+ * @returns {{G: Float64Array, rhs: Float64Array}}
+ */
+export function weightedCrossProducts(basis, w, y, W) {
     const nb = basis.nb;
     const G = new Float64Array(nb * W);
     const rhs = new Float64Array(nb);
-    const bw = deg + 1;
-    for (let i = 0; i < n0; i++) {
+    const bw = basis.deg + 1;
+    for (let i = 0; i < basis.n; i++) {
         const f = basis.first[i];
         const off = i * bw;
         for (let r = 0; r < bw; r++) {
             const wv = w[i] * basis.values[off + r];
-            rhs[f + r] += wv * ys[i];
+            rhs[f + r] += wv * y[i];
             for (let q = 0; q <= r; q++)
                 G[(f + r) * W + (r - q)] += wv * basis.values[off + q];
         }
     }
-    return { x: xs, y: ys, w, n, diff, W, basis, G, rhs };
+    return { G, rhs };
 }
 
 /**

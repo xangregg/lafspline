@@ -3,7 +3,7 @@
 //
 // Protocol:
 //   {id, lp, options}                  → {id, status, objective, names, primal: Float64Array, ms}
-//   {id, task: 'model', model, options} → {id, status, objective, x: Float64Array|null, ms}
+//   {id, task: 'model', model, options, infoNames} → {id, status, objective, x: Float64Array|null, ms, info}
 //                                        (HiGHS ModelData, src/core/lp-solve.js solveModel)
 //   failures                           → {id, error}
 //
@@ -21,11 +21,11 @@ function getHighs() {
 }
 
 self.addEventListener('message', async event => {
-    const { id, task, lp, model, options } = event.data;
+    const { id, task, lp, model, options, infoNames } = event.data;
     try {
         const highs = await getHighs();
         if (task === 'model') {
-            const result = solveModel(highs, model, options);
+            const result = solveModel(highs, model, options, infoNames);
             self.postMessage({ id, ...result }, result.x ? [result.x.buffer] : []);
         }
         else {

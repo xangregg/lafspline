@@ -45,3 +45,6 @@ such as the claim text and `[hidden]`, will be used), `LICENSE` (0BSD), `.gitign
   unchanged.
 - `test/lp.test.js`: rewritten, since the earlier project's used `smokeLP` from `lp-build.js` (not copied): the same smoke
   LP inline, the infeasibility test unchanged, and a new test of `solveModel` on the smoke LP as ModelData.
+- `src/core/lp-solve.js`: `solveModel(highs, model, options, infoNames)` takes an optional list of HiGHS info
+  items (e.g. `qp_iteration_count`) and returns them as `info`; an item the run did not produce is NaN. Additive.
+  `src/lp-worker.js` and `src/ui/lp.js` (`solveModelInWorker`) pass it through.

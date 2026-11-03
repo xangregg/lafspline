@@ -84,6 +84,19 @@ Two ways to solve it:
 
 Phase 0 compares the two on the same problems and picks the default.
 
+**Decision (phase 0): iterated weights,** made a semismooth Newton method with an exact line search
+(`src/core/fit.js`; `npm run bench:qp`, and `tools/bench-qp.html` for the browser worker). On 72 cases (sine,
+HeaviSine, Blocks, line × K̃ = 43, 103, 203 with G = 200, 800, 2000 × six ambitions), all converged, in at most 96
+Newton solves and 17 ms. The full steps of Bollaerts et al. cycled on Blocks at low ambition; with the line search,
+S decreases strictly and the sets settle. Once they settle, the fit is the exact minimizer (S is convex and C¹).
+HiGHS's QP (highs-js 1.15.4, HiGHS 1.15.1) agrees with it to about 1e-4·h, which is its own tolerance, but this
+build has only the active-set QP solver (`ipm` falls back to it, `hipo` is not compiled in): median 12 ms at K̃ =
+43, 0.6 s at K̃ = 103 and 6.6 s (up to 20 s) at K̃ = 203, in Node and the worker alike. The hard-region QP is fast
+when it works, but 40 of the 72 runs failed, 22 of them on provably feasible problems (the soft fit lay inside): it
+reports "non-convex", fails on degeneracy or hits the time limit; presolve off, dropping tiny matrix values and
+rescaling the objective do not help. So the QP stays out of the app; it remains a test oracle. A hard region, if
+wanted, is κ → ∞ in the iteration (violations shrink like 1/κ).
+
 **User knobs:**
 - **ambition:** one multiplier on (λ₁, λ₂), on a log scale: a slider from detail (short-term patterns) to
   simplicity (long-term patterns). Advanced: the balance between flat and straight, or λ₁ and λ₂ separately.
@@ -121,7 +134,7 @@ is enough. Revisit after phase 2.
 1. **Normalizing λ₁, λ₂** so the ambition knob means the same across data sets: relative to the phase-1 λ, to an
    effective dimension, or to the λ at which the fit first leaves the region.
 2. **Default κ:** large enough that violations are negligible, small enough to keep the iterated system well
-   conditioned. The hard-region QP sidesteps this.
+   conditioned. (The hard-region QP would have sidestepped this, but HiGHS's active-set QP fails on it; see §1.3.)
 3. **A data term in phase 2?** As specified, the data enter only through the region. Revisit if fits drift from
    the data in ways the center pull does not prevent.
 4. **Band type and coverage:** Bayesian or frequentist covariance; undersmoothing by default or not; covering f
@@ -146,7 +159,7 @@ is enough. Revisit after phase 2.
       matrices, banded penalized solve, hat-matrix diagonal and ED, GCV/AIC over log λ, σ̂, Bayesian and sandwich
       covariance. Tests: partition of unity, polynomial reproduction (λ → ∞ gives the degree-(d − 1) least-squares
       polynomial), agreement with a dense solve, and fixtures from JOPS or mgcv (R) for a few data sets.
-- [ ] QP risk check: the phase-2 objective as a HiGHS QP in Node and in the worker, for K̃ up to ~200 and G up to
+- [x] QP risk check: the phase-2 objective as a HiGHS QP in Node and in the worker, for K̃ up to ~200 and G up to
       ~2000; compare with the iterated weights (same fit within tolerance, time, iterations). Decide the default.
 
 ### Phase 1 — The region
