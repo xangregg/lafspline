@@ -18,6 +18,10 @@ export const LOG_KAPPA_RANGE = [1, 8]; // log₁₀ κ
 export const LOG_EPSILON_RANGE = [-6, 0]; // log₁₀ ε
 export const UNDERSMOOTH_VALUES = [1, 1 / 4, 1 / 16, 1 / 64];
 export const PENALTIES = ['quadratic', 'sparse']; // ambition penalty: squared differences, or their count
+export const FAMILIES = ['blocks', 'quarter', 'every', 'all']; // Aₙ intervals, as the earlier project's
+export const BOX_VIEWS = ['tightest', 'all', 'off']; // Aₙ boxes drawn on the chart
+export const AN_MAX_SEGMENTS = 100; // phase-2 basis for Aₙ: its long intervals make the Newton system dense
+export const TAU_RANGE = [0.1, 20];
 
 const MAX_COLUMN = 10000; // column index sanity cap
 const USER = 'user';
@@ -70,6 +74,11 @@ const FIELDS = {
     showTruth: bool,
     xCol: int(-1, MAX_COLUMN),
     yCol: int(0, MAX_COLUMN),
+    region: enumOf(['band', 'An']),
+    family: enumOf(FAMILIES),
+    calibrate: bool,
+    tau: num(...TAU_RANGE),
+    boxes: enumOf(BOX_VIEWS),
     alpha: num(0.5, 0.999),
     covariance: enumOf(['bayes', 'sandwich']),
     lambdaMode: enumOf(['gcv', 'aic', 'given']),

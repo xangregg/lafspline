@@ -19,7 +19,13 @@ compared later.
 | `lp-solve.js` | `solveLP` (LP text), `solveModel` (ModelData; returns a failed run's status instead of throwing) |
 | `extremes.js` | runs, local extremes, step signs (to count extremes and flat runs of a fit) |
 
-Not yet copied (phase 4, Aₙ as a region): `region.js`, `regions.js`, `intervals.js`, `calibrate.js`.
+| `region.js` | Aₙ's threshold c = σ√(τ log n), residual check, constraint boxes (phase 4) |
+| `intervals.js` | interval families: the paper's blocks, overlapping windows, all; ties never split (phase 4) |
+| `calibrate.js` | Monte Carlo calibration of τ (phase 4) |
+| `regions.js` | Aₙ as a region: `anRegion`, claim, `checkFit`, `calibrateTau`, `nullSample` (phase 4; trimmed) |
+
+`region.js`, `intervals.js` and `calibrate.js` are unchanged, with their tests. `an.js` (Aₙ as boxes for phase 2) is
+lafspline's own.
 
 ## src/ui
 
@@ -28,7 +34,8 @@ Not yet copied (phase 4, Aₙ as a region): `region.js`, `regions.js`, `interval
 `urlstate.js` (+ test): copied in phase 2 with the field table rewritten (see below).
 `main.js` and `controls.js` are lafspline's own, patterned on the earlier project's (the data source, paste/drop and
 example loading code, and the URL hash and Copy link wiring, are the earlier project's). `format.js` is lafspline's own.
-Not yet copied: `residual.js` (Aₙ's residual view; phase 4 if needed).
+Not copied: `residual.js` (Aₙ's residual view). Phase 4 draws the boxes of the tightest level on the main chart
+instead.
 
 ## Other
 
@@ -60,7 +67,12 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/urlstate.js`: the field table is lafspline's state (band settings, ambition, flat share, κ, ε); the
   constraint codec (`encodeConstraints`, `decodeConstraints`, which import the earlier project's `constraints.js`) and the
   old-link rule for τ are dropped; `MAX_N` is 5,000 and a signal starts at its own n up to that (the earlier project caps it
-  at 200 for the MIP); `nseg` may be `auto` (null); `penalty` (phase 3: `quadratic` or `sparse`). The hash and
-  data packing code is unchanged.
+  at 200 for the MIP); `nseg` may be `auto` (null); `penalty` (phase 3: `quadratic` or `sparse`); `region`,
+  `family`, `calibrate` and `tau` as the earlier project's, and `boxes` (phase 4: which Aₙ boxes are drawn). The hash and data
+  packing code is unchanged.
   `test/urlstate.test.js` is the earlier project's with the lafspline fields.
 - `styles.css`: slider and Advanced-panel rules appended.
+- `src/core/regions.js`: trimmed to Aₙ. The earlier project's smoother band (`bandRegion`, `bandClaim`, which need its
+  `smoother.js`) and LP framing (`standardRows`, for its `lp-build.js`) are removed, since lafspline's band is
+  `band.js` and phase 2 takes the constraints in box form (`an.js`). `scaleStatistic` and `nullSample` lost their
+  band branches. `test/regions.test.js` is the earlier project's without the band, LP and kink tests.

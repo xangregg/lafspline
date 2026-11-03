@@ -18,12 +18,17 @@
 //   l'_j ≤ g'_j + t_j ≤ u'_j (cost κ t_j²/h'_j², so the optimal |t_j| is the distance outside). With hard: true the
 //   slacks are dropped (the region as a constraint) and the problem can be infeasible.
 //
-// ε > 0 is required: it makes S strictly convex (the grid is dense in the basis) and the iterated system positive
-// definite.
+// ε > 0 is required: with the dense check grid it makes S strictly convex and the iterated system positive definite
+// (with rows only at the observations, PENALTY_FLOOR does).
+//
+// The region need not be a band on a grid (PLAN phase 4): each of its G constraints is a box for one linear
+// functional of β, |r_kβ − c_k| ≤ h_k. For a band r_k is the basis at grid point k (deg + 1 nonzeros). For Aₙ it is
+// the mean of the basis rows over the observations in an interval I, with c_k = mean_I(y) and h_k = c/√|I| (an.js),
+// whose support grows with I; the Newton system is then banded only as far as the widest row reaches (dense for
+// I = everything), still nb × nb. Specs carry such rows in `rows`; without them the rows are the basis at `grid`.
 
 import {
     bsplineBasis, addDifferencePenalty, differenceCoefficients, choleskyBanded, solveCholesky, bandedInverse,
-    weightedCrossProducts,
 } from './pspline.js';
 
 const MAX_ITERATIONS = 200; // iterated weights: cap on Newton solves
@@ -33,6 +38,14 @@ export const DEFAULT_EPSILON = 1e-2; // weight on the squared distance from the 
 // Largest penalty relative to the center pull per coefficient, λ_d·nb/(ε·G). Beyond about 1e12 the Newton system
 // loses too many digits: a straight line inside the region came back outside it, without a Cholesky failure.
 const MAX_PENALTY_RATIO = 1e10;
+// A second-difference penalty always present, relative to the strongest penalty in the system (the center pull per
+// coefficient, or the largest λ_d·w_r). Aₙ's rows sit only at the observations, so a coefficient whose support holds
+// none is free without ambition, or in a sparse fit's start and its pinned refits: the system was singular
+// (Cholesky failed on chess recall). Relative to the center pull alone, the floor was still swamped by pinned
+// differences 1e22 times stronger (fibers, 5 distinct x for 8 coefficients). This keeps the condition number
+// near 1/PENALTY_FLOOR whatever the rows cover, and carries the fit straight across such gaps. Elsewhere it is
+// negligible: 1e-12 of a penalty already present (the effective dimension without ambition is K − 9e-9).
+const PENALTY_FLOOR = 1e-12;
 export const LEAVE_TOL = 0.01; // the fit has left the region when its largest |g − c|/h exceeds 1 + LEAVE_TOL
 const SCAN_DECADES = 16; // a* search: ambitions from the cap down this many decades
 const SCAN_STEP = 1; // decades between scanned ambitions
@@ -45,10 +58,21 @@ const SPARSE_MIN_TOP = 1e-12; // sparse ambition: top when the polynomial matche
 const SPARSE_DELTA = 1e-4; // adaptive ridge: a step smaller than this (units of median h) counts as zero
 
 /**
+ * @typedef {object} Rows  linear functionals of the coefficients with contiguous support: row k is
+ *     Σ_{r < width[k]} values[offset[k] + r]·β[first[k] + r]
+ * @property {number} n           number of rows
+ * @property {Int32Array} first   first coefficient of each row
+ * @property {Int32Array} width   coefficients in each row
+ * @property {Int32Array} offset  start of each row in values (length n + 1)
+ * @property {Float64Array} values
+ */
+
+/**
  * @typedef {object} Phase2Spec
- * @property {Float64Array} grid    check grid, within [xl, xr]
- * @property {Float64Array} c       region center at the grid
- * @property {Float64Array} h       region half-width at the grid, > 0
+ * @property {Float64Array} [grid]  check grid, within [xl, xr]: the rows are the basis there (without rows)
+ * @property {Rows} [rows]          the region's linear functionals (instead of grid)
+ * @property {Float64Array} c       region center per row
+ * @property {Float64Array} h       region half-width per row, > 0
  * @property {number} xl            knot range of the phase-2 basis
  * @property {number} xr
  * @property {number} nseg          segments of the phase-2 basis
@@ -64,10 +88,10 @@ const SPARSE_DELTA = 1e-4; // adaptive ridge: a step smaller than this (units of
 /**
  * @typedef {object} Phase2Fit
  * @property {Float64Array} beta     coefficients (units of y)
- * @property {Float64Array} g        fit at the grid (units of y)
+ * @property {Float64Array} g        the rows applied to β: the fit at the grid, or its interval means (units of y)
  * @property {number} objective      S(β) (unitless)
  * @property {number} maxRatio       max_j |g_j − c_j| / h_j
- * @property {number} outside        grid points with ratio > 1
+ * @property {number} outside        rows (grid points) with ratio > 1
  * @property {number} ms             wall-clock time
  */
 
@@ -76,25 +100,131 @@ function prepare(spec) {
     const deg = spec.deg ?? 3;
     if (!(spec.epsilon > 0))
         throw new RangeError('phase 2: epsilon > 0 required');
-    if (c.length !== grid.length || h.length !== grid.length)
-        throw new RangeError('phase 2: grid, c and h differ in length');
+    const rows = spec.rows ?? basisRows(bsplineBasis(grid, xl, xr, nseg, deg));
+    if (c.length !== rows.n || h.length !== rows.n)
+        throw new RangeError('phase 2: rows, c and h differ in length');
     const sorted = Float64Array.from(h).sort();
     const s = sorted[sorted.length >> 1];
     if (!(sorted[0] > 0))
         throw new RangeError('phase 2: half-widths must be positive');
     const cs = Float64Array.from(c, v => v / s);
     const hs = Float64Array.from(h, v => v / s);
-    const basis = bsplineBasis(grid, xl, xr, nseg, deg);
-    const W = Math.max(deg, 2) + 1;
-    return { spec, s, cs, hs, basis, W, nb: basis.nb };
+    const nb = nseg + deg;
+    let widest = 0;
+    for (let k = 0; k < rows.n; k++)
+        widest = Math.max(widest, rows.width[k]);
+    const W = Math.min(nb, Math.max(widest, Math.max(deg, 2) + 1));
+    return { spec, s, cs, hs, rows, W, nb };
+}
+
+/**
+ * The basis at its points as Rows.
+ *
+ * @param {import('./pspline.js').Basis} basis
+ * @returns {Rows}
+ */
+export function basisRows(basis) {
+    const bw = basis.deg + 1;
+    return {
+        n: basis.n,
+        first: Int32Array.from(basis.first),
+        width: new Int32Array(basis.n).fill(bw),
+        offset: Int32Array.from({ length: basis.n + 1 }, (_, k) => k * bw),
+        values: basis.values,
+    };
+}
+
+/**
+ * The mean of the basis rows over each interval of observations (basis at the sorted data x): the functional
+ * β ↦ mean_{i∈I} g(x_i) of an Aₙ constraint. Rows of sorted x have nondecreasing first coefficients, so the
+ * support of the mean is first[lo] .. first[hi] + deg. O(Σ|I|·deg) to build.
+ *
+ * @param {import('./pspline.js').Basis} basis  at the observations, x sorted
+ * @param {{lo: number, hi: number}[]} intervals  0-based inclusive observation ranges
+ * @returns {Rows}
+ */
+export function intervalRows(basis, intervals) {
+    const bw = basis.deg + 1;
+    const n = intervals.length;
+    const first = new Int32Array(n);
+    const width = new Int32Array(n);
+    const offset = new Int32Array(n + 1);
+    for (let k = 0; k < n; k++) {
+        const { lo, hi } = intervals[k];
+        first[k] = basis.first[lo];
+        width[k] = basis.first[hi] + bw - first[k];
+        offset[k + 1] = offset[k] + width[k];
+    }
+    const values = new Float64Array(offset[n]);
+    for (let k = 0; k < n; k++) {
+        const { lo, hi } = intervals[k];
+        const inv = 1 / (hi - lo + 1);
+        for (let i = lo; i <= hi; i++) {
+            const at = offset[k] + basis.first[i] - first[k];
+            for (let r = 0; r < bw; r++)
+                values[at + r] += inv * basis.values[i * bw + r];
+        }
+    }
+    return { n, first, width, offset, values };
+}
+
+/** The rows applied to β. */
+function rowValues(rows, beta) {
+    const g = new Float64Array(rows.n);
+    for (let k = 0; k < rows.n; k++) {
+        let v = 0;
+        const f = rows.first[k];
+        const off = rows.offset[k];
+        for (let r = 0; r < rows.width[k]; r++)
+            v += rows.values[off + r] * beta[f + r];
+        g[k] = v;
+    }
+    return g;
+}
+
+/** RᵀWR (band storage of width W, which must cover the widest row) and RᵀWt. O(Σ width²). */
+function rowCrossProducts(rows, w, t, nb, W) {
+    const A = new Float64Array(nb * W);
+    const rhs = new Float64Array(nb);
+    for (let k = 0; k < rows.n; k++) {
+        const f = rows.first[k];
+        const off = rows.offset[k];
+        for (let r = 0; r < rows.width[k]; r++) {
+            const wv = w[k] * rows.values[off + r];
+            rhs[f + r] += wv * t[k];
+            for (let q = 0; q <= r; q++)
+                A[(f + r) * W + (r - q)] += wv * rows.values[off + q];
+        }
+    }
+    return { A, rhs };
+}
+
+/**
+ * A spline with coefficients β (from a phase-2 fit) evaluated at points within [xl, xr].
+ *
+ * @param {ArrayLike<number>} beta
+ * @param {ArrayLike<number>} at
+ * @param {{xl: number, xr: number, nseg: number, deg?: number}} knots
+ * @returns {Float64Array}
+ */
+export function splineValues(beta, at, { xl, xr, nseg, deg = 3 }) {
+    return rowValues(basisRows(bsplineBasis(at, xl, xr, nseg, deg)), beta);
 }
 
 function addAmbition(A, p) {
     const { lambda1, lambda2, w1, w2 } = p.spec;
+    addDifferencePenalty(A, p.nb, p.W, 2, PENALTY_FLOOR * strongestPenalty(p));
     if (lambda1 > 0)
         addWeightedDifferences(A, p.nb, p.W, 1, lambda1, w1);
     if (lambda2 > 0)
         addWeightedDifferences(A, p.nb, p.W, 2, lambda2, w2);
+}
+
+/** The largest weight on any squared difference, λ_d·max w, or the center pull per coefficient ε·G/nb if larger. */
+function strongestPenalty(p) {
+    const { lambda1, lambda2, w1, w2, epsilon } = p.spec;
+    const top = (lambda, w) => (lambda > 0 ? lambda * (w ? w.reduce((a, v) => Math.max(a, v), 0) : 1) : 0);
+    return Math.max(epsilon * p.rows.n / p.nb, top(lambda1, w1), top(lambda2, w2));
 }
 
 /** λ·DᵀΩD into A, Ω = diag(w) (one weight per difference), or λ·DᵀD without w. */
@@ -111,18 +241,6 @@ function addWeightedDifferences(A, nb, W, d, lambda, w) {
                 A[(r + i) * W + (i - j)] += scale * c[i] * c[j];
         }
     }
-}
-
-function gridValues(basis, beta) {
-    const bw = basis.deg + 1;
-    const g = new Float64Array(basis.n);
-    for (let j = 0; j < basis.n; j++) {
-        let v = 0;
-        for (let r = 0; r < bw; r++)
-            v += basis.values[j * bw + r] * beta[basis.first[j] + r];
-        g[j] = v;
-    }
-    return g;
 }
 
 function bandedQuadratic(M, N, W, v) {
@@ -151,7 +269,7 @@ function objective(p, beta, g) {
 }
 
 function finish(p, betaScaled, start) {
-    const gs = gridValues(p.basis, betaScaled);
+    const gs = rowValues(p.rows, betaScaled);
     const check = checkRegion(gs, p.cs, p.hs);
     return {
         beta: betaScaled.map(v => v * p.s),
@@ -173,7 +291,7 @@ function finish(p, betaScaled, start) {
 export function phase2Objective(spec, beta) {
     const p = prepare(spec);
     const scaled = Float64Array.from(beta, v => v / p.s);
-    return objective(p, scaled, gridValues(p.basis, scaled));
+    return objective(p, scaled, rowValues(p.rows, scaled));
 }
 
 /**
@@ -217,7 +335,7 @@ export function fitIterated(spec, opts = {}) {
     const p = prepare(spec);
     const maxIterations = opts.maxIterations ?? MAX_ITERATIONS;
     const useLineSearch = opts.lineSearch ?? true;
-    const G = p.basis.n;
+    const G = p.rows.n;
     const P = new Float64Array(p.nb * p.W);
     addAmbition(P, p);
     let side = opts.side ? Int8Array.from(opts.side) : new Int8Array(G); // +1 above u, −1 below l, 0 inside
@@ -230,7 +348,7 @@ export function fitIterated(spec, opts = {}) {
         iterations++;
         const { A, rhs } = newtonSystem(p, side);
         const betaN = solveCholesky(choleskyBanded(A, p.nb, p.W), p.nb, p.W, rhs);
-        const gN = gridValues(p.basis, betaN);
+        const gN = rowValues(p.rows, betaN);
         const sideN = sidesOf(gN, p);
         if (sameSides(sideN, side)) {
             beta = betaN;
@@ -266,7 +384,7 @@ export function fitIterated(spec, opts = {}) {
  */
 function newtonSystem(p, side) {
     const { kappa, epsilon } = p.spec;
-    const G = p.basis.n;
+    const G = p.rows.n;
     const weight = new Float64Array(G);
     const target = new Float64Array(G);
     for (let j = 0; j < G; j++) {
@@ -276,7 +394,7 @@ function newtonSystem(p, side) {
         weight[j] = (epsilon + k) / h2;
         target[j] = (epsilon * p.cs[j] + k * edge) / (epsilon + k);
     }
-    const { G: A, rhs } = weightedCrossProducts(p.basis, weight, target, p.W);
+    const { A, rhs } = rowCrossProducts(p.rows, weight, target, p.nb, p.W);
     addAmbition(A, p);
     return { A, rhs };
 }
@@ -377,11 +495,11 @@ export function buildQP(spec, opts = {}) {
     const p = prepare(spec);
     const hard = opts.hard ?? false;
     const { kappa, epsilon } = spec;
-    const { basis, nb, W, cs, hs } = p;
-    const G = basis.n;
+    const { rows, nb, W, cs, hs } = p;
+    const G = rows.n;
     const numCols = hard ? nb : nb + G;
     const invH2 = Float64Array.from(hs, v => 1 / (v * v));
-    const { G: A, rhs } = weightedCrossProducts(basis, invH2, cs, W);
+    const { A, rhs } = rowCrossProducts(rows, invH2, cs, nb, W);
     for (let i = 0; i < A.length; i++)
         A[i] *= epsilon;
     addAmbition(A, p);
@@ -417,21 +535,20 @@ export function buildQP(spec, opts = {}) {
         offset += epsilon * cs[j] * cs[j] * invH2[j];
 
     // rows: l'_j ≤ (Bβ')_j (+ t_j) ≤ u'_j
-    const bw = basis.deg + 1;
     const rowStarts = new Int32Array(G + 1);
-    const rowIndices = new Int32Array(G * (bw + (hard ? 0 : 1)));
-    const rowValues = new Float64Array(rowIndices.length);
+    const rowIndices = new Int32Array(rows.offset[G] + (hard ? 0 : G));
+    const rowEntries = new Float64Array(rowIndices.length);
     let e = 0;
     for (let j = 0; j < G; j++) {
         rowStarts[j] = e;
-        for (let r = 0; r < bw; r++) {
-            rowIndices[e] = basis.first[j] + r;
-            rowValues[e] = basis.values[j * bw + r];
+        for (let r = 0; r < rows.width[j]; r++) {
+            rowIndices[e] = rows.first[j] + r;
+            rowEntries[e] = rows.values[rows.offset[j] + r];
             e++;
         }
         if (!hard) {
             rowIndices[e] = nb + j;
-            rowValues[e] = 1;
+            rowEntries[e] = 1;
             e++;
         }
     }
@@ -446,7 +563,7 @@ export function buildQP(spec, opts = {}) {
         colUpper: new Float64Array(numCols).fill(Infinity),
         rowLower: Float64Array.from(cs, (v, j) => v - hs[j]),
         rowUpper: Float64Array.from(cs, (v, j) => v + hs[j]),
-        matrix: { format: 'csr', numRows: G, numCols, starts: rowStarts, indices: rowIndices, values: rowValues },
+        matrix: { format: 'csr', numRows: G, numCols, starts: rowStarts, indices: rowIndices, values: rowEntries },
         hessian: { format: 'triangular', dimension: numCols, starts, indices: Int32Array.from(indices),
             values: Float64Array.from(values) },
     };
@@ -491,24 +608,27 @@ export function ambitionLambdas({ ambition, flat = 0, G, nseg }) {
 }
 
 /**
- * A phase-2 spec from a phase-1 band region (band.js): the check grid, center and half-width, and the band's knot
- * range; the phase-2 basis has the band's segments unless nseg is given.
+ * A phase-2 spec from a region: a phase-1 band (band.js: the check grid, center and half-width, and the band's
+ * knot range; the phase-2 basis has the band's segments unless nseg is given) or Aₙ's boxes (an.js, which carry
+ * their rows, built for their own segments).
  *
- * @param {{grid: Float64Array, center: Float64Array, half: Float64Array, params: {xl: number, xr: number,
- *     nseg: number}}} region
+ * @param {{grid: Float64Array, center: Float64Array, half: Float64Array, rows?: Rows, params: {xl: number,
+ *     xr: number, nseg: number}}} region
  * @param {{ambition: number, flat?: number, kappa?: number, epsilon?: number, nseg?: number}} opts
  * @returns {Phase2Spec & {ambition: number, flat: number}}
  */
 export function regionSpec(region, opts) {
+    if (region.rows && opts.nseg !== undefined && opts.nseg !== region.params.nseg)
+        throw new RangeError('regionSpec: the region\'s rows are for its own segments');
     const nseg = opts.nseg ?? region.params.nseg;
     const flat = opts.flat ?? 0;
     return {
-        grid: region.grid, c: region.center, h: region.half,
+        grid: region.grid, rows: region.rows, c: region.center, h: region.half,
         xl: region.params.xl, xr: region.params.xr, nseg, deg: 3,
         kappa: opts.kappa ?? DEFAULT_KAPPA,
         epsilon: opts.epsilon ?? DEFAULT_EPSILON,
         ambition: opts.ambition, flat,
-        ...ambitionLambdas({ ambition: opts.ambition, flat, G: region.grid.length, nseg }),
+        ...ambitionLambdas({ ambition: opts.ambition, flat, G: region.center.length, nseg }),
     };
 }
 
@@ -537,13 +657,14 @@ export function maxAmbition(spec) {
  * @param {Phase2Spec & {flat?: number}} spec  its λ₁, λ₂ and ambition are ignored
  * @param {{sparse?: boolean}} [opts]  sparse: the adaptive-ridge ambition (fitSparse, sparseLambdas,
  *     sparseMaxAmbition) instead of the quadratic one
- * @returns {{ambition: number, capped: boolean, top: number, fit: object, fits: number, ms: number}}  fit: at a*
- *     (from fitIterated or fitSparse); top: the cap (maxAmbition or sparseMaxAmbition); fits: phase-2 fits
- *     computed
+ * @returns {{ambition: number, capped: boolean, unreachable: boolean, top: number, fit: object, fits: number,
+ *     ms: number}}  fit: at a* (from fitIterated or fitSparse); unreachable: even the smallest ambition scanned
+ *     leaves the region, so no a* exists and ambition and fit are that smallest one's; top: the cap (maxAmbition
+ *     or sparseMaxAmbition); fits: phase-2 fits computed
  */
 export function leavingAmbition(spec, opts = {}) {
     const start = performance.now();
-    const G = spec.grid.length;
+    const G = spec.c.length;
     const flat = spec.flat ?? 0;
     const sparse = opts.sparse ?? false;
     const at = logA => {
@@ -558,6 +679,7 @@ export function leavingAmbition(spec, opts = {}) {
     let lo = null;
     let loFit = null;
     let hi = null;
+    let hiFit = null;
     const steps = Math.round(SCAN_DECADES / SCAN_STEP);
     for (let i = steps; i >= 0; i--) {
         const logA = top - i * SCAN_STEP;
@@ -565,18 +687,20 @@ export function leavingAmbition(spec, opts = {}) {
         fits++;
         if (leaves(fit)) {
             hi = logA;
+            hiFit = fit;
             break;
         }
         lo = logA;
         loFit = fit;
     }
+    const result = (ambition, capped, fit) => ({ ambition, capped, unreachable: false, top: 10 ** top, fit, fits,
+        ms: performance.now() - start });
     if (hi === null)
-        return { ambition: 10 ** top, capped: true, top: 10 ** top, fit: loFit, fits, ms: performance.now() - start };
+        return result(10 ** top, true, loFit);
     if (lo === null) {
-        // leaves already at the smallest ambition scanned: the center itself is outside (not from band.js)
-        lo = hi - SCAN_STEP;
-        loFit = at(lo);
-        fits++;
+        // Leaves already at the smallest ambition scanned: no fit in this basis is inside the region (Aₙ's shortest
+        // intervals can ask for more than the basis can follow; a band's center is inside by construction).
+        return { ...result(10 ** hi, false, hiFit), unreachable: true };
     }
     while (hi - lo > BISECT_TOL) {
         const mid = (lo + hi) / 2;
@@ -590,7 +714,7 @@ export function leavingAmbition(spec, opts = {}) {
             loFit = fit;
         }
     }
-    return { ambition: 10 ** lo, capped: false, top: 10 ** top, fit: loFit, fits, ms: performance.now() - start };
+    return result(10 ** lo, false, loFit);
 }
 
 /**
@@ -606,7 +730,7 @@ export function leavingAmbition(spec, opts = {}) {
 export function sparseMaxAmbition(spec) {
     const flat = spec.flat ?? 0;
     const nb = spec.nseg + (spec.deg ?? 3);
-    const G = spec.grid.length;
+    const G = spec.c.length;
     const pin = MAX_PENALTY_RATIO * spec.epsilon * G / nb; // λ_d·w_r of a pinned difference (fitSparse)
     const poly = fitIterated({
         ...spec, w1: undefined, w2: undefined, lambda1: flat > 0 ? pin : 0, lambda2: flat < 1 ? pin : 0,
@@ -656,7 +780,7 @@ export function fitSparse(spec, opts = {}) {
     const maxReweights = opts.maxReweights ?? MAX_REWEIGHTS;
     const prunePasses = opts.prunePasses ?? MAX_PRUNE_PASSES;
     const { s, nb } = prepare(spec);
-    const G = spec.grid.length;
+    const G = spec.c.length;
     const orders = [[1, spec.lambda1], [2, spec.lambda2]].filter(([, lambda]) => lambda > 0);
     const caps = orders.map(([, lambda]) => MAX_PENALTY_RATIO * spec.epsilon * G / (nb * lambda));
     // The cap on w makes the reweighting behave as if δ were at least 1/√cap, so that is also where a difference

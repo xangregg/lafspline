@@ -3,7 +3,9 @@
 // partial state patches.
 
 import { SIGNALS } from '../core/signals.js';
-import { MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE } from './urlstate.js';
+import {
+    MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
+} from './urlstate.js';
 import { fmtExp } from './format.js';
 
 const DEBOUNCE = 300; // ms for typed input
@@ -26,6 +28,21 @@ const COVARIANCE_OPTIONS = [
     ['sandwich', 'sandwich (covers E f̂)'],
 ];
 const DIFF_OPTIONS = [[1, '1: toward flat'], [2, '2: toward straight'], [3, '3: toward quadratic']];
+const REGION_OPTIONS = [
+    ['band', 'P-spline band (smooth f)'],
+    ['An', 'Aₙ: multiresolution (no smoothness)'],
+];
+const FAMILY_OPTIONS = [
+    ['blocks', 'blocks (the paper\'s, λ = 2)'],
+    ['quarter', 'overlapping, ¼-width steps'],
+    ['every', 'overlapping, every position'],
+    ['all', 'all intervals (small n)'],
+];
+const BOX_OPTIONS = [
+    ['tightest', 'the level of the tightest box'],
+    ['all', 'all levels (outlines)'],
+    ['off', 'none'],
+];
 const PENALTY_OPTIONS = [
     ['quadratic', 'squared differences'],
     ['sparse', 'number of bends or steps'],
@@ -157,6 +174,22 @@ export function createControls(container, state, onChange, examples = []) {
     yCol.addEventListener('change', () => onChange({ yCol: Number(yCol.value) }));
     const userBox = el('div', { class: 'group' }, [text, file, field('x column', xCol), field('y column', yCol)]);
 
+    // --- region
+    const regionKind = select('region', REGION_OPTIONS);
+    const family = select('family', FAMILY_OPTIONS);
+    const calibrate = el('input', { type: 'checkbox', checked: state.calibrate });
+    calibrate.addEventListener('change', () => onChange({ calibrate: calibrate.checked }));
+    const tauInput = numberInput('tau', { min: TAU_RANGE[0], max: TAU_RANGE[1], step: 0.1 });
+    const tauField = field('τ', tauInput, 'c = σ̂·√(τ log n); the paper\'s default is 3');
+    const boxes = select('boxes', BOX_OPTIONS);
+    const anBox = el('div', { class: 'group' }, [
+        field('intervals', family, 'denser families catch more, and need a larger τ for the same coverage'),
+        el('label', { class: 'check' }, [calibrate, ' calibrate τ for coverage α (Monte Carlo)']),
+        tauField,
+        field('boxes on the chart', boxes, 'each box: mean of y over an interval ± c/√|I|; the tick is the fit\'s '
+            + 'mean, and must lie inside'),
+    ]);
+
     // --- band
     const alphaInput = numberInput('alpha', { min: 0.5, max: 0.999, step: 0.01 });
     const covariance = select('covariance', COVARIANCE_OPTIONS);
@@ -177,6 +210,15 @@ export function createControls(container, state, onChange, examples = []) {
             later({ nseg: Math.round(Number(nsegInput.value)) });
     });
     const diff = select('diff', DIFF_OPTIONS, Number);
+    const alphaHint = el('span', { class: 'field-hint' });
+    const alphaField = field('coverage α', alphaInput, alphaHint);
+    const bandBox = el('div', { class: 'group' }, [
+        field('covariance', covariance),
+        field('λ', lambdaMode, lambdaHint),
+        logLambdaField,
+        undersmoothField,
+        field('penalty order', diff, 'large λ pulls the P-spline toward a polynomial of degree order − 1'),
+    ]);
 
     // --- fit
     const slider = (key, min, max, step, show) => {
@@ -220,14 +262,12 @@ export function createControls(container, state, onChange, examples = []) {
             + '(straight)'),
         advanced,
         el('h2', { text: 'Region' }),
-        el('p', { class: 'field-hint', text: 'A P-spline fit and a simultaneous band around it.' }),
-        field('coverage α', alphaInput, 'simultaneous over the check grid; Monte Carlo, B = 1000'),
-        field('covariance', covariance),
-        field('λ', lambdaMode, lambdaHint),
-        logLambdaField,
-        undersmoothField,
+        field('region', regionKind, 'a band around a P-spline fit, or Davies, Kovac & Meise\'s Aₙ: bounds on the '
+            + 'residuals\' sums over intervals'),
+        alphaField,
+        anBox,
+        bandBox,
         field('segments', nsegInput, nsegHint),
-        field('penalty order', diff, 'large λ pulls the P-spline toward a polynomial of degree order − 1'),
     );
 
     let lastColumns = null;
@@ -249,7 +289,16 @@ export function createControls(container, state, onChange, examples = []) {
         lambdaHint.textContent = !given && lambdaChosen !== null
             ? `${st.lambdaMode.toUpperCase()} chose λ = ${lambdaChosen.toPrecision(3)} (log λ = ${Math.log(lambdaChosen).toFixed(2)})`
             : '';
-        nsegHint.textContent = nsegAuto !== null ? `empty = auto (${nsegAuto} for these data)` : 'empty = auto';
+        const an = st.region === 'An';
+        anBox.hidden = !an;
+        bandBox.hidden = an;
+        tauField.hidden = !an || st.calibrate;
+        alphaField.hidden = an && !st.calibrate;
+        alphaHint.textContent = an ? 'τ is calibrated so that Aₙ contains f with this probability'
+            : 'simultaneous over the check grid; Monte Carlo, B = 1000';
+        const auto = nsegAuto !== null ? `empty = auto (${nsegAuto} for these data)` : 'empty = auto';
+        nsegHint.textContent = an ? `of the fit's basis; ${auto}, at most ${AN_MAX_SEGMENTS} for Aₙ (its long `
+            + 'intervals make each solve dense)' : auto;
         if (document.activeElement !== alphaInput)
             alphaInput.value = String(st.alpha);
         if (amb === null) {

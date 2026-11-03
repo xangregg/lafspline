@@ -6,7 +6,7 @@
 //
 // Both are convex problems solved by bisection, without an LP solver:
 // - constant: for a given r, a constant fits iff max_j(c_j − r·h_j) ≤ min_j(c_j + r·h_j); that is monotone in r.
-// - line: for a slope b, the best intercept is the constant minimax of c_j − b·x_j, and its ratio R(b) is convex
+// - line: for a slope b, the best intercept is the constant minimax of c_j − b·x_j, and its ratio ρ(b) is convex
 //   in b (a partial minimum of a jointly convex function), so a golden-section search over b finds the minimum.
 
 const CHECK_TOL = 1e-9; // as band.js: a ratio up to 1 + CHECK_TOL counts as inside
@@ -64,63 +64,74 @@ export function minimaxConstant(e, h) {
 }
 
 /**
- * Weighted minimax line: min over (a, b) of max_j |a + b·(x_j − x0) − c_j|/h_j. The minimizing slope lies within
- * b₀ ± R(b₀)·(h_L + h_R)/(x_R − x_L), with b₀ the slope between the end centers: at the minimum the line's rise
- * between the ends differs from the centers' by at most R·(h_L + h_R), and R there is at most R(b₀).
- * O(G) per bisection step, about 45 steps per slope and 70 slopes.
+ * Weighted minimax line: min over (a, b) of max_j |a + b·(x_j − x0) − c_j|/h_j. With ρ(b) the best ratio for slope
+ * b, the minimizing slope lies within b₀ ± ρ(b₀)·(h_L + h_R)/(x_R − x_L), where L and R are the points of
+ * smallest and largest x and b₀ the slope between their centers: at the minimum the line's rise between them
+ * differs from the centers' by at most ρ·(h_L + h_R), and ρ there is at most ρ(b₀). O(G) per bisection step, about
+ * 45 steps per slope and 70 slopes.
  *
- * @param {ArrayLike<number>} x  sorted
+ * @param {ArrayLike<number>} x  any order (Aₙ's interval means are not sorted)
  * @param {ArrayLike<number>} c
  * @param {ArrayLike<number>} h  > 0
  * @returns {{ratio: number, intercept: number, slope: number, x0: number}}
  */
 export function minimaxLine(x, c, h) {
     const G = x.length;
-    const x0 = (x[0] + x[G - 1]) / 2;
-    if (G < 2 || x[G - 1] === x[0]) {
+    let L = 0;
+    let R = 0;
+    for (let j = 1; j < G; j++) {
+        if (x[j] < x[L])
+            L = j;
+        if (x[j] > x[R])
+            R = j;
+    }
+    const x0 = (x[L] + x[R]) / 2;
+    if (G < 2 || x[R] === x[L]) {
         const k = minimaxConstant(c, h);
         return { ratio: k.ratio, intercept: k.value, slope: 0, x0 };
     }
     const e = new Float64Array(G);
-    const R = b => {
+    const ratioAt = b => {
         for (let j = 0; j < G; j++)
             e[j] = c[j] - b * (x[j] - x0);
         return minimaxConstant(e, h);
     };
-    const span = x[G - 1] - x[0];
-    const b0 = (c[G - 1] - c[0]) / span;
-    const reach = R(b0).ratio * (h[0] + h[G - 1]) / span;
+    const span = x[R] - x[L];
+    const b0 = (c[R] - c[L]) / span;
+    const reach = ratioAt(b0).ratio * (h[L] + h[R]) / span;
     let lo = b0 - reach;
     let hi = b0 + reach;
     let m1 = hi - GOLDEN * (hi - lo);
     let m2 = lo + GOLDEN * (hi - lo);
-    let r1 = R(m1).ratio;
-    let r2 = R(m2).ratio;
+    let r1 = ratioAt(m1).ratio;
+    let r2 = ratioAt(m2).ratio;
     for (let i = 0; i < GOLDEN_STEPS && hi - lo > REL_TOL * (Math.abs(b0) + reach); i++) {
         if (r1 <= r2) {
             hi = m2;
             m2 = m1;
             r2 = r1;
             m1 = hi - GOLDEN * (hi - lo);
-            r1 = R(m1).ratio;
+            r1 = ratioAt(m1).ratio;
         }
         else {
             lo = m1;
             m1 = m2;
             r1 = r2;
             m2 = lo + GOLDEN * (hi - lo);
-            r2 = R(m2).ratio;
+            r2 = ratioAt(m2).ratio;
         }
     }
     const slope = (lo + hi) / 2;
-    const best = R(slope);
+    const best = ratioAt(slope);
     return { ratio: best.ratio, intercept: best.value, slope, x0 };
 }
 
 /**
- * The ladder for a region given on a grid: the minimax constant and line, each with whether it fits inside.
+ * The ladder for a region given as boxes: the minimax constant and line, each with whether it fits inside. For
+ * Aₙ's boxes (an.js) the positions are interval means of x, and a line's mean over an interval is the line at
+ * that mean, so the same search is exact for Aₙ.
  *
- * @param {{grid: Float64Array, center: Float64Array, half: Float64Array}} region  (band.js)
+ * @param {{grid: Float64Array, center: Float64Array, half: Float64Array}} region  (band.js, an.js)
  * @returns {LadderRung[]}  constant first, then line
  */
 export function ladder(region) {
@@ -139,7 +150,7 @@ export function ladder(region) {
         return { shape, ratio, fits: ratio <= 1 + CHECK_TOL, intercept, slope, x0, g, argMax };
     };
     const k = minimaxConstant(center, half);
-    const x0 = (grid[0] + grid[grid.length - 1]) / 2;
+    const x0 = (Math.min(...grid) + Math.max(...grid)) / 2;
     return [
         rung('constant', { ratio: k.ratio, intercept: k.value, slope: 0, x0 }),
         rung('line', minimaxLine(grid, center, half)),

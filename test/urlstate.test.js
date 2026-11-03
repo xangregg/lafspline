@@ -6,7 +6,8 @@ import { SIGNALS } from '../src/core/signals.js';
 // Mirrors the initial state in src/ui/main.js.
 const DEFAULTS = {
     source: 'ramp', n: SIGNALS.ramp.n, sigma: SIGNALS.ramp.sigma, seed: 1, showTruth: true, userText: '',
-    xCol: null, yCol: null, alpha: 0.95, covariance: 'bayes', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
+    xCol: null, yCol: null, region: 'band', family: 'blocks', calibrate: true, tau: 3, boxes: 'tightest',
+    alpha: 0.95, covariance: 'bayes', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
     nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, logKappa: 4, logEpsilon: -2,
 };
 
@@ -30,6 +31,16 @@ test('changed settings round-trip and only they are written', async () => {
     const back = await hashToState(hash, DEFAULTS);
     assert.deepEqual(back.state, st);
     assert.deepEqual(back.rejected, []);
+});
+
+test('Aₙ settings round-trip', async () => {
+    const st = { ...DEFAULTS, region: 'An', family: 'quarter', calibrate: false, tau: 2.5, boxes: 'all' };
+    const { hash } = await stateToHash(st, DEFAULTS);
+    assert.equal(hash, '#region=An&family=quarter&calibrate=0&tau=2.5&boxes=all');
+    const back = await hashToState(hash, DEFAULTS);
+    assert.deepEqual(back.state, st);
+    assert.deepEqual((await hashToState('#region=Bn&family=some&tau=0&boxes=x', DEFAULTS)).rejected.sort(),
+        ['boxes', 'family', 'region', 'tau']);
 });
 
 test('a given λ and no undersmoothing round-trip; auto segments are not written', async () => {

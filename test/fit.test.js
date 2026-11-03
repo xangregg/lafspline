@@ -231,7 +231,8 @@ test('great ambition gives the weighted least-squares line or constant toward th
 
 test('effective dimension: K with no ambition, falling toward the penalty order while the fit stays inside', () => {
     // Once points leave, their weight κ raises the trace, so ED is monotone in a only while the sides stay fixed.
-    const TOL = 1e-9;
+    // Without ambition only fit.js's penalty floor remains: measured K − 8.6e-9.
+    const TOL = 1e-7;
     const spec = makeSpec('line', 0.25, { lambda2: 0 });
     assert.ok(Math.abs(fitIterated(spec).ed - (spec.nseg + 3)) < TOL);
     let previous = Infinity;

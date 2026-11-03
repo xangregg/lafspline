@@ -1,21 +1,31 @@
-// App entry point: state (⇄ URL hash) → data → band region (phase 1) → fit (phase 2) → chart and readouts.
+// App entry point: state (⇄ URL hash) → data → region (phase 1: a P-spline band, or Aₙ) → fit (phase 2) → chart and
+// readouts.
 //
 // Everything runs on the main thread: the band takes milliseconds to tens of milliseconds (one λ search, one Monte
 // Carlo of B = 1000 cheap draws), a* (fit.js leavingAmbition) some 15–25 phase-2 fits of a few milliseconds each
 // (sparse fits are some 10–30 iterated fits each, so a* takes up to about half a second for n in the thousands),
-// and a knob change one more fit. Bands and a* are cached by data and settings; the ladder (a few milliseconds) is
-// kept on the band.
+// and a knob change one more fit. Aₙ takes a calibration of τ (B = 1000 draws of its multiscale statistic, tens to
+// hundreds of milliseconds, cached by design and interval family) and its phase-2 solves are dense (at most
+// AN_MAX_SEGMENTS segments). Regions and a* are cached by data and settings; the ladder (a few milliseconds) is
+// kept on the region.
 
 import * as d3 from 'd3';
 import { simulate, signalFunction, SIGNALS } from '../core/signals.js';
 import { parseTable, prepareXY, rowIndex } from '../core/data.js';
 import { readDataset } from '../core/datasets.js';
-import { bandRegion, checkBand } from '../core/band.js';
+import { bandRegion, checkBand, checkGrid } from '../core/band.js';
 import { defaultSegments } from '../core/pspline.js';
-import { regionSpec, leavingAmbition, fitIterated, fitSparse, sparseLambdas, LEAVE_TOL } from '../core/fit.js';
+import {
+    regionSpec, leavingAmbition, fitIterated, fitSparse, sparseLambdas, splineValues, LEAVE_TOL,
+} from '../core/fit.js';
 import { ladder } from '../core/ladder.js';
+import { anRegion, calibrateTau, checkFit } from '../core/regions.js';
+import { anBoxes } from '../core/an.js';
+import { familyIntervals, familyLevels, familyText } from '../core/intervals.js';
+import { tauFromSample } from '../core/calibrate.js';
+import { constraintBoxes } from '../core/region.js';
 import { createControls } from './controls.js';
-import { stateToHash, hashToState } from './urlstate.js';
+import { stateToHash, hashToState, AN_MAX_SEGMENTS } from './urlstate.js';
 import { fmtExp } from './format.js';
 import { createMainChart } from './chart.js';
 import { cellEdges } from './layout.js';
@@ -27,6 +37,8 @@ const fmtShort = d3.format('.2~g');
 const CACHE_LIMIT = 24; // bands kept
 const BAND_B = 1000; // Monte Carlo draws for the band's critical value
 const BAND_SEED = 1;
+const AN_B = 1000; // Monte Carlo draws of Aₙ's multiscale statistic for a calibrated τ
+const AN_LAMBDA = 2; // Aₙ's interval lengths grow by this factor per level (the paper's)
 const CENTER_COLOR = 'series-3';
 const FIT_COLOR = 'series-1';
 const HASH_DEBOUNCE = 400; // ms after the last change before the URL is updated
@@ -44,7 +56,12 @@ const state = {
     userText: '',
     xCol: null, // column index, −1 = row number, null = auto (first column if there are ≥ 2)
     yCol: null, // column index, null = auto (second column if there are ≥ 2, else the only one)
-    alpha: 0.95,
+    region: 'band', // phase-1 region: 'band' (P-spline) | 'An' (Davies, Kovac & Meise's multiresolution region)
+    family: 'blocks', // Aₙ intervals: 'blocks' | 'quarter' (¼-width steps) | 'every' (every position) | 'all'
+    calibrate: true, // Aₙ: τ calibrated for coverage alpha, instead of tau
+    tau: 3, // Aₙ: τ when not calibrated
+    boxes: 'tightest', // Aₙ boxes on the chart: 'tightest' (the level of the largest ratio) | 'all' | 'off'
+    alpha: 0.95, // coverage: the band's, and Aₙ's when calibrated
     covariance: 'bayes', // 'bayes' | 'sandwich'
     lambdaMode: 'gcv', // 'gcv' | 'aic' | 'given'
     logLambda: 0, // natural log, when lambdaMode is 'given'
@@ -161,6 +178,71 @@ function bandKey(st, data) {
     return [data.dataKey, st.alpha, st.covariance, lambda, st.nseg ?? 'auto', st.diff].join('|');
 }
 
+function familyOf(st) {
+    if (st.family === 'all')
+        return { kind: 'all' };
+    if (st.family === 'quarter' || st.family === 'every')
+        return { kind: 'overlapping', lambda: AN_LAMBDA, offsets: st.family === 'quarter' ? 4 : Infinity };
+    return { kind: 'blocks', lambda: AN_LAMBDA };
+}
+
+function anSegments(st, data) {
+    const wanted = st.nseg ?? defaultSegments(data.m);
+    return { nseg: Math.min(wanted, AN_MAX_SEGMENTS), capped: wanted > AN_MAX_SEGMENTS };
+}
+
+function regionKey(st, data) {
+    if (st.region !== 'An')
+        return bandKey(st, data);
+    const tau = st.calibrate ? `cal:${st.alpha}` : st.tau;
+    return ['An', data.dataKey, st.family, tau, anSegments(st, data).nseg].join('|');
+}
+
+/**
+ * Aₙ over the chosen intervals, as boxes for phase 2 (an.js). A calibrated τ needs the null sample of the
+ * multiscale statistic, which depends on the design and the intervals, not on y or α: it is cached by both.
+ */
+function computeAn(st, data, nullCache) {
+    const start = performance.now();
+    const family = familyOf(st);
+    let intervals;
+    try {
+        intervals = familyIntervals(data.x, family);
+    }
+    catch (err) {
+        if (err instanceof RangeError)
+            return { error: err.message };
+        throw err;
+    }
+    let tau = st.tau;
+    let calibration = null;
+    let calMs = null;
+    if (st.calibrate) {
+        const key = `${data.dataKey}|${st.family}`;
+        let cal = nullCache.get(key);
+        if (!cal) {
+            const t = performance.now();
+            cal = { sample: calibrateTau(data.x, intervals, { alpha: st.alpha, B: AN_B }).sample };
+            cal.ms = performance.now() - t;
+            remember(nullCache, key, cal);
+            calMs = cal.ms;
+        }
+        const t = tauFromSample(cal.sample, st.alpha, data.n);
+        tau = t.tau;
+        calibration = { alpha: st.alpha, B: AN_B, family: 'chosen', tauLo: t.tauLo, tauHi: t.tauHi };
+    }
+    const an = anRegion(data.x, data.y, { family, tau, calibration });
+    if (!(an.params.sigma > 0)) {
+        return { error: 'σ̂ = 0: neighboring observations agree exactly, so Aₙ admits only the data themselves, '
+            + 'which no spline fit can match' };
+    }
+    const { nseg, capped } = anSegments(st, data);
+    const region = anBoxes(an, data.x, { nseg });
+    region.claim = an.claim;
+    region.nsegCapped = capped;
+    return { region, an, intervals, family, calMs, ms: performance.now() - start };
+}
+
 function remember(cache, key, value) {
     cache.set(key, value);
     if (cache.size > CACHE_LIMIT)
@@ -191,7 +273,7 @@ function computeBand(st, data) {
 }
 
 function starKey(st, data) {
-    return [bandKey(st, data), st.penalty, st.flat, st.logKappa, st.logEpsilon].join('|');
+    return [regionKey(st, data), st.penalty, st.flat, st.logKappa, st.logEpsilon].join('|');
 }
 
 function phase2Options(st) {
@@ -223,7 +305,7 @@ function computeFit(st, region, star) {
     const a = Math.min(wanted, star.top);
     const spec = regionSpec(region, { ...opts, ambition: a });
     const fit = sparse
-        ? fitSparse({ ...spec, ...sparseLambdas({ ambition: a, flat: opts.flat, G: region.grid.length }) })
+        ? fitSparse({ ...spec, ...sparseLambdas({ ambition: a, flat: opts.flat, G: region.center.length }) })
         : fitIterated(spec);
     const ratios = fit.g.map((g, j) => Math.abs(g - region.center[j]) / region.half[j]);
     let argMax = 0;
@@ -231,10 +313,13 @@ function computeFit(st, region, star) {
         if (ratios[j] > ratios[argMax])
             argMax = j;
     }
-    let atData = 0;
-    for (const j of region.dataAt) {
-        if (ratios[j] > 1 + LEAVE_TOL)
-            atData++;
+    let atData = null; // band only: Aₙ's boxes are all at the data
+    if (region.dataAt) {
+        atData = 0;
+        for (const j of region.dataAt) {
+            if (ratios[j] > 1 + LEAVE_TOL)
+                atData++;
+        }
     }
     let leaving = 0;
     for (const r of ratios) {
@@ -244,30 +329,60 @@ function computeFit(st, region, star) {
     return { ...fit, a, sparse, clamped: wanted > star.top, argMax, leaving, leavingAtData: atData, opts };
 }
 
-function renderFitReadouts(sel, region, star, fit, st) {
+/**
+ * Where box k of a region is, for readouts: a band's grid point, or an Aₙ interval of observations.
+ */
+function boxPlace(region, k, x) {
+    if (region.kind !== 'An')
+        return `at x = ${fmt(region.grid[k])}`;
+    const lo = region.region.lo[k];
+    const hi = region.region.hi[k];
+    return lo === hi ? `at the observation x = ${fmt(x[lo])}`
+        : `on the interval x = ${fmt(x[lo])} – ${fmt(x[hi])} (${fmtInt(hi - lo + 1)} observations)`;
+}
+
+function renderFitReadouts(sel, region, star, fit, st, x) {
     sel.append('h2').text('Fit');
-    const G = region.grid.length;
-    const m = region.dataAt.length;
+    const an = region.kind === 'An';
+    const G = region.center.length;
+    const ratio = an ? '|w(I)|/c' : '|g − c|/h';
     const v = sel.append('p').attr('class', `verdict ${fit.leaving === 0 ? 'ok' : 'bad'}`);
     if (fit.outside === 0) {
-        v.append('strong').text('fit ∈ region');
-        v.append('span').text(` at every check-grid point (largest |g − c|/h = ${fmt(fit.maxRatio)}).`);
+        v.append('strong').text(`fit ∈ ${an ? 'Aₙ' : 'region'}`);
+        v.append('span').text(` on every ${an ? 'interval' : 'check-grid point'} (largest ${ratio} = `
+            + `${fmt(fit.maxRatio)}).`);
     }
     else if (fit.leaving === 0) {
-        v.append('strong').text('fit within the region to 1% of its half-width');
-        v.append('span').text(`: largest |g − c|/h = ${d3.format('.4f')(fit.maxRatio)}, at x = `
-            + `${fmt(region.grid[fit.argMax])}; ${fmtInt(fit.outside)} grid `
-            + `${fit.outside === 1 ? 'point touches' : 'points touch'} the edge from outside, as a soft region allows.`);
+        const boxes = an ? `${fit.outside === 1 ? 'box is' : 'boxes are'} touched` : `grid ${fit.outside === 1
+            ? 'point touches' : 'points touch'} the edge`;
+        v.append('strong').text(`fit within ${an ? 'Aₙ' : 'the region'} to 1% of its ${an ? 'threshold'
+            : 'half-width'}`);
+        v.append('span').text(`: largest ${ratio} = ${d3.format('.4f')(fit.maxRatio)}, `
+            + `${boxPlace(region, fit.argMax, x)}; ${fmtInt(fit.outside)} ${boxes} from outside, as a soft region `
+            + 'allows.');
     }
     else {
-        v.append('strong').text('fit ∉ region');
-        v.append('span').text(` by more than 1% of the half-width at ${fmtInt(fit.leaving)} of ${fmtInt(G)} check-grid `
-            + `points (${fmtInt(fit.leavingAtData)} of ${fmtInt(m)} data x); largest |g − c|/h = `
-            + `${fmt(fit.maxRatio)}, at x = ${fmt(region.grid[fit.argMax])}.`);
+        const atData = fit.leavingAtData === null ? ''
+            : ` (${fmtInt(fit.leavingAtData)} of ${fmtInt(region.dataAt.length)} data x)`;
+        v.append('strong').text(`fit ∉ ${an ? 'Aₙ' : 'region'}`);
+        v.append('span').text(` by more than 1% at ${fmtInt(fit.leaving)} of ${fmtInt(G)} `
+            + `${an ? 'intervals' : 'check-grid points'}${atData}; largest ${ratio} = ${fmt(fit.maxRatio)}, `
+            + `${boxPlace(region, fit.argMax, x)}.`);
     }
-    sel.append('p').attr('class', 'claim').text(`Checked against the region below, the ${region.label}, on its check `
-        + 'grid. The region is soft: leaving it costs κ per squared half-width, so the fit can cross its edge, and '
-        + 'the check says by how much.');
+    sel.append('p').attr('class', 'claim').text(an
+        ? `Checked against the region below, ${region.label}, on its ${fmtInt(G)} intervals: the fit's mean over each `
+            + 'interval of observations must lie within c/√|I| of the mean of y there. Aₙ looks only at the '
+            + 'observations, so between them the ambition penalty alone shapes the fit. The region is soft: '
+            + 'leaving it costs κ per squared box half-height, and the check says by how much.'
+        : `Checked against the region below, the ${region.label}, on its check grid. The region is soft: leaving it `
+            + 'costs κ per squared half-width, so the fit can cross its edge, and the check says by how much.');
+    if (star.unreachable) {
+        sel.append('p').attr('class', 'warning').text(`No fit with this basis gets inside ${an ? 'Aₙ' : 'the region'}, `
+            + `even with no ambition: the largest ${ratio} is ${fmt(star.fit.maxRatio)}. A cubic spline on `
+            + `${region.params.nseg} equal segments cannot follow the data closely enough for the shortest `
+            + 'intervals (a sharp jump or peak); more segments may help'
+            + `${an ? ` (at most ${AN_MAX_SEGMENTS} here)` : ''}. The fit shown is at the smallest ambition searched.`);
+    }
     if (!fit.converged) {
         sel.append('p').attr('class', 'warning').text(`The iteration stopped after ${fit.iterations} solves without `
             + 'settling which points are outside: the fit is not the exact minimizer.');
@@ -282,7 +397,9 @@ function renderFitReadouts(sel, region, star, fit, st) {
         + `${st.ambition > 0 ? 'above' : 'below'} a*`;
     const top = fit.sparse ? 'the top of the range' : 'the largest ambition computed reliably';
     let ambitionNote;
-    if (star.capped)
+    if (star.unreachable)
+        ambitionNote = 'no a*: the fit is outside the region at every ambition searched';
+    else if (star.capped)
         ambitionNote = `a*: no ambition up to ${top} takes the fit outside the region`;
     else if (fit.clamped)
         ambitionNote = `${decades} is beyond ${top}; using that`;
@@ -291,7 +408,7 @@ function renderFitReadouts(sel, region, star, fit, st) {
     else
         ambitionNote = `${decades}; a* = ${fmtExp(star.ambition)} is the largest before the fit leaves the region`;
     if (fit.sparse)
-        ambitionNote += '. Each bend or step costs a per check-grid point';
+        ambitionNote += `. Each bend or step costs a per ${an ? 'interval' : 'check-grid point'}`;
     add('ambition a', fmtExp(fit.a), ambitionNote);
     add('penalty', fit.sparse ? 'number of bends or steps' : 'squared differences', fit.sparse
         ? 'adaptive ridge (Frommlet & Nuel 2016), an approximation of the count: a local optimum, not proven fewest'
@@ -300,12 +417,15 @@ function renderFitReadouts(sel, region, star, fit, st) {
         addPieceRows(add, fit.pieces, region);
     add('toward', st.flat === 0 ? 'straight' : st.flat === 1 ? 'flat' : `${Math.round(100 * (1 - st.flat))}% straight, `
         + `${Math.round(100 * st.flat)}% flat`, 'second (straight) and first (flat) differences of the coefficients');
-    add('effective dimension', fmt(fit.ed), `trace of the hat matrix, the center as data (band: `
-        + `${fmt(region.params.ed)})${fit.sparse ? '; about the polynomial\'s coefficients plus one per free difference'
-            : ''}`);
+    add('effective dimension', fmt(fit.ed), `trace of the hat matrix, ${an ? 'the interval means of y'
+        : `the center`} as data${an ? '' : ` (band: ${fmt(region.params.ed)})`}${fit.sparse
+        ? '; about the polynomial\'s coefficients plus one per free difference' : ''}`);
     add('κ', fmtExp(fit.opts.kappa), 'weight on the squared distance outside the region');
-    add('ε', fmtExp(fit.opts.epsilon), 'weight on the squared distance from the center');
-    add('basis', `${region.params.nseg} segments`, 'cubic, on the band\'s knots');
+    add('ε', fmtExp(fit.opts.epsilon), an ? 'weight on the squared distance from the box centers, the interval '
+        + 'means of y' : 'weight on the squared distance from the center');
+    add('basis', `${region.params.nseg} segments`, an
+        ? `cubic, equal segments over the data's x range${region.nsegCapped ? `; capped at ${AN_MAX_SEGMENTS}` : ''}`
+        : 'cubic, on the band\'s knots');
     if (fit.sparse) {
         add('solver', `${fit.reweights} reweighting${fit.reweights === 1 ? '' : 's'}, ${fit.iterations} solves`,
             `${fit.settled ? 'the joins settled' : 'the joins had not settled'}; ${fit.pruned} dropped by backward `
@@ -340,6 +460,49 @@ function addPieceRows(add, pieces, region) {
     }
 }
 
+function addLadderRows(add, region, x) {
+    const an = region.kind === 'An';
+    for (const rung of region.ladder) {
+        const name = rung.shape === 'line' ? 'a straight line' : 'a constant';
+        add(name, rung.fits ? 'fits inside' : 'does not fit', `the best (minimax) ${rung.shape} reaches `
+            + `${an ? '|w(I)|/c' : '|g − c|/h'} = ${fmt(rung.ratio)}, ${boxPlace(region, rung.argMax, x)}; exact `
+            + `${an ? 'on every interval' : 'on the check grid'}`);
+    }
+}
+
+function renderAnReadouts(sel, result, truthCheck, data) {
+    const { region, an } = result;
+    const p = an.params;
+    if (truthCheck) {
+        const v = sel.append('p').attr('class', `verdict ${truthCheck.ok ? 'ok' : 'bad'}`);
+        v.append('strong').text(`true f ${truthCheck.ok ? '∈' : '∉'} Aₙ`);
+        v.append('span').text(truthCheck.ok
+            ? ` on every interval (largest |w(I)|/c = ${fmt(truthCheck.maxRatio)}).`
+            : ` on ${fmtInt(truthCheck.violations)} of ${fmtInt(an.lo.length)} intervals (largest |w(I)|/c = `
+                + `${fmt(truthCheck.maxRatio)}, ${boxPlace(region, truthCheck.argMax, data.x)}).`);
+    }
+    sel.append('p').attr('class', 'claim').text(`${region.claim} Aₙ bounds the residuals' sum over each interval `
+        + 'of the observations: |Σ_I (y − g)| ≤ c·√|I|.');
+    const rows = [];
+    const add = (label, value, note) => rows.push({ label, value, note });
+    addLadderRows(add, region, data.x);
+    add('σ̂', fmt(p.sigma), 'from first differences (Davies, Kovac & Meise eq. 10), tie-aware');
+    const cal = p.calibration;
+    add('τ', fmt(p.tau), cal
+        ? `calibrated for coverage ${fmt(cal.alpha)} by Monte Carlo (B = ${fmtInt(cal.B)}) for this n, design and `
+            + `intervals; Monte Carlo 95% interval ${fmt(cal.tauLo)} – ${fmt(cal.tauHi)}`
+        : 'given');
+    add('threshold c', fmt(an.scale), 'σ̂·√(τ log n), units of y');
+    const kind = { blocks: 'the paper\'s blocks', overlapping: 'overlapping windows', all: 'every interval' };
+    add('intervals', fmtInt(an.lo.length), `${kind[result.family.kind]}${result.family.kind === 'all' ? ''
+        : ` (${familyText(result.family)}: interval lengths grow by λ per level)`}`);
+    add('box half-height', `${fmt(d3.min(region.half))} – ${fmt(d3.max(region.half))}`, 'c/√|I|, units of y');
+    add('computed in', `${fmt(result.ms)} ms`, result.calMs === null
+        ? (cal ? 'the calibration sample was already computed for these x and intervals' : '')
+        : `including ${fmt(result.calMs)} ms to simulate the calibration sample`);
+    appendRows(sel, rows);
+}
+
 function appendRows(sel, rows) {
     const dl = sel.append('dl');
     for (const r of rows) {
@@ -354,10 +517,13 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
     const sel = d3.select(container);
     sel.selectAll('*').remove();
     if (phase2)
-        renderFitReadouts(sel, result.region, phase2.star, phase2.fit, st);
+        renderFitReadouts(sel, result.region, phase2.star, phase2.fit, st, data.x);
     sel.append('h2').text('Region');
     if (result.error) {
-        sel.append('p').attr('class', 'error').text(`No band: ${result.error}`);
+        sel.append('p').attr('class', 'error').text(`No ${st.region === 'An' ? 'Aₙ' : 'band'}: ${result.error}`);
+    }
+    else if (result.an) {
+        renderAnReadouts(sel, result, truthCheck, data);
     }
     else {
         const { region } = result;
@@ -380,11 +546,7 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
         }
         const rows = [];
         const add = (label, value, note) => rows.push({ label, value, note });
-        for (const rung of region.ladder) {
-            const name = rung.shape === 'line' ? 'a straight line' : 'a constant';
-            add(name, rung.fits ? 'fits inside' : 'does not fit', `the best (minimax) ${rung.shape} reaches `
-                + `|g − c|/h = ${fmt(rung.ratio)}, at x = ${fmt(region.grid[rung.argMax])}; exact on the check grid`);
-        }
+        addLadderRows(add, region, data.x);
         let lambdaNote;
         if (p.lambdaSource === 'given')
             lambdaNote = 'given';
@@ -443,8 +605,9 @@ async function startup() {
     const status = d3.select('#status');
     const readouts = document.getElementById('readouts');
     const chart = createMainChart(document.getElementById('main-chart'));
-    const bandCache = new Map();
+    const regionCache = new Map();
     const starCache = new Map();
+    const nullCache = new Map(); // Aₙ calibration samples, by design and interval family
     let current = null; // {data, result, phase2} drawn
 
     const controlsEl = document.getElementById('controls');
@@ -464,16 +627,19 @@ async function startup() {
             return;
         const { data, result, phase2 } = current;
         const region = result.region;
+        const an = region?.kind === 'An';
         const truth = data.fAt && state.showTruth;
         const fits = [];
-        if (region) {
+        if (region && !an) {
             fits.push({ key: 'center', label: 'band center (phase 1)', g: region.center, x: region.grid,
                 colorVar: CENTER_COLOR, primary: !phase2 });
         }
         if (phase2) {
-            fits.push({ key: 'fit', label: 'fit (phase 2)', g: phase2.fit.g, x: region.grid, colorVar: FIT_COLOR,
+            fits.push({ key: 'fit', label: 'fit (phase 2)', g: phase2.curve.g, x: phase2.curve.x, colorVar: FIT_COLOR,
                 primary: true });
         }
+        const boxes = an && phase2 ? anBoxSpec(result, phase2, data) : null;
+        chart.setBoxes(null);
         chart.render({
             x: data.x,
             y: data.y,
@@ -481,9 +647,33 @@ async function startup() {
             fits,
             extremes: [],
             edges: data.edges,
-            band: region ? { lb: region.lower, ub: region.upper, label: region.label, x: region.grid } : null,
-            boxesLabel: null,
+            band: region && !an ? { lb: region.lower, ub: region.upper, label: region.label, x: region.grid } : null,
+            boxesLabel: boxes ? boxes.label : null,
         });
+        chart.setBoxes(boxes);
+    }
+
+    /**
+     * Aₙ boxes for the chart: the level of the interval with the largest ratio (the tightest), or every level in
+     * outline. Each box is mean_I(y) ± c/√|I| over its interval's cells, with the fit's mean as a tick.
+     */
+    function anBoxSpec(result, phase2, data) {
+        if (state.boxes === 'off')
+            return null;
+        result.levels ??= familyLevels(data.x, result.family);
+        phase2.atData ??= splineValues(phase2.fit.beta, data.x, result.region.params);
+        const boxesOf = level => constraintBoxes(data.y, phase2.atData, level, result.an.scale);
+        const common = { limit: 1 + LEAVE_TOL, fitColorVar: FIT_COLOR };
+        if (state.boxes === 'all') {
+            return { ...common, faint: true, label: 'Aₙ boxes, all levels',
+                levels: result.levels.map(level => ({ boxes: boxesOf(level), emphasize: -1 })) };
+        }
+        const tight = result.intervals[phase2.fit.argMax];
+        const level = result.levels[tight.level];
+        const emphasize = level.findIndex(iv => iv.lo === tight.lo && iv.hi === tight.hi);
+        return { ...common, faint: false, levels: [{ boxes: boxesOf(level), emphasize }],
+            label: `Aₙ boxes at the tightest level (${fmtInt(tight.hi - tight.lo + 1)}-observation intervals): the `
+                + 'fit\'s mean (tick) must lie in each box' };
     }
 
     function update() {
@@ -507,16 +697,18 @@ async function startup() {
             d3.select(readouts).selectAll('*').remove();
             return;
         }
-        const key = bandKey(state, data);
-        let result = bandCache.get(key);
+        const key = regionKey(state, data);
+        let result = regionCache.get(key);
         if (!result) {
-            result = computeBand(state, data);
-            remember(bandCache, key, result);
+            result = state.region === 'An' ? computeAn(state, data, nullCache) : computeBand(state, data);
+            remember(regionCache, key, result);
         }
         const region = result.region;
+        const an = region?.kind === 'An';
         let phase2 = null;
         if (region) {
-            region.dataAt ??= dataPositions(region.grid, data.x);
+            if (!an)
+                region.dataAt ??= dataPositions(region.grid, data.x);
             region.ladder ??= ladder(region);
             const sk = starKey(state, data);
             let star = starCache.get(sk);
@@ -525,14 +717,25 @@ async function startup() {
                     { sparse: state.penalty === 'sparse' });
                 remember(starCache, sk, star);
             }
-            phase2 = { star, fit: computeFit(state, region, star) };
+            const fit = computeFit(state, region, star);
+            // the curve drawn: a band's fit is already on its check grid; Aₙ's boxes are interval means
+            let curve = { x: region.grid, g: fit.g };
+            if (an) {
+                region.drawGrid ??= checkGrid(data.x, region.params.xl, region.params.xr, region.params.nseg);
+                curve = { x: region.drawGrid, g: splineValues(fit.beta, region.drawGrid, region.params) };
+            }
+            phase2 = { star, fit, curve };
         }
         current = { data, result, phase2 };
-        const truthCheck = region && data.fAt ? checkBand(region, region.grid.map(data.fAt)) : null;
+        let truthCheck = null;
+        if (region && data.fAt) {
+            truthCheck = an ? checkFit(result.an, data.x.map(data.fAt), 0)
+                : checkBand(region, region.grid.map(data.fAt));
+        }
         controls.sync(state, {
             columns: data.columns,
             nsegAuto: defaultSegments(data.m),
-            lambdaChosen: region && region.params.lambdaSource !== 'given' ? region.params.lambdaChosen : null,
+            lambdaChosen: region && !an && region.params.lambdaSource !== 'given' ? region.params.lambdaChosen : null,
             ambition: phase2 ? { a: phase2.fit.a, star: phase2.star.ambition, capped: phase2.star.capped,
                 clamped: phase2.fit.clamped, sparse: phase2.fit.sparse } : null,
         });
@@ -540,7 +743,8 @@ async function startup() {
         renderReadouts(readouts, data, result, state.showTruth ? truthCheck : null, phase2, state);
         const note = linkNote ? ` ${linkNote}` : '';
         if (result.error) {
-            status.classed('error', true).text(`${data.label}: no band (${result.error})${note}`);
+            status.classed('error', true).text(`${data.label}: no ${an || state.region === 'An' ? 'Aₙ' : 'band'} `
+                + `(${result.error})${note}`);
         }
         else {
             const pieces = phase2.fit.sparse

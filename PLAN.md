@@ -221,6 +221,23 @@ the default fit, toward straight, is a line.
 5. **Check-grid density** (default 4 per segment) and whether to include the data x always (yes for now).
 6. **Aₙ in penalty form:** each Aₙ constraint |Σ_I (y − g)| ≤ c√|I| is linear in β, so it becomes the same kind
    of penalty on the excess; σ̂, interval families and calibrated τ come from the earlier project.
+   *Done (phase 4)* (`src/core/an.js`; `fit.js` rows): divided by |I|, each constraint is a box for the mean of g
+   over I, |mean_I(g) − mean_I(y)| ≤ c/√|I|, and mean_I(g) = r_I·β is linear. So Aₙ is a region of boxes exactly like
+   the band, one per interval instead of one per grid point. Its ratio is Aₙ's own |w(I)|/c (tested against
+   `regions.checkFit` at the data), and phase 2 (the objective, a*, the sparse ambition, the ladder) takes it
+   unchanged. The ε pull is toward mean_I(y) in every box, a multiscale data term. Findings:
+   - Long intervals make the Newton system dense (nb × nb). On the examples a* takes 1–11 ms (quadratic) and 4–60 ms
+     (sparse); on simulated data up to 0.5 s (HeaviSine n = 1024, every-position windows, quadratic) and 2 s (sine
+     n = 5000, sparse). At 400 segments the sparse a* took 44 s, so Aₙ's basis is capped at 100 segments.
+   - A cubic spline on equal knots cannot always get inside Aₙ. On Blocks n = 1024 the largest |w(I)|/c with no
+     ambition is 5.4 at 40 segments, 2.1 at 100 and 1.2 at 400: Aₙ's singletons ask for jumps sharper than the basis
+     can make. Blocks n = 256 fits at 100 segments (seed 7: 10 flat pieces at a*, against 12 true; with seed 1 even
+     that is out). Ozone (47 distinct x, 1,197 observations) cannot get inside either. `leavingAmbition` reports
+     `unreachable`, and the readout says why instead of giving an a*.
+   - Aₙ looks only at the observations, so a coefficient whose support holds none was free: the system was singular
+     (chess recall, fibers). A second-difference floor of 1e-12 of the strongest penalty present fixes it.
+   - At steps of Blocks the flat sparse fit overshoots (a free run of differences allows a bump): Aₙ does not
+     forbid it, and the count of steps does not see it.
 7. **Phase-1 λ:** GCV versus REML or Fellner–Schall; whether to offer it as the long-term/short-term knob instead
    of (or as well as) the ambition multiplier. GCV can be bimodal (a noisy line: a shallow local minimum at
    ED ≈ 6 and the global one at the line, ED → 2), so the grid stays ahead of any local refinement; and it
@@ -259,7 +276,7 @@ the default fit, toward straight, is a line.
 - [x] "A constant / a straight line fits inside the region" report (§1.6).
 
 ### Phase 4 — Aₙ as a region
-- [ ] Aₙ in penalty form (open question 6), with the earlier project's interval families and calibrated τ.
+- [x] Aₙ in penalty form (open question 6), with the earlier project's interval families and calibrated τ.
 
 ### Phase 5 — Polish and deploy
 - [ ] About panel, CSV export, GitHub Pages, live-site check.
