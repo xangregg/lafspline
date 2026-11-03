@@ -1,0 +1,52 @@
+# label: Antarctic ozone minimum, annual means 1979–2025
+# source: NASA Ozone Watch, Annual Records, table of means (https://ozonewatch.gsfc.nasa.gov/statistics/annual_data.html, last updated 2025-10-20)
+# x: year
+# y: min_ozone
+# note: min_ozone: mean over 21 September–16 October of the daily minimum Southern Hemisphere total ozone (DU), the yearly means of the daily series in ozone.csv; hole_area: mean ozone hole area over 7 September–13 October (million km²); no data for 1995; year-to-year changes in the polar vortex are part of the noise
+year,min_ozone,hole_area
+1979,225.0,0.1
+1980,203.0,1.4
+1981,209.5,0.6
+1982,185.0,4.8
+1983,172.9,7.9
+1984,163.6,10.1
+1985,146.5,14.2
+1986,157.8,11.3
+1987,123.0,19.3
+1988,171.0,10.0
+1989,127.0,18.7
+1990,124.2,19.2
+1991,119.0,18.8
+1992,114.3,22.3
+1993,112.6,24.2
+1994,92.3,23.6
+1996,108.8,22.8
+1997,108.8,22.1
+1998,98.8,25.9
+1999,102.9,23.3
+2000,98.7,24.8
+2001,100.9,25.0
+2002,157.4,12.0
+2003,108.7,25.8
+2004,123.5,19.5
+2005,113.8,24.4
+2006,98.4,26.6
+2007,116.2,22.0
+2008,114.0,25.2
+2009,107.9,22.0
+2010,128.5,19.4
+2011,106.5,24.7
+2012,139.3,17.8
+2013,132.7,21.0
+2014,128.6,20.9
+2015,117.2,25.6
+2016,123.2,20.7
+2017,141.8,17.4
+2018,111.8,22.9
+2019,167.0,9.3
+2020,102.6,23.5
+2021,103.3,23.3
+2022,112.5,23.2
+2023,115.2,23.1
+2024,121.0,19.6
+2025,138.3,18.7

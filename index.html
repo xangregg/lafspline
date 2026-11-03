@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>lafspline: least ambitious fit</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="styles.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm"
+        }
+    }
+    </script>
+    <script type="module" src="src/ui/main.js"></script>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>lafspline</h1>
+            <p class="subtitle">Least ambitious fit, P-spline version (scaffold).</p>
+        </div>
+    </header>
+    <main>
+        <aside id="controls" aria-label="Controls"></aside>
+        <section id="charts" aria-label="Charts">
+            <div id="main-chart"></div>
+        </section>
+        <aside id="readouts" aria-label="Readouts"></aside>
+    </main>
+    <footer>
+        <p id="status" role="status"></p>
+        <p class="reference">
+            Follows <a href="https://github.com/xangregg/tautfit">tautfit</a> and the earlier project. P-splines after
+            P. H. C. Eilers and B. D. Marx (1996), <i>Statist. Sci.</i> 11(2):89–121. Solver:
+            <a href="https://highs.dev">HiGHS</a> (MIT license), compiled to WebAssembly.
+        </p>
+    </footer>
+</body>
+</html>

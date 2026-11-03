@@ -1,0 +1,90 @@
+[
+  {
+    "id": "ozone-annual",
+    "file": "ozone-annual.csv",
+    "label": "Antarctic ozone minimum, annual means 1979–2025",
+    "source": "NASA Ozone Watch, Annual Records, table of means (https://ozonewatch.gsfc.nasa.gov/statistics/annual_data.html, last updated 2025-10-20)",
+    "x": "year",
+    "y": "min_ozone",
+    "n": 46,
+    "m": 46,
+    "note": "min_ozone: mean over 21 September–16 October of the daily minimum Southern Hemisphere total ozone (DU), the yearly means of the daily series in ozone.csv; hole_area: mean ozone hole area over 7 September–13 October (million km²); no data for 1995; year-to-year changes in the polar vortex are part of the noise"
+  },
+  {
+    "id": "neuroimage",
+    "file": "neuroimage.csv",
+    "label": "Blood levels by age",
+    "source": "NeuroImage paper",
+    "x": "age",
+    "y": "y",
+    "n": 28,
+    "m": 25,
+    "note": "three age groups with top two age groups about the same; heteroskedastic"
+  },
+  {
+    "id": "chess-recall",
+    "file": "chess-recall.csv",
+    "label": "Chess recall scores",
+    "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4361603/",
+    "x": "age",
+    "y": "correct",
+    "n": 50,
+    "m": 21,
+    "note": "hump"
+  },
+  {
+    "id": "dog-ages",
+    "file": "dog-ages.csv",
+    "label": "Dog vs Human ages",
+    "source": "https://www.biorxiv.org/content/10.1101/829192v1.full",
+    "x": "dog age",
+    "y": "human age",
+    "n": 94,
+    "m": 94,
+    "note": "y ascending sharply then slowly or leveling; non-decreasing; data scraped from a figure in an early preprint of the paper (bioRxiv v1), so they may not match later versions"
+  },
+  {
+    "id": "fibers-distance",
+    "file": "fibers-distance.csv",
+    "label": "Fibers distance",
+    "source": "https://www.pnas.org/doi/10.1073/pnas.2423437122",
+    "x": "time",
+    "y": "distance",
+    "n": 45,
+    "m": 5,
+    "note": "many duplicate x values; y ascending then level"
+  },
+  {
+    "id": "nile-flow",
+    "file": "nile-flow.csv",
+    "label": "Nile annual flow at Aswan, 1871–1970",
+    "source": "R datasets::Nile; Durbin & Koopman (2001), Time Series Analysis by State Space Methods; Cobb (1978), Biometrika 65:243–251",
+    "x": "year",
+    "y": "flow",
+    "n": 100,
+    "m": 100,
+    "note": "annual flow in 10⁸ m³, \"with apparent changepoint near 1898\" (Cobb 1978); the example in R's help fits ar(Nile), which selects order 2: the noise is serially correlated"
+  },
+  {
+    "id": "ozone",
+    "file": "ozone.csv",
+    "label": "Ozone layer",
+    "source": "https://ozonewatch.gsfc.nasa.gov/statistics/annual_data.html",
+    "x": "Year",
+    "y": "Data",
+    "n": 1197,
+    "m": 47,
+    "note": "y descending sharply then rising slowly or leveling; alt: use Day as x"
+  },
+  {
+    "id": "tukey-coal",
+    "file": "tukey-coal.csv",
+    "label": "US coal production data",
+    "source": "John Tukey's Exploratory Data Analysis book",
+    "x": "year",
+    "y": "coal",
+    "n": 49,
+    "m": 49,
+    "note": "sinusoidal pattern"
+  }
+]
