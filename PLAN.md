@@ -127,6 +127,8 @@ wanted, is κ → ∞ in the iteration (violations shrink like 1/κ).
 **User knobs:**
 - **ambition:** one multiplier on (λ₁, λ₂), on a log scale: a slider from detail (short-term patterns) to
   simplicity (long-term patterns). Advanced: the balance between flat and straight, or λ₁ and λ₂ separately.
+  *Done (phase 2):* the slider is log₁₀(a/a*), from −8 to +4, default 0, and a share θ of a goes toward flat
+  (open question 1 has the normalization).
 - **region:** coverage α, undersmoothing, and the phase-1 λ (GCV or manual), the region's own long-term versus
   short-term choice.
 - **advanced:** κ (how hard the region is), ε (center pull), the check-grid density.
@@ -160,8 +162,27 @@ is enough. Revisit after phase 2.
 
 1. **Normalizing λ₁, λ₂** so the ambition knob means the same across data sets: relative to the phase-1 λ, to an
    effective dimension, or to the λ at which the fit first leaves the region.
+   *Decided (phase 2), in two steps* (`fit.js` `ambitionLambdas`, `leavingAmbition`):
+   - λ_d = a·G·nseg^(2d−1) with x mapped to [0, 1] and y in units of the median half-width. This makes S/G a
+     functional (κ∫dist²/h² + ε∫((g − c)/h)² + aθ∫g'² + a(1 − θ)∫g''²) that does not depend on the units, the
+     number of segments or the check-grid density. Measured on a sine: 20 to 80 segments moves the fit by
+     ≤ 0.05h, and a 4× denser grid by ≤ 0.01h.
+   - That alone is not enough across data sets. The ambition at which the fit first leaves the region by more
+     than 1% of h (a*) ranges from 1e-7 (Blocks) to never (chess, fibers, neuroimage, where a line fits inside).
+     So the knob is log₁₀(a/a*). At 0 the fit is the simplest inside the region; below 0 it moves toward the
+     center (about 8 decades down, it is c); above 0 it leaves the region, and the readout says where.
+   - a* is found by scanning up a decade at a time to the first fit that leaves, then bisecting to 0.02 decades:
+     15–25 fits, 1–50 ms on the examples and signals.
+   - The ratio is not proven monotone in a; a* is the first crossing found.
+   - a is capped where λ_d·nb/(ε·G) = 1e10. Above about 1e12 the Newton system lost enough digits that a line
+     inside the region came back outside it, with no Cholesky failure. When no ambition up to the cap leaves the
+     region, a* is the cap and the fit is the limiting polynomial: the weighted least-squares line of c, to
+     2.5e-5 h.
 2. **Default κ:** large enough that violations are negligible, small enough to keep the iterated system well
    conditioned. (The hard-region QP would have sidestepped this, but HiGHS's active-set QP fails on it; see §1.3.)
+   *For now (phase 2):* κ = 1e4, ε = 1e-2, both per grid point, and both advanced settings. With the knob at a*,
+   violations are below 1% of h by construction. A larger κ moves a* up: ozone's a* is 1.9e-6 at κ = 1e4 and 1.9e-3
+   at κ = 1e7, with the same ED of 16.5.
 3. **A data term in phase 2?** As specified, the data enter only through the region. Revisit if fits drift from
    the data in ways the center pull does not prevent.
 4. **Band type and coverage:** decided in phase 1 (§1.2): Bayesian covariance, λ undersmoothed by 1/16. Open:
@@ -195,11 +216,12 @@ is enough. Revisit after phase 2.
 - [x] UI: data input, the phase-1 fit and band, readouts with the claim (from the earlier project's main.js and controls.js).
 
 ### Phase 2 — The second-phase fit
-- [ ] Objective and solver (`src/core/fit.js`); re-check against the region. Tests: a fit stays inside when κ is
+- [x] Objective and solver (`src/core/fit.js`); re-check against the region. Tests: a fit stays inside when κ is
       large; ambition → ∞ gives the least-squares line (D₂) or constant (D₁) toward the center, when they fit;
       ambition → 0 gives the center c; iteration and QP agree.
-- [ ] Knobs in the UI (ambition slider, flat/straight balance, advanced κ and ε); URL state; diagnostics on the
-      examples, side by side with the earlier project's fits.
+- [x] Knobs in the UI (ambition slider, flat/straight balance, advanced κ and ε); URL state.
+- [ ] Diagnostics on the examples, side by side with the earlier project's fits. (lafspline's side is done: every example
+      fits in milliseconds and stays within 1% of h at a*. The earlier project's side is still to do.)
 
 ### Phase 3 — Sparse ambition and the ladder report
 - [ ] Adaptive-ridge option for D₁ and D₂; count the resulting flat and straight pieces and bends.

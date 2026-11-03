@@ -22,6 +22,10 @@
             <p class="subtitle">Least ambitious fit, P-spline version: a confidence region from a P-spline, then the simplest
                 curve inside it.</p>
         </div>
+        <nav class="toolbar" aria-label="Page actions">
+            <span id="toolbar-message" role="status"></span>
+            <button type="button" id="copy-link" title="Copy a link to this view: data source, settings and, if small enough, your pasted data">Copy link</button>
+        </nav>
     </header>
     <main>
         <aside id="controls" aria-label="Controls"></aside>
@@ -34,8 +38,8 @@
         <p id="status" role="status"></p>
         <p class="reference">
             Follows <a href="https://github.com/xangregg/tautfit">tautfit</a> and the earlier project. P-splines after
-            P. H. C. Eilers and B. D. Marx (1996), <i>Statist. Sci.</i> 11(2):89–121. Solver:
-            <a href="https://highs.dev">HiGHS</a> (MIT license), compiled to WebAssembly.
+            P. H. C. Eilers and B. D. Marx (1996), <i>Statist. Sci.</i> 11(2):89–121. The fit inside the region by
+            iterated weights, after K. Bollaerts, P. H. C. Eilers and I. Van Mechelen (2006).
         </p>
     </footer>
 </body>

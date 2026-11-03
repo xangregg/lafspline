@@ -1,9 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loadHighs from 'highs';
-import { fitIterated, buildQP, qpResult, phase2Objective, checkRegion } from '../src/core/fit.js';
+import {
+    fitIterated, buildQP, qpResult, phase2Objective, checkRegion, ambitionLambdas, regionSpec, leavingAmbition,
+    maxAmbition, LEAVE_TOL,
+} from '../src/core/fit.js';
+import { bandRegion } from '../src/core/band.js';
 import { solveModel } from '../src/core/lp-solve.js';
-import { selectLambda, evaluate, standardErrors } from '../src/core/pspline.js';
+import { selectLambda, evaluate, standardErrors, bsplineBasis } from '../src/core/pspline.js';
 import { simulate } from '../src/core/signals.js';
 import { createRng, normals } from '../src/core/rng.js';
 import { benchCases } from '../tools/bench-qp-cases.js';
@@ -113,4 +117,128 @@ test('checkRegion counts points outside', () => {
 
 test('ε must be positive', () => {
     assert.throws(() => fitIterated(makeSpec('sine', 0.2, { epsilon: 0 })), RangeError);
+});
+
+/** A phase-1 band region (Monte Carlo kept small: these tests need a region, not its exact coverage). */
+function makeRegion(signal, sigma, opts = {}) {
+    const { x, y } = simulate(signal, opts.n ?? 200, sigma, SEED);
+    return bandRegion(x, y, { B: 200, ...opts });
+}
+
+/** Weighted least squares of c on the polynomials of degree < order, weights 1/h², evaluated at the grid. */
+function weightedPolynomial(grid, c, h, order) {
+    // normal equations in t = (x − mid)/half-range, order ≤ 2
+    const mid = (grid[0] + grid[grid.length - 1]) / 2;
+    const half = (grid[grid.length - 1] - grid[0]) / 2;
+    const M = [[0, 0], [0, 0]];
+    const r = [0, 0];
+    for (let j = 0; j < grid.length; j++) {
+        const w = 1 / (h[j] * h[j]);
+        const f = [1, (grid[j] - mid) / half];
+        for (let a = 0; a < order; a++) {
+            r[a] += w * f[a] * c[j];
+            for (let b = 0; b < order; b++)
+                M[a][b] += w * f[a] * f[b];
+        }
+    }
+    let coef;
+    if (order === 1) {
+        coef = [r[0] / M[0][0], 0];
+    }
+    else {
+        const det = M[0][0] * M[1][1] - M[0][1] * M[1][0];
+        coef = [(r[0] * M[1][1] - r[1] * M[0][1]) / det, (M[0][0] * r[1] - M[1][0] * r[0]) / det];
+    }
+    return grid.map(x => coef[0] + coef[1] * (x - mid) / half);
+}
+
+test('ambition is invariant to the units of x and y', () => {
+    const TOL = 1e-9; // max |Δg|/h, rounding only
+    const X_SCALE = 1000;
+    const X_SHIFT = 1950;
+    const Y_SCALE = 1e-3;
+    const spec = makeSpec('heavisine', 1, { lambda2: 0 });
+    const a = 1e-4;
+    const base = fitIterated({ ...spec, ...ambitionLambdas({ ambition: a, G: spec.grid.length, nseg: spec.nseg }) });
+    const scaled = {
+        ...spec,
+        grid: spec.grid.map(v => X_SHIFT + X_SCALE * v),
+        xl: X_SHIFT + X_SCALE * spec.xl,
+        xr: X_SHIFT + X_SCALE * spec.xr,
+        c: spec.c.map(v => Y_SCALE * v), h: spec.h.map(v => Y_SCALE * v),
+    };
+    const moved = fitIterated({ ...scaled, ...ambitionLambdas({ ambition: a, G: spec.grid.length, nseg: spec.nseg }) });
+    assert.ok(maxDiffOverH(base.g, moved.g.map(v => v / Y_SCALE), spec.h) < TOL);
+});
+
+test('ambition means about the same fit for any number of segments and any check-grid density', () => {
+    // Measured (sine, n = 200, a = a*·10^k for k = −6…0): ≤ 0.053 h from 20 to 80 segments, ≤ 0.009 h for a grid
+    // 4 times denser.
+    const SEGMENT_TOL = 0.1; // max |Δg|/h
+    const GRID_TOL = 0.03;
+    const region = makeRegion('sine', 0.2, { nseg: 20 });
+    const dense = makeRegion('sine', 0.2, { nseg: 20, gridPerSegment: 16 });
+    const star = leavingAmbition(regionSpec(region, { ambition: 0 })).ambition;
+    const gridBasis = bsplineBasis(region.grid, region.params.xl, region.params.xr, 20, 3);
+    for (const k of [-6, -3, 0]) {
+        const a = star * 10 ** k;
+        const base = fitIterated(regionSpec(region, { ambition: a }));
+        const finer = fitIterated(regionSpec(region, { ambition: a, nseg: 80 }));
+        assert.ok(maxDiffOverH(base.g, finer.g, region.half) < SEGMENT_TOL, `k = ${k}, 80 segments`);
+        const onDense = fitIterated(regionSpec(dense, { ambition: a }));
+        const g = Float64Array.from(region.grid, (_, j) => {
+            let v = 0;
+            for (let r = 0; r <= 3; r++)
+                v += gridBasis.values[j * 4 + r] * onDense.beta[gridBasis.first[j] + r];
+            return v;
+        });
+        assert.ok(maxDiffOverH(base.g, g, region.half) < GRID_TOL, `k = ${k}, dense grid`);
+    }
+});
+
+test('a*: the fit stays inside up to it and leaves just above it', () => {
+    for (const [signal, sigma] of [['sine', 0.2], ['blocks', 1], ['ramp', 0.2]]) {
+        const region = makeRegion(signal, sigma);
+        const star = leavingAmbition(regionSpec(region, { ambition: 0 }));
+        assert.equal(star.capped, false, signal);
+        assert.ok(star.fit.maxRatio <= 1 + LEAVE_TOL, signal);
+        const at = fitIterated(regionSpec(region, { ambition: star.ambition }));
+        assert.ok(at.maxRatio <= 1 + LEAVE_TOL, `${signal}: ${at.maxRatio}`);
+        const above = fitIterated(regionSpec(region, { ambition: star.ambition * 10 ** 0.05 }));
+        assert.ok(above.maxRatio > 1 + LEAVE_TOL, `${signal}: ${above.maxRatio}`);
+    }
+});
+
+test('great ambition gives the weighted least-squares line or constant toward the center, when it fits', () => {
+    // At the ambition cap λ is finite, so the fit is the limit only approximately; measured 2.5e-5 h (line) and
+    // 7e-8 h (constant).
+    const LIMIT_TOL = 1e-3; // max |g − p|/h
+    const ED_TOL = 1e-3;
+    for (const [signal, flat, order] of [['line', 0, 2], ['noise', 1, 1]]) {
+        const region = makeRegion(signal, 0.25);
+        const spec = regionSpec(region, { ambition: 0, flat });
+        const star = leavingAmbition(spec);
+        assert.equal(star.capped, true, signal);
+        assert.ok(Math.abs(star.ambition / maxAmbition(spec) - 1) < 1e-12, signal);
+        const fit = fitIterated(regionSpec(region, { ambition: star.ambition, flat }));
+        assert.equal(fit.converged, true, signal);
+        assert.equal(fit.outside, 0, signal);
+        const p = weightedPolynomial(region.grid, region.center, region.half, order);
+        assert.ok(maxDiffOverH(fit.g, p, region.half) < LIMIT_TOL, `${signal}: ${maxDiffOverH(fit.g, p, region.half)}`);
+        assert.ok(Math.abs(fit.ed - order) < ED_TOL, `${signal}: ED ${fit.ed}`);
+    }
+});
+
+test('effective dimension: K with no ambition, falling toward the penalty order while the fit stays inside', () => {
+    // Once points leave, their weight κ raises the trace, so ED is monotone in a only while the sides stay fixed.
+    const TOL = 1e-9;
+    const spec = makeSpec('line', 0.25, { lambda2: 0 });
+    assert.ok(Math.abs(fitIterated(spec).ed - (spec.nseg + 3)) < TOL);
+    let previous = Infinity;
+    for (const a of [1e-10, 1e-8, 1e-6, 1e-4]) {
+        const fit = fitIterated({ ...spec, ...ambitionLambdas({ ambition: a, G: spec.grid.length, nseg: spec.nseg }) });
+        assert.equal(fit.outside, 0);
+        assert.ok(fit.ed < previous && fit.ed > 2, `a = ${a}: ED ${fit.ed}`);
+        previous = fit.ed;
+    }
 });

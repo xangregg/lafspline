@@ -1,11 +1,15 @@
-// Control panel: data source (examples, simulated signals, pasted or dropped CSV) and the phase-1 band settings.
-// Patterned on the earlier project's controls.js (el, field, debounce are the same helpers). Emits partial state patches.
+// Control panel: data source (examples, simulated signals, pasted or dropped CSV), the phase-2 fit's knobs and the
+// phase-1 band settings. Patterned on the earlier project's controls.js (el, field, debounce are the same helpers). Emits
+// partial state patches.
 
 import { SIGNALS } from '../core/signals.js';
+import { MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE } from './urlstate.js';
+import { fmtExp } from './format.js';
 
 const DEBOUNCE = 300; // ms for typed input
 const USER = 'user';
-export const MAX_N = 5000; // simulated sample size cap
+const AMBITION_STEP = 0.1; // decades
+const FLAT_STEP = 0.05;
 const UNDERSMOOTH_OPTIONS = [
     [1, 'none: λ as chosen'],
     [1 / 4, 'λ × 1/4'],
@@ -59,8 +63,9 @@ function debounce(fn, ms) {
  * @param {object} state    initial state (see main.js)
  * @param {function(object): void} onChange  receives a partial state patch
  * @param {Array<{id: string, label: string}>} [examples]  bundled data sets (data/index.json)
- * @returns {{sync: function(object, {columns: string[], nsegAuto: number|null, lambdaChosen: number|null}): void}}
- *     sync refreshes the parts that depend on state or data
+ * @returns {{sync: function(object, {columns: string[], nsegAuto: number|null, lambdaChosen: number|null,
+ *     ambition: {a: number, star: number, capped: boolean, clamped: boolean}|null}): void}}  sync refreshes the parts
+ *     that depend on state or data
  */
 export function createControls(container, state, onChange, examples = []) {
     const later = debounce(onChange, DEBOUNCE);
@@ -158,7 +163,7 @@ export function createControls(container, state, onChange, examples = []) {
     const logLambdaField = field('log λ (natural)', logLambdaInput);
     const undersmoothField = field('undersmoothing', undersmooth,
         'a smaller λ narrows the smoothing, so the band also covers bends; it widens the band');
-    const nsegInput = el('input', { type: 'number', min: 3, max: 400, step: 1, placeholder: 'auto' });
+    const nsegInput = el('input', { type: 'number', min: 3, max: MAX_SEGMENTS, step: 1, placeholder: 'auto' });
     nsegInput.value = state.nseg === null ? '' : String(state.nseg);
     const nsegHint = el('span', { class: 'field-hint' });
     nsegInput.addEventListener('input', () => {
@@ -169,11 +174,44 @@ export function createControls(container, state, onChange, examples = []) {
     });
     const diff = select('diff', DIFF_OPTIONS, Number);
 
+    // --- fit
+    const slider = (key, min, max, step, show) => {
+        const input = el('input', { type: 'range', min: String(min), max: String(max), step: String(step) });
+        input.value = String(state[key]);
+        const out = el('output', { text: show(state[key]) });
+        input.addEventListener('input', () => {
+            const v = Number(input.value);
+            out.textContent = show(v);
+            onChange({ [key]: v });
+        });
+        return { input, out, row: el('div', { class: 'slider' }, [input, out]) };
+    };
+    const signed = v => (v > 0 ? `+${v.toFixed(1)}` : v < 0 ? `−${(-v).toFixed(1)}` : '0');
+    const ambition = slider('ambition', AMBITION_RANGE[0], AMBITION_RANGE[1], AMBITION_STEP, signed);
+    const ambitionEnds = el('div', { class: 'slider-ends' }, [el('span', { text: '← detail' }),
+        el('span', { text: 'simplicity →' })]);
+    const ambitionHint = el('span', { class: 'field-hint' });
+    const flat = slider('flat', 0, 1, FLAT_STEP, v => `${Math.round(100 * v)}%`);
+    const logKappa = numberInput('logKappa', { min: LOG_KAPPA_RANGE[0], max: LOG_KAPPA_RANGE[1], step: 0.5 });
+    const logEpsilon = numberInput('logEpsilon', { min: LOG_EPSILON_RANGE[0], max: LOG_EPSILON_RANGE[1], step: 0.5 });
+    const advanced = el('details', {}, [
+        el('summary', { text: 'Advanced' }),
+        field('log₁₀ κ', logKappa, 'weight on the squared distance outside the region: larger is harder'),
+        field('log₁₀ ε', logEpsilon, 'weight on the squared distance from the center: the pull inside the region'),
+    ]);
+
     container.append(
         el('h2', { text: 'Data' }),
         field('source', source),
         simBox,
         userBox,
+        el('h2', { text: 'Fit' }),
+        el('p', { class: 'field-hint', text: 'A second P-spline, penalized severely for leaving the region, slightly '
+            + 'for leaving its center, and for ambition: pressure toward straight (or flat).' }),
+        field('ambition (decades from a*)', el('div', {}, [ambition.row, ambitionEnds]), ambitionHint),
+        field('toward flat', flat.row, 'share of the ambition on first differences (flat) instead of second '
+            + '(straight)'),
+        advanced,
         el('h2', { text: 'Region' }),
         el('p', { class: 'field-hint', text: 'A P-spline fit and a simultaneous band around it.' }),
         field('coverage α', alphaInput, 'simultaneous over the check grid; Monte Carlo, B = 1000'),
@@ -186,7 +224,7 @@ export function createControls(container, state, onChange, examples = []) {
     );
 
     let lastColumns = null;
-    function sync(st, { columns = [], nsegAuto = null, lambdaChosen = null }) {
+    function sync(st, { columns = [], nsegAuto = null, lambdaChosen = null, ambition: amb = null }) {
         simBox.hidden = !SIGNALS[st.source];
         userBox.hidden = st.source !== USER;
         const key = columns.join('\u0000');
@@ -207,6 +245,18 @@ export function createControls(container, state, onChange, examples = []) {
         nsegHint.textContent = nsegAuto !== null ? `empty = auto (${nsegAuto} for these data)` : 'empty = auto';
         if (document.activeElement !== alphaInput)
             alphaInput.value = String(st.alpha);
+        if (amb === null) {
+            ambitionHint.textContent = '0 is a*, the largest ambition before the fit leaves the region';
+        }
+        else if (amb.capped) {
+            ambitionHint.textContent = `the fit never leaves the region: a* is the largest ambition computed `
+                + `reliably (${fmtExp(amb.star)}), so above 0 nothing changes`;
+        }
+        else {
+            ambitionHint.textContent = `0 is a* = ${fmtExp(amb.star)}, the largest ambition before the fit `
+                + `leaves the region; now a = ${fmtExp(amb.a)}`
+                + (amb.clamped ? ' (the largest computed reliably)' : '');
+        }
     }
 
     return { sync };

@@ -1,7 +1,8 @@
-// App entry point (phase 1): state → data → band region → chart and readouts.
+// App entry point: state (⇄ URL hash) → data → band region (phase 1) → fit (phase 2) → chart and readouts.
 //
-// The band takes milliseconds to tens of milliseconds (one λ search, one Monte Carlo of B = 1000 cheap draws), so it
-// runs on the main thread and is cached by data and settings. URL state comes in phase 2.
+// Everything runs on the main thread: the band takes milliseconds to tens of milliseconds (one λ search, one Monte
+// Carlo of B = 1000 cheap draws), a* (fit.js leavingAmbition) some 15–25 phase-2 fits of a few milliseconds each,
+// and a knob change one more fit. Bands and a* are cached by data and settings.
 
 import * as d3 from 'd3';
 import { simulate, signalFunction, SIGNALS } from '../core/signals.js';
@@ -9,7 +10,10 @@ import { parseTable, prepareXY, rowIndex } from '../core/data.js';
 import { readDataset } from '../core/datasets.js';
 import { bandRegion, checkBand } from '../core/band.js';
 import { defaultSegments } from '../core/pspline.js';
+import { regionSpec, leavingAmbition, fitIterated, maxAmbition, LEAVE_TOL } from '../core/fit.js';
 import { createControls } from './controls.js';
+import { stateToHash, hashToState } from './urlstate.js';
+import { fmtExp } from './format.js';
 import { createMainChart } from './chart.js';
 import { cellEdges } from './layout.js';
 import { onThemeChange } from './theme.js';
@@ -19,7 +23,10 @@ const fmtInt = d3.format(',');
 const CACHE_LIMIT = 24; // bands kept
 const BAND_B = 1000; // Monte Carlo draws for the band's critical value
 const BAND_SEED = 1;
-const CENTER_COLOR = 'series-1';
+const CENTER_COLOR = 'series-3';
+const FIT_COLOR = 'series-1';
+const HASH_DEBOUNCE = 400; // ms after the last change before the URL is updated
+const MESSAGE_MS = 4000; // toolbar message display time
 const USER = 'user';
 const EXAMPLE_PREFIX = 'example:';
 const EXAMPLES_INDEX = 'data/index.json';
@@ -40,7 +47,12 @@ const state = {
     undersmooth: 1 / 16, // multiplier on the chosen λ
     nseg: null, // null = auto (pspline.defaultSegments)
     diff: 2, // penalty order
+    ambition: 0, // decades from a*, the largest ambition before the fit leaves the region
+    flat: 0, // share of the ambition toward flat (D₁) rather than straight (D₂)
+    logKappa: 4, // log₁₀ κ
+    logEpsilon: -2, // log₁₀ ε
 };
+const DEFAULTS = structuredClone(state);
 
 let tableCache = { text: null, table: null };
 
@@ -173,9 +185,130 @@ function computeBand(st, data) {
     }
 }
 
-function renderReadouts(container, data, result, truthCheck) {
+function starKey(st, data) {
+    return [bandKey(st, data), st.flat, st.logKappa, st.logEpsilon].join('|');
+}
+
+function phase2Options(st) {
+    return { flat: st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon };
+}
+
+/** The positions in the (sorted, distinct) check grid of the distinct data x; the grid contains every data x. */
+function dataPositions(grid, x) {
+    const at = [];
+    let j = 0;
+    for (let i = 0; i < x.length; i++) {
+        if (i > 0 && x[i] === x[i - 1])
+            continue;
+        while (grid[j] < x[i])
+            j++;
+        at.push(j);
+    }
+    return Int32Array.from(at);
+}
+
+/**
+ * The phase-2 fit at the knob setting: a = a*·10^ambition, at most the cap. Re-checked against the region on the
+ * whole check grid and at the data x.
+ */
+function computeFit(st, region, star) {
+    const opts = phase2Options(st);
+    const spec0 = regionSpec(region, { ...opts, ambition: 0 });
+    const cap = maxAmbition(spec0);
+    const wanted = star.ambition * 10 ** st.ambition;
+    const a = Math.min(wanted, cap);
+    const fit = fitIterated(regionSpec(region, { ...opts, ambition: a }));
+    const ratios = fit.g.map((g, j) => Math.abs(g - region.center[j]) / region.half[j]);
+    let argMax = 0;
+    for (let j = 1; j < ratios.length; j++) {
+        if (ratios[j] > ratios[argMax])
+            argMax = j;
+    }
+    let atData = 0;
+    for (const j of region.dataAt) {
+        if (ratios[j] > 1 + LEAVE_TOL)
+            atData++;
+    }
+    let leaving = 0;
+    for (const r of ratios) {
+        if (r > 1 + LEAVE_TOL)
+            leaving++;
+    }
+    return { ...fit, a, clamped: wanted > cap, argMax, leaving, leavingAtData: atData, opts };
+}
+
+function renderFitReadouts(sel, region, star, fit, st) {
+    sel.append('h2').text('Fit');
+    const G = region.grid.length;
+    const m = region.dataAt.length;
+    const v = sel.append('p').attr('class', `verdict ${fit.leaving === 0 ? 'ok' : 'bad'}`);
+    if (fit.outside === 0) {
+        v.append('strong').text('fit ∈ region');
+        v.append('span').text(` at every check-grid point (largest |g − c|/h = ${fmt(fit.maxRatio)}).`);
+    }
+    else if (fit.leaving === 0) {
+        v.append('strong').text('fit within the region to 1% of its half-width');
+        v.append('span').text(`: largest |g − c|/h = ${d3.format('.4f')(fit.maxRatio)}, at x = `
+            + `${fmt(region.grid[fit.argMax])}; ${fmtInt(fit.outside)} grid points touch the edge from outside, as a `
+            + 'soft region allows.');
+    }
+    else {
+        v.append('strong').text('fit ∉ region');
+        v.append('span').text(` by more than 1% of the half-width at ${fmtInt(fit.leaving)} of ${fmtInt(G)} check-grid `
+            + `points (${fmtInt(fit.leavingAtData)} of ${fmtInt(m)} data x); largest |g − c|/h = `
+            + `${fmt(fit.maxRatio)}, at x = ${fmt(region.grid[fit.argMax])}.`);
+    }
+    sel.append('p').attr('class', 'claim').text(`Checked against the region below, the ${region.label}, on its check `
+        + 'grid. The region is soft: leaving it costs κ per squared half-width, so the fit can cross its edge, and '
+        + 'the check says by how much.');
+    if (!fit.converged) {
+        sel.append('p').attr('class', 'warning').text(`The iteration stopped after ${fit.iterations} solves without `
+            + 'settling which points are outside: the fit is not the exact minimizer.');
+    }
+    const rows = [];
+    const add = (label, value, note) => rows.push({ label, value, note });
+    const decades = `${Math.abs(st.ambition)} decade${Math.abs(st.ambition) === 1 ? '' : 's'} `
+        + `${st.ambition > 0 ? 'above' : 'below'} a*`;
+    let ambitionNote;
+    if (star.capped)
+        ambitionNote = 'a*: no ambition up to the largest computed reliably takes the fit outside the region';
+    else if (fit.clamped)
+        ambitionNote = `${decades} is beyond the largest ambition computed reliably; using that`;
+    else if (st.ambition === 0)
+        ambitionNote = 'a*, the largest ambition before the fit leaves the region';
+    else
+        ambitionNote = `${decades}; a* = ${fmtExp(star.ambition)} is the largest before the fit leaves the region`;
+    add('ambition a', fmtExp(fit.a), ambitionNote);
+    add('toward', st.flat === 0 ? 'straight' : st.flat === 1 ? 'flat' : `${Math.round(100 * (1 - st.flat))}% straight, `
+        + `${Math.round(100 * st.flat)}% flat`, 'second (straight) and first (flat) differences of the coefficients');
+    add('effective dimension', fmt(fit.ed),
+        `trace of the hat matrix, the center as data (band: ${fmt(region.params.ed)})`);
+    add('κ', fmtExp(fit.opts.kappa), 'weight on the squared distance outside the region');
+    add('ε', fmtExp(fit.opts.epsilon), 'weight on the squared distance from the center');
+    add('basis', `${region.params.nseg} segments`, 'cubic, on the band\'s knots');
+    const shortened = fit.damped ? `; ${fit.damped} step${fit.damped === 1 ? '' : 's'} shortened by the line search`
+        : '';
+    add('solver', `${fit.iterations} solve${fit.iterations === 1 ? '' : 's'}`, `iterated weights: `
+        + `${fit.converged ? 'converged, the exact minimizer' : 'not converged'}${shortened}`);
+    add('computed in', `${fmt(fit.ms)} ms`, `a*: ${star.fits} fits, ${fmt(star.ms)} ms`);
+    appendRows(sel, rows);
+}
+
+function appendRows(sel, rows) {
+    const dl = sel.append('dl');
+    for (const r of rows) {
+        dl.append('dt').text(r.label);
+        dl.append('dd').text(r.value);
+        if (r.note)
+            dl.append('dd').attr('class', 'dd-note').text(r.note);
+    }
+}
+
+function renderReadouts(container, data, result, truthCheck, phase2, st) {
     const sel = d3.select(container);
     sel.selectAll('*').remove();
+    if (phase2)
+        renderFitReadouts(sel, result.region, phase2.star, phase2.fit, st);
     sel.append('h2').text('Region');
     if (result.error) {
         sel.append('p').attr('class', 'error').text(`No band: ${result.error}`);
@@ -216,13 +349,7 @@ function renderReadouts(container, data, result, truthCheck) {
         add('basis', `${p.nseg} segments, degree ${p.deg}`, `penalty order ${p.diff}`);
         add('check grid', `${fmtInt(region.grid.length)} points`, 'the distinct data x and 4 points per segment');
         add('computed in', `${fmt(result.ms)} ms`);
-        const dl = sel.append('dl');
-        for (const r of rows) {
-            dl.append('dt').text(r.label);
-            dl.append('dd').text(r.value);
-            if (r.note)
-                dl.append('dd').attr('class', 'dd-note').text(r.note);
-        }
+        appendRows(sel, rows);
     }
     sel.append('h2').text('Data');
     const dl = sel.append('dl');
@@ -247,33 +374,60 @@ async function loadExamples() {
     }
 }
 
+function rejectedNote(rejected) {
+    return rejected.length ? `Ignored invalid link setting(s): ${rejected.join(', ')}.` : null;
+}
+
 async function startup() {
-    const exampleList = await loadExamples();
+    const [loaded, exampleList] = await Promise.all([hashToState(location.hash, DEFAULTS), loadExamples()]);
     const examples = new Map(exampleList.map(e => [e.id, e]));
+    Object.assign(state, loaded.state);
+    let linkNote = rejectedNote(loaded.rejected);
+    if (state.source.startsWith(EXAMPLE_PREFIX) && !examples.has(state.source.slice(EXAMPLE_PREFIX.length))) {
+        linkNote = `The link's example data set '${state.source.slice(EXAMPLE_PREFIX.length)}' is not in this version; `
+            + 'showing the default.';
+        Object.assign(state, { source: DEFAULTS.source, n: DEFAULTS.n, sigma: DEFAULTS.sigma });
+    }
     const exampleTexts = new Map(); // id → file text, or {error}
     const status = d3.select('#status');
     const readouts = document.getElementById('readouts');
     const chart = createMainChart(document.getElementById('main-chart'));
     const bandCache = new Map();
-    let current = null; // {data, result} drawn
+    const starCache = new Map();
+    let current = null; // {data, result, phase2} drawn
 
-    const controls = createControls(document.getElementById('controls'), state, patch => {
+    const controlsEl = document.getElementById('controls');
+    const onChange = patch => {
         Object.assign(state, patch);
         update();
-    }, exampleList);
+        scheduleHash();
+    };
+    let controls = createControls(controlsEl, state, onChange, exampleList);
+    function rebuildControls() {
+        controlsEl.replaceChildren();
+        controls = createControls(controlsEl, state, onChange, exampleList);
+    }
 
     function draw() {
         if (!current)
             return;
-        const { data, result } = current;
+        const { data, result, phase2 } = current;
         const region = result.region;
         const truth = data.fAt && state.showTruth;
+        const fits = [];
+        if (region) {
+            fits.push({ key: 'center', label: 'band center (phase 1)', g: region.center, x: region.grid,
+                colorVar: CENTER_COLOR, primary: !phase2 });
+        }
+        if (phase2) {
+            fits.push({ key: 'fit', label: 'fit (phase 2)', g: phase2.fit.g, x: region.grid, colorVar: FIT_COLOR,
+                primary: true });
+        }
         chart.render({
             x: data.x,
             y: data.y,
             f: truth ? data.x.map(data.fAt) : null,
-            fits: region ? [{ key: 'center', label: 'P-spline (band center)', g: region.center, x: region.grid,
-                colorVar: CENTER_COLOR, primary: true }] : [],
+            fits,
             extremes: [],
             edges: data.edges,
             band: region ? { lb: region.lower, ub: region.upper, label: region.label, x: region.grid } : null,
@@ -308,22 +462,97 @@ async function startup() {
             result = computeBand(state, data);
             remember(bandCache, key, result);
         }
-        current = { data, result };
         const region = result.region;
+        let phase2 = null;
+        if (region) {
+            region.dataAt ??= dataPositions(region.grid, data.x);
+            const sk = starKey(state, data);
+            let star = starCache.get(sk);
+            if (!star) {
+                star = leavingAmbition(regionSpec(region, { ...phase2Options(state), ambition: 0 }));
+                remember(starCache, sk, star);
+            }
+            phase2 = { star, fit: computeFit(state, region, star) };
+        }
+        current = { data, result, phase2 };
         const truthCheck = region && data.fAt ? checkBand(region, region.grid.map(data.fAt)) : null;
         controls.sync(state, {
             columns: data.columns,
             nsegAuto: defaultSegments(data.m),
             lambdaChosen: region && region.params.lambdaSource !== 'given' ? region.params.lambdaChosen : null,
+            ambition: phase2 ? { a: phase2.fit.a, star: phase2.star.ambition, capped: phase2.star.capped,
+                clamped: phase2.fit.clamped } : null,
         });
         draw();
-        renderReadouts(readouts, data, result, state.showTruth ? truthCheck : null);
-        if (result.error)
-            status.classed('error', true).text(`${data.label}: no band (${result.error})`);
-        else
-            status.classed('error', false).text(`${data.label}: n = ${fmtInt(data.n)}; ${region.label}.`);
+        renderReadouts(readouts, data, result, state.showTruth ? truthCheck : null, phase2, state);
+        const note = linkNote ? ` ${linkNote}` : '';
+        if (result.error) {
+            status.classed('error', true).text(`${data.label}: no band (${result.error})${note}`);
+        }
+        else {
+            status.classed('error', Boolean(linkNote)).text(`${data.label}: n = ${fmtInt(data.n)}; ${region.label}; `
+                + `fit ED ${fmt(phase2.fit.ed)}.${note}`);
+        }
         document.body.dataset.ready = 'true';
     }
+
+    // --- URL hash: written (debounced, replaceState) after every change; read on load and on hashchange.
+    let hashTimer = null;
+    let writtenHash = location.hash;
+    let dataOmitted = 0;
+    let hashSeq = 0;
+    async function writeHash() {
+        clearTimeout(hashTimer);
+        hashTimer = null;
+        const seq = ++hashSeq;
+        const result = await stateToHash(state, DEFAULTS);
+        if (seq !== hashSeq)
+            return;
+        dataOmitted = result.dataOmitted;
+        if (result.hash !== writtenHash) {
+            writtenHash = result.hash;
+            history.replaceState(null, '', result.hash || location.pathname + location.search);
+        }
+    }
+    function scheduleHash() {
+        linkNote = null;
+        clearTimeout(hashTimer);
+        hashTimer = setTimeout(writeHash, HASH_DEBOUNCE);
+    }
+    window.addEventListener('hashchange', async () => {
+        if (location.hash === writtenHash)
+            return;
+        const next = await hashToState(location.hash, DEFAULTS);
+        writtenHash = location.hash;
+        linkNote = rejectedNote(next.rejected);
+        Object.assign(state, next.state);
+        rebuildControls();
+        update();
+    });
+
+    // --- toolbar
+    const message = document.getElementById('toolbar-message');
+    let messageTimer = null;
+    function say(text) {
+        message.textContent = text;
+        clearTimeout(messageTimer);
+        messageTimer = setTimeout(() => {
+            message.textContent = '';
+        }, MESSAGE_MS);
+    }
+    document.getElementById('copy-link').addEventListener('click', async () => {
+        await writeHash();
+        const omitted = dataOmitted
+            ? ` without your data (${fmt(dataOmitted / 1024)} KB is too long for a link; paste it again after opening)`
+            : '';
+        try {
+            await navigator.clipboard.writeText(location.href);
+            say(`Link copied${omitted}.`);
+        }
+        catch {
+            say(`Copy the address bar to share this view${omitted}.`);
+        }
+    });
 
     window.addEventListener('resize', draw);
     onThemeChange(draw);

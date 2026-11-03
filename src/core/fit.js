@@ -4,8 +4,10 @@
 //     S(β) = κ·Σ_j dist(g_j, [l_j, u_j])² / h_j²  +  ε·Σ_j ((g_j − c_j) / h_j)²  +  λ₁‖D₁β‖²/s²  +  λ₂‖D₂β‖²/s²
 //
 // with s = median h. Dividing the penalties by s² makes every term unitless, so κ, ε and λ mean the same whatever
-// the units of y (PLAN open question 1 is about normalizing λ further, across data sets). Internally everything is
-// in units of s: c' = c/s, h' = h/s, β' = β/s.
+// the units of y. Internally everything is in units of s: c' = c/s, h' = h/s, β' = β/s. The ambition knob is
+// normalized further (PLAN open question 1): ambitionLambdas makes it independent of x units, segments and grid
+// density, and leavingAmbition finds a*, the largest ambition before the fit leaves the region, which the UI's
+// knob is measured from.
 //
 // Two solvers for the same convex objective:
 // - fitIterated: fix which grid points are outside (above u or below l), solve the resulting banded penalized least
@@ -19,10 +21,20 @@
 // ε > 0 is required: it makes S strictly convex (the grid is dense in the basis) and the iterated system positive
 // definite.
 
-import { bsplineBasis, addDifferencePenalty, choleskyBanded, solveCholesky, weightedCrossProducts } from './pspline.js';
+import { bsplineBasis, addDifferencePenalty, choleskyBanded, solveCholesky, bandedInverse, weightedCrossProducts }
+    from './pspline.js';
 
 const MAX_ITERATIONS = 200; // iterated weights: cap on Newton solves
 const CHECK_TOL = 1e-9; // a grid point counts as outside when |g − c|/h > 1 + CHECK_TOL
+export const DEFAULT_KAPPA = 1e4; // weight on the squared distance outside the region, per grid point
+export const DEFAULT_EPSILON = 1e-2; // weight on the squared distance from the center, per grid point
+// Largest penalty relative to the center pull per coefficient, λ_d·nb/(ε·G). Beyond about 1e12 the Newton system
+// loses too many digits: a straight line inside the region came back outside it, without a Cholesky failure.
+const MAX_PENALTY_RATIO = 1e10;
+export const LEAVE_TOL = 0.01; // the fit has left the region when its largest |g − c|/h exceeds 1 + LEAVE_TOL
+const SCAN_DECADES = 16; // a* search: ambitions from the cap down this many decades
+const SCAN_STEP = 1; // decades between scanned ambitions
+const BISECT_TOL = 0.02; // decades: a* search stops when the bracket is this narrow
 
 /**
  * @typedef {object} Phase2Spec
@@ -169,21 +181,18 @@ export function checkRegion(g, c, h) {
  * @param {Phase2Spec} spec
  * @param {{maxIterations?: number, lineSearch?: boolean}} [opts]  lineSearch: false takes every full step (the
  *     undamped iteration, kept for comparison; it can cycle)
- * @returns {Phase2Fit & {iterations: number, converged: boolean, damped: number}}  iterations: Newton solves;
- *     damped: steps shortened by the line search
+ * @returns {Phase2Fit & {ed: number, iterations: number, converged: boolean, damped: number}}  ed: effective
+ *     dimension; iterations: Newton solves; damped: steps shortened by the line search
  */
 export function fitIterated(spec, opts = {}) {
     const start = performance.now();
     const p = prepare(spec);
-    const { kappa, epsilon } = spec;
     const maxIterations = opts.maxIterations ?? MAX_ITERATIONS;
     const useLineSearch = opts.lineSearch ?? true;
     const G = p.basis.n;
     const P = new Float64Array(p.nb * p.W);
     addAmbition(P, p);
     let side = new Int8Array(G); // +1 above u, −1 below l, 0 inside; all inside to start
-    const weight = new Float64Array(G);
-    const target = new Float64Array(G);
     let beta = null;
     let g = null;
     let iterations = 0;
@@ -191,15 +200,7 @@ export function fitIterated(spec, opts = {}) {
     let converged = false;
     while (iterations < maxIterations) {
         iterations++;
-        for (let j = 0; j < G; j++) {
-            const h2 = p.hs[j] * p.hs[j];
-            const k = side[j] !== 0 ? kappa : 0;
-            const edge = p.cs[j] + side[j] * p.hs[j];
-            weight[j] = (epsilon + k) / h2;
-            target[j] = (epsilon * p.cs[j] + k * edge) / (epsilon + k);
-        }
-        const { G: A, rhs } = weightedCrossProducts(p.basis, weight, target, p.W);
-        addAmbition(A, p);
+        const { A, rhs } = newtonSystem(p, side);
         const betaN = solveCholesky(choleskyBanded(A, p.nb, p.W), p.nb, p.W, rhs);
         const gN = gridValues(p.basis, betaN);
         const sideN = sidesOf(gN, p);
@@ -226,7 +227,47 @@ export function fitIterated(spec, opts = {}) {
         }
         side = sidesOf(g, p);
     }
-    return { ...finish(p, beta, start), iterations, converged, damped };
+    const ed = effectiveDimension(p, sidesOf(g, p), P);
+    return { ...finish(p, beta, start), ed, iterations, converged, damped };
+}
+
+/**
+ * The Newton system for fixed sides: (BᵀVB + P)β' = BᵀVt, with weight v_j = (ε + κ_j)/h'_j² and target
+ * t_j = (ε c'_j + κ_j e_j)/(ε + κ_j), where κ_j = κ and e_j the violated edge for a point outside, κ_j = 0 inside.
+ */
+function newtonSystem(p, side) {
+    const { kappa, epsilon } = p.spec;
+    const G = p.basis.n;
+    const weight = new Float64Array(G);
+    const target = new Float64Array(G);
+    for (let j = 0; j < G; j++) {
+        const h2 = p.hs[j] * p.hs[j];
+        const k = side[j] !== 0 ? kappa : 0;
+        const edge = p.cs[j] + side[j] * p.hs[j];
+        weight[j] = (epsilon + k) / h2;
+        target[j] = (epsilon * p.cs[j] + k * edge) / (epsilon + k);
+    }
+    const { G: A, rhs } = weightedCrossProducts(p.basis, weight, target, p.W);
+    addAmbition(A, p);
+    return { A, rhs };
+}
+
+/**
+ * Effective dimension of the fit, trace of the hat matrix of the final Newton system:
+ * tr((BᵀVB + P)⁻¹BᵀVB) = K − tr(A⁻¹P), from the band of A⁻¹ (P lies within it). Between the order of the
+ * ambition penalty (a line: 2) and K (no ambition). With fixed sides the fit is linear in the targets, so this is
+ * the usual count of parameters spent; the sides themselves depend on the region, which it does not count.
+ */
+function effectiveDimension(p, side, P) {
+    const { A } = newtonSystem(p, side);
+    const Z = bandedInverse(choleskyBanded(A, p.nb, p.W), p.nb, p.W);
+    let trace = 0;
+    for (let i = 0; i < p.nb; i++) {
+        trace += Z[i * p.W] * P[i * p.W];
+        for (let k = 1; k <= Math.min(i, p.W - 1); k++)
+            trace += 2 * Z[i * p.W + k] * P[i * p.W + k];
+    }
+    return p.nb - trace;
 }
 
 const LINE_SEARCH_STEPS = 50; // bisection halvings: step length to 2⁻⁵⁰
@@ -396,4 +437,120 @@ export function qpResult(spec, solution) {
     const p = prepare(spec);
     const fit = finish(p, solution.x.slice(0, p.nb), performance.now());
     return { ...fit, status: solution.status, ms: solution.ms };
+}
+
+/**
+ * λ₁ and λ₂ for an ambition a and a share θ of it toward flat (PLAN open question 1). With x mapped to [0, 1] and
+ * y in units of s, a difference of order d over K = nseg + 3 equally spaced coefficients approximates
+ * δ^d·g⁽ᵈ⁾ with δ = 1/nseg, so ‖D_dβ'‖² ≈ nseg^(1−2d)·∫g'⁽ᵈ⁾², and the region terms, summed over G grid points,
+ * ≈ G·∫(…). Scaling λ_d by G·nseg^(2d−1) turns S/G into the functional
+ *
+ *     κ∫dist²/h² + ε∫((g − c)/h)² + a·θ·∫g'² + a·(1 − θ)·∫g''²
+ *
+ * on [0, 1], so a means the same whatever the number of segments, the check-grid density and the units of x and
+ * y (the integrals are in grid-point measure, which follows the data where the data are dense).
+ *
+ * @param {{ambition: number, flat?: number, G: number, nseg: number}} opts  ambition a ≥ 0; flat θ ∈ [0, 1]
+ *     (0: toward straight only); G grid points; nseg segments of the phase-2 basis
+ * @returns {{lambda1: number, lambda2: number}}
+ */
+export function ambitionLambdas({ ambition, flat = 0, G, nseg }) {
+    return {
+        lambda1: ambition * flat * G * nseg,
+        lambda2: ambition * (1 - flat) * G * nseg ** 3,
+    };
+}
+
+/**
+ * A phase-2 spec from a phase-1 band region (band.js): the check grid, center and half-width, and the band's knot
+ * range; the phase-2 basis has the band's segments unless nseg is given.
+ *
+ * @param {{grid: Float64Array, center: Float64Array, half: Float64Array, params: {xl: number, xr: number,
+ *     nseg: number}}} region
+ * @param {{ambition: number, flat?: number, kappa?: number, epsilon?: number, nseg?: number}} opts
+ * @returns {Phase2Spec & {ambition: number, flat: number}}
+ */
+export function regionSpec(region, opts) {
+    const nseg = opts.nseg ?? region.params.nseg;
+    const flat = opts.flat ?? 0;
+    return {
+        grid: region.grid, c: region.center, h: region.half,
+        xl: region.params.xl, xr: region.params.xr, nseg, deg: 3,
+        kappa: opts.kappa ?? DEFAULT_KAPPA,
+        epsilon: opts.epsilon ?? DEFAULT_EPSILON,
+        ambition: opts.ambition, flat,
+        ...ambitionLambdas({ ambition: opts.ambition, flat, G: region.grid.length, nseg }),
+    };
+}
+
+/**
+ * The largest ambition the iteration computes reliably: the larger of λ₁, λ₂ at most MAX_PENALTY_RATIO times
+ * the center pull per coefficient, ε·G/nb (h' is 1 at the median).
+ *
+ * @param {{epsilon: number, flat?: number, nseg: number, deg?: number}} spec
+ * @returns {number}
+ */
+export function maxAmbition(spec) {
+    const flat = spec.flat ?? 0;
+    const nb = spec.nseg + (spec.deg ?? 3);
+    const perUnit = Math.max(flat * spec.nseg, (1 - flat) * spec.nseg ** 3); // λ_d / (a·G)
+    return MAX_PENALTY_RATIO * spec.epsilon / (nb * perUnit);
+}
+
+/**
+ * a*, the largest ambition before the fit first leaves the region: the ambition knob's zero (PLAN open question
+ * 1), so the knob means the same on every data set. "Leaves" is a largest |g − c|/h above 1 + LEAVE_TOL; a soft
+ * region is never met exactly, its violations shrink like 1/κ. Scans upward from SCAN_DECADES below the cap one
+ * decade at a time and stops at the first ambition whose fit leaves, then bisects on log a. The ratio is not
+ * proven monotone in a, so this is the first crossing found, not necessarily the only one. When no ambition up to
+ * the cap leaves, a* is the cap: the region holds the limiting polynomial (a line, for D₂).
+ *
+ * @param {Phase2Spec & {flat?: number}} spec  its λ₁, λ₂ and ambition are ignored
+ * @returns {{ambition: number, capped: boolean, fit: Phase2Fit, fits: number, ms: number}}  fit: at a*;
+ *     fits: Newton fits computed
+ */
+export function leavingAmbition(spec) {
+    const start = performance.now();
+    const G = spec.grid.length;
+    const flat = spec.flat ?? 0;
+    const at = logA => fitIterated({ ...spec, ...ambitionLambdas({ ambition: 10 ** logA, flat, G, nseg: spec.nseg }) });
+    const leaves = fit => fit.maxRatio > 1 + LEAVE_TOL;
+    const top = Math.log10(maxAmbition(spec));
+    let fits = 0;
+    let lo = null;
+    let loFit = null;
+    let hi = null;
+    const steps = Math.round(SCAN_DECADES / SCAN_STEP);
+    for (let i = steps; i >= 0; i--) {
+        const logA = top - i * SCAN_STEP;
+        const fit = at(logA);
+        fits++;
+        if (leaves(fit)) {
+            hi = logA;
+            break;
+        }
+        lo = logA;
+        loFit = fit;
+    }
+    if (hi === null)
+        return { ambition: 10 ** top, capped: true, fit: loFit, fits, ms: performance.now() - start };
+    if (lo === null) {
+        // leaves already at the smallest ambition scanned: the center itself is outside (not from band.js)
+        lo = hi - SCAN_STEP;
+        loFit = at(lo);
+        fits++;
+    }
+    while (hi - lo > BISECT_TOL) {
+        const mid = (lo + hi) / 2;
+        const fit = at(mid);
+        fits++;
+        if (leaves(fit)) {
+            hi = mid;
+        }
+        else {
+            lo = mid;
+            loFit = fit;
+        }
+    }
+    return { ambition: 10 ** lo, capped: false, fit: loFit, fits, ms: performance.now() - start };
 }

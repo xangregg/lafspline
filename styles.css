@@ -693,3 +693,40 @@ footer a {
 .controls-gap {
     margin-top: 0.5rem;
 }
+
+/* lafspline: slider knobs (ambition, toward flat) and the advanced settings */
+.slider {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.slider input[type='range'] {
+    flex: 1;
+    min-width: 0;
+}
+
+.slider output {
+    min-width: 3.2em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.slider-ends {
+    display: flex;
+    justify-content: space-between;
+    margin-right: 3.7em;
+    color: var(--muted);
+    font-size: 0.7rem;
+}
+
+#controls details {
+    margin-bottom: 0.5rem;
+}
+
+#controls summary {
+    cursor: pointer;
+    color: var(--ink-2);
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+}

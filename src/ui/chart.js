@@ -21,6 +21,17 @@ const GAP_FACTOR = 3;
 const LONE_TICK = 3; // px half-width of the tick for a single point stranded between gaps
 const KINK_RADIUS = 4; // px
 const fmt = d3.format('.4~g');
+// Below this magnitude tick labels get no thousands separator, so years read 1880, not 1,880 (style guides
+// also leave four-digit numbers ungrouped). Larger values keep d3's default grouping.
+const UNGROUPED_BELOW = 1e4;
+
+// d3's default tick format is ',f' with a precision fitted to the tick step; 'f' is the same without grouping.
+function tickFormat(scale, count) {
+    const [a, b] = scale.domain();
+    return Math.max(Math.abs(a), Math.abs(b)) < UNGROUPED_BELOW
+        ? scale.tickFormat(count, 'f')
+        : scale.tickFormat(count);
+}
 
 /**
  * @typedef {object} ChartModel
@@ -185,9 +196,9 @@ export function createMainChart(container) {
             .attr('width', width - MARGIN.left - MARGIN.right).attr('height', HEIGHT - MARGIN.top - MARGIN.bottom);
         overlay.attr('x', MARGIN.left).attr('width', width - MARGIN.left - MARGIN.right);
         gAxisX.attr('transform', `translate(0,${HEIGHT - MARGIN.bottom})`)
-            .call(d3.axisBottom(sx).ticks(width / 90).tickSizeOuter(0));
+            .call(d3.axisBottom(sx).ticks(width / 90).tickFormat(tickFormat(sx, width / 90)).tickSizeOuter(0));
         gAxisY.attr('transform', `translate(${MARGIN.left},0)`)
-            .call(d3.axisLeft(sy).ticks(HEIGHT / 50).tickSizeOuter(0));
+            .call(d3.axisLeft(sy).ticks(HEIGHT / 50).tickFormat(tickFormat(sy, HEIGHT / 50)).tickSizeOuter(0));
         gGrid.selectAll('line').data(sy.ticks(HEIGHT / 50)).join('line')
             .attr('x1', MARGIN.left).attr('x2', width - MARGIN.right)
             .attr('y1', d => sy(d)).attr('y2', d => sy(d));

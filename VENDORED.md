@@ -25,17 +25,17 @@ Not yet copied (phase 4, Aₙ as a region): `region.js`, `regions.js`, `interval
 
 `chart.js`, `layout.js`, `theme.js`, `tooltip.js`, `export.js` (+ test): unchanged.
 `lp.js`: trimmed (see below).
+`urlstate.js` (+ test): copied in phase 2 with the field table rewritten (see below).
 `main.js` and `controls.js` are lafspline's own, patterned on the earlier project's (the data source, paste/drop and
-example loading code is the earlier project's).
-Not yet copied: `urlstate.js` (phase 2: its field table is the earlier project's and it imports the earlier project's `constraints.js`;
-it will be copied with the table rewritten), `residual.js` (Aₙ's residual view; phase 4 if needed).
+example loading code, and the URL hash and Copy link wiring, are the earlier project's). `format.js` is lafspline's own.
+Not yet copied: `residual.js` (Aₙ's residual view; phase 4 if needed).
 
 ## Other
 
 `src/lp-worker.js` (trimmed), `vendor/highs/` (highs-js 1.15.4, MIT; SHA-256 of highs.wasm f13134e3…cd, the
 same build as the earlier project's), `tools/check-page.mjs`, `tools/data-index.mjs`, `data/` (CSVs, `index.json`,
-README), `styles.css` (unchanged, including the earlier project's section at the end; unused rules are harmless and some,
-such as the claim text and `[hidden]`, will be used), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
+README), `styles.css` (the earlier project's, including its section at the end; unused rules are harmless; lafspline's own
+rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 
 ## Changes since copying
 
@@ -55,3 +55,11 @@ such as the claim text and `[hidden]`, will be used), `LICENSE` (0BSD), `.gitign
   and the tooltip looks their values up at the hovered data x. Without `x`, unchanged.
 - `src/core/signals.js`: `signalFunction(name, n)`, a signal as a function of t with the rescaling
   `signalValues` applies for n (true f on the check grid). Additive; `test/signals.test.js` has a test for it.
+- `src/ui/chart.js`: axis tick labels have no thousands separator when every value is below 10,000 in magnitude
+  (years read 1880, not 1,880); larger values keep d3's default grouping. The earlier project still shows 1,880.
+- `src/ui/urlstate.js`: the field table is lafspline's state (band settings, ambition, flat share, κ, ε); the
+  constraint codec (`encodeConstraints`, `decodeConstraints`, which import the earlier project's `constraints.js`) and the
+  old-link rule for τ are dropped; `MAX_N` is 5,000 and a signal starts at its own n up to that (the earlier project caps it
+  at 200 for the MIP); `nseg` may be `auto` (null). The hash and data packing code is unchanged.
+  `test/urlstate.test.js` is the earlier project's with the lafspline fields.
+- `styles.css`: slider and Advanced-panel rules appended.
