@@ -21,8 +21,10 @@
 // ε > 0 is required: it makes S strictly convex (the grid is dense in the basis) and the iterated system positive
 // definite.
 
-import { bsplineBasis, addDifferencePenalty, choleskyBanded, solveCholesky, bandedInverse, weightedCrossProducts }
-    from './pspline.js';
+import {
+    bsplineBasis, addDifferencePenalty, differenceCoefficients, choleskyBanded, solveCholesky, bandedInverse,
+    weightedCrossProducts,
+} from './pspline.js';
 
 const MAX_ITERATIONS = 200; // iterated weights: cap on Newton solves
 const CHECK_TOL = 1e-9; // a grid point counts as outside when |g − c|/h > 1 + CHECK_TOL
@@ -35,6 +37,12 @@ export const LEAVE_TOL = 0.01; // the fit has left the region when its largest |
 const SCAN_DECADES = 16; // a* search: ambitions from the cap down this many decades
 const SCAN_STEP = 1; // decades between scanned ambitions
 const BISECT_TOL = 0.02; // decades: a* search stops when the bracket is this narrow
+const MAX_REWEIGHTS = 100; // adaptive ridge: cap on reweightings
+const MAX_PRUNE_PASSES = 3; // adaptive ridge: backward-elimination passes over the joins
+const SUPPORT_STABLE = 3; // adaptive ridge stops after this many reweightings without a change of support
+const SPARSE_TOP_FACTOR = 10; // sparse ambition: top of the range, relative to where the polynomial is optimal
+const SPARSE_MIN_TOP = 1e-12; // sparse ambition: top when the polynomial matches the center (S_poly = 0)
+const SPARSE_DELTA = 1e-4; // adaptive ridge: a step smaller than this (units of median h) counts as zero
 
 /**
  * @typedef {object} Phase2Spec
@@ -49,6 +57,8 @@ const BISECT_TOL = 0.02; // decades: a* search stops when the bracket is this na
  * @property {number} epsilon       weight on the squared distance from the center (ε > 0)
  * @property {number} lambda1       weight on ‖D₁β‖²/s² (toward flat)
  * @property {number} lambda2       weight on ‖D₂β‖²/s² (toward straight)
+ * @property {Float64Array} [w1]    weights on the squared first differences (adaptive ridge; 1 without)
+ * @property {Float64Array} [w2]    weights on the squared second differences
  */
 
 /**
@@ -80,11 +90,27 @@ function prepare(spec) {
 }
 
 function addAmbition(A, p) {
-    const { lambda1, lambda2 } = p.spec;
+    const { lambda1, lambda2, w1, w2 } = p.spec;
     if (lambda1 > 0)
-        addDifferencePenalty(A, p.nb, p.W, 1, lambda1);
+        addWeightedDifferences(A, p.nb, p.W, 1, lambda1, w1);
     if (lambda2 > 0)
-        addDifferencePenalty(A, p.nb, p.W, 2, lambda2);
+        addWeightedDifferences(A, p.nb, p.W, 2, lambda2, w2);
+}
+
+/** λ·DᵀΩD into A, Ω = diag(w) (one weight per difference), or λ·DᵀD without w. */
+function addWeightedDifferences(A, nb, W, d, lambda, w) {
+    if (!w) {
+        addDifferencePenalty(A, nb, W, d, lambda);
+        return;
+    }
+    const c = differenceCoefficients(d);
+    for (let r = 0; r + d < nb; r++) {
+        const scale = lambda * w[r];
+        for (let i = 0; i <= d; i++) {
+            for (let j = 0; j <= i; j++)
+                A[(r + i) * W + (i - j)] += scale * c[i] * c[j];
+        }
+    }
 }
 
 function gridValues(basis, beta) {
@@ -179,10 +205,12 @@ export function checkRegion(g, c, h) {
  * risk check).
  *
  * @param {Phase2Spec} spec
- * @param {{maxIterations?: number, lineSearch?: boolean}} [opts]  lineSearch: false takes every full step (the
- *     undamped iteration, kept for comparison; it can cycle)
- * @returns {Phase2Fit & {ed: number, iterations: number, converged: boolean, damped: number}}  ed: effective
- *     dimension; iterations: Newton solves; damped: steps shortened by the line search
+ * @param {{maxIterations?: number, lineSearch?: boolean, side?: Int8Array}} [opts]  lineSearch: false takes every
+ *     full step (the undamped iteration, kept for comparison; it can cycle); side: starting guess of which grid
+ *     points are above (+1) or below (−1) the region, e.g. a previous fit's (all inside without it)
+ * @returns {Phase2Fit & {ed: number, iterations: number, converged: boolean, damped: number, side: Int8Array}}
+ *     ed: effective dimension; iterations: Newton solves; damped: steps shortened by the line search; side: which
+ *     grid points end above (+1) or below (−1) the region
  */
 export function fitIterated(spec, opts = {}) {
     const start = performance.now();
@@ -192,7 +220,7 @@ export function fitIterated(spec, opts = {}) {
     const G = p.basis.n;
     const P = new Float64Array(p.nb * p.W);
     addAmbition(P, p);
-    let side = new Int8Array(G); // +1 above u, −1 below l, 0 inside; all inside to start
+    let side = opts.side ? Int8Array.from(opts.side) : new Int8Array(G); // +1 above u, −1 below l, 0 inside
     let beta = null;
     let g = null;
     let iterations = 0;
@@ -227,8 +255,9 @@ export function fitIterated(spec, opts = {}) {
         }
         side = sidesOf(g, p);
     }
-    const ed = effectiveDimension(p, sidesOf(g, p), P);
-    return { ...finish(p, beta, start), ed, iterations, converged, damped };
+    const finalSide = sidesOf(g, p);
+    const ed = effectiveDimension(p, finalSide, P);
+    return { ...finish(p, beta, start), ed, iterations, converged, damped, side: finalSide };
 }
 
 /**
@@ -506,16 +535,25 @@ export function maxAmbition(spec) {
  * the cap leaves, a* is the cap: the region holds the limiting polynomial (a line, for D₂).
  *
  * @param {Phase2Spec & {flat?: number}} spec  its λ₁, λ₂ and ambition are ignored
- * @returns {{ambition: number, capped: boolean, fit: Phase2Fit, fits: number, ms: number}}  fit: at a*;
- *     fits: Newton fits computed
+ * @param {{sparse?: boolean}} [opts]  sparse: the adaptive-ridge ambition (fitSparse, sparseLambdas,
+ *     sparseMaxAmbition) instead of the quadratic one
+ * @returns {{ambition: number, capped: boolean, top: number, fit: object, fits: number, ms: number}}  fit: at a*
+ *     (from fitIterated or fitSparse); top: the cap (maxAmbition or sparseMaxAmbition); fits: phase-2 fits
+ *     computed
  */
-export function leavingAmbition(spec) {
+export function leavingAmbition(spec, opts = {}) {
     const start = performance.now();
     const G = spec.grid.length;
     const flat = spec.flat ?? 0;
-    const at = logA => fitIterated({ ...spec, ...ambitionLambdas({ ambition: 10 ** logA, flat, G, nseg: spec.nseg }) });
+    const sparse = opts.sparse ?? false;
+    const at = logA => {
+        const ambition = 10 ** logA;
+        return sparse
+            ? fitSparse({ ...spec, ...sparseLambdas({ ambition, flat, G }) })
+            : fitIterated({ ...spec, ...ambitionLambdas({ ambition, flat, G, nseg: spec.nseg }) });
+    };
     const leaves = fit => fit.maxRatio > 1 + LEAVE_TOL;
-    const top = Math.log10(maxAmbition(spec));
+    const top = Math.log10(sparse ? sparseMaxAmbition(spec) : maxAmbition(spec));
     let fits = 0;
     let lo = null;
     let loFit = null;
@@ -533,7 +571,7 @@ export function leavingAmbition(spec) {
         loFit = fit;
     }
     if (hi === null)
-        return { ambition: 10 ** top, capped: true, fit: loFit, fits, ms: performance.now() - start };
+        return { ambition: 10 ** top, capped: true, top: 10 ** top, fit: loFit, fits, ms: performance.now() - start };
     if (lo === null) {
         // leaves already at the smallest ambition scanned: the center itself is outside (not from band.js)
         lo = hi - SCAN_STEP;
@@ -552,5 +590,230 @@ export function leavingAmbition(spec) {
             loFit = fit;
         }
     }
-    return { ambition: 10 ** lo, capped: false, fit: loFit, fits, ms: performance.now() - start };
+    return { ambition: 10 ** lo, capped: false, top: 10 ** top, fit: loFit, fits, ms: performance.now() - start };
+}
+
+/**
+ * The top of the sparse ambition's range, and the polynomial fit there. With every difference pinned, the fit is a
+ * polynomial (a line for D₂, a constant once D₁ is penalized) whose region terms are S_poly. Above
+ * a = S_poly/G, one free difference costs λ_d = a·G > S_poly, more than all the region terms of the polynomial,
+ * so the L0 optimum is the polynomial itself; SPARSE_TOP_FACTOR times that leaves room for the share θ. Not a
+ * numerical limit (the weights are capped in fitSparse), but where the knob stops having an effect.
+ *
+ * @param {Phase2Spec & {flat?: number}} spec  its λ₁, λ₂ are ignored
+ * @returns {number}
+ */
+export function sparseMaxAmbition(spec) {
+    const flat = spec.flat ?? 0;
+    const nb = spec.nseg + (spec.deg ?? 3);
+    const G = spec.grid.length;
+    const pin = MAX_PENALTY_RATIO * spec.epsilon * G / nb; // λ_d·w_r of a pinned difference (fitSparse)
+    const poly = fitIterated({
+        ...spec, w1: undefined, w2: undefined, lambda1: flat > 0 ? pin : 0, lambda2: flat < 1 ? pin : 0,
+    });
+    const { s } = prepare(spec);
+    const share = Math.min(...[flat, 1 - flat].filter(v => v > 0));
+    return Math.max(SPARSE_TOP_FACTOR * regionObjective(spec, s, poly.g) / (G * share), SPARSE_MIN_TOP);
+}
+
+/** d-th differences of v. */
+function differences(v, d) {
+    let out = Float64Array.from(v);
+    for (let k = 0; k < d; k++)
+        out = out.subarray(1).map((x, i) => x - out[i]);
+    return out;
+}
+
+/**
+ * Sparse ambition (PLAN §1.4): the adaptive ridge of Frommlet & Nuel (2016), which approximates an L0 penalty,
+ * λ_d times the number of nonzero d-th differences of β, by reweighting the squared differences,
+ * w_r = 1/(θ_r² + δ_d²) with θ = D_dβ' at the previous fit. A difference much larger than δ_d then costs about λ_d
+ * whatever its size, and a smaller one is driven to zero, so D₂ gives straight pieces joined by short bends and D₁
+ * flat pieces joined by steps. Each reweighting is one fitIterated (the region terms are unchanged), started from
+ * the fit without ambition (about the center) and then from the previous fit's sides.
+ *
+ * The support (which differences exceed δ_d) settles within a few reweightings, but the nonzero differences then
+ * drift toward their limit only linearly (about 1e-5 of h per step after 100 steps on a sine). So the reweighting
+ * stops when the support has not changed for SUPPORT_STABLE steps, and a final refit pins the differences outside
+ * the support to zero and leaves those in it free: the exact minimizer of the region terms plus λ·(joins) for
+ * that support. The L0 problem is not convex, so the support is a local optimum found from that start, not a
+ * proven one.
+ *
+ * Pinning weights are capped where λ_d·w_r reaches MAX_PENALTY_RATIO times the center pull per coefficient (as
+ * maxAmbition), so a pinned difference holds no harder than the quadratic penalty at its cap.
+ *
+ * @param {Phase2Spec} spec  lambda1, lambda2: cost per nonzero first or second difference (unitless; see
+ *     sparseLambdas); w1 and w2 are ignored
+ * @param {{maxReweights?: number, prunePasses?: number}} [opts]  prunePasses: backward-elimination passes
+ *     (MAX_PRUNE_PASSES; 0 skips it, kept for comparison)
+ * @returns {Phase2Fit & {ed: number, iterations: number, converged: boolean, side: Int8Array, reweights: number,
+ *     settled: boolean, pruned: number, pieces: SparsePieces}}  iterations: Newton solves in all; converged: the
+ *     final refit's iteration converged; settled: the support stopped changing before maxReweights; pruned: joins
+ *     dropped by backward elimination
+ */
+export function fitSparse(spec, opts = {}) {
+    const start = performance.now();
+    const maxReweights = opts.maxReweights ?? MAX_REWEIGHTS;
+    const prunePasses = opts.prunePasses ?? MAX_PRUNE_PASSES;
+    const { s, nb } = prepare(spec);
+    const G = spec.grid.length;
+    const orders = [[1, spec.lambda1], [2, spec.lambda2]].filter(([, lambda]) => lambda > 0);
+    const caps = orders.map(([, lambda]) => MAX_PENALTY_RATIO * spec.epsilon * G / (nb * lambda));
+    // The cap on w makes the reweighting behave as if δ were at least 1/√cap, so that is also where a difference
+    // counts as zero; with δ_d alone, differences the capped weights could not push below δ_d counted as free.
+    const deltas = orders.map(([d], i) => Math.max(sparseDelta(d, spec.nseg), 1 / Math.sqrt(caps[i])));
+    const base = { ...spec, w1: undefined, w2: undefined };
+    const supportOf = beta => orders.map(([d], i) => differences(beta.map(v => v / s), d)
+        .map(t => (Math.abs(t) > deltas[i] ? 1 : 0)));
+    let fit = fitIterated({ ...base, lambda1: 0, lambda2: 0 });
+    let iterations = fit.iterations;
+    let support = supportOf(fit.beta);
+    let stable = 0;
+    let reweights = 0;
+    while (orders.length > 0 && stable < SUPPORT_STABLE && reweights < maxReweights) {
+        reweights++;
+        const weights = {};
+        const scaled = fit.beta.map(v => v / s);
+        orders.forEach(([d], i) => {
+            const delta = deltas[i];
+            weights[`w${d}`] = differences(scaled, d).map(t => Math.min(1 / (t * t + delta * delta), caps[i]));
+        });
+        fit = fitIterated({ ...base, ...weights }, { side: fit.side });
+        iterations += fit.iterations;
+        const next = supportOf(fit.beta);
+        stable = next.every((m, i) => m.every((v, r) => v === support[i][r])) ? stable + 1 : 0;
+        support = next;
+    }
+    const settled = stable >= SUPPORT_STABLE || orders.length === 0;
+    let pruned = 0;
+    if (orders.length > 0) {
+        // The pinned refit for a support, and its L0 objective: region terms plus λ_d per free difference.
+        const refit = (m, side) => {
+            const pins = {};
+            orders.forEach(([d], i) => {
+                pins[`w${d}`] = Float64Array.from(m[i], v => (v ? 0 : caps[i]));
+            });
+            const f = fitIterated({ ...base, ...pins }, { side });
+            iterations += f.iterations;
+            let l0 = regionObjective(spec, s, f.g);
+            orders.forEach(([, lambda], i) => {
+                l0 += lambda * m[i].reduce((a, v) => a + v, 0);
+            });
+            return { fit: f, l0 };
+        };
+        let best = refit(support, fit.side);
+        // Backward elimination: the reweighting can settle on a support with a join the region does not need
+        // (a ramp: four straight pieces where three fit). Drop each join in turn and keep the drop when it lowers
+        // the L0 objective; repeat while a pass drops one, at most prunePasses times.
+        for (let pass = 0; pass < prunePasses; pass++) {
+            let dropped = false;
+            orders.forEach((_, i) => {
+                for (const run of supportRuns(support[i])) {
+                    const trial = support.map(m => Uint8Array.from(m));
+                    trial[i].fill(0, run.from, run.to + 1);
+                    const t = refit(trial, best.fit.side);
+                    if (t.l0 < best.l0) {
+                        best = t;
+                        support = trial;
+                        pruned++;
+                        dropped = true;
+                    }
+                }
+            });
+            if (!dropped)
+                break;
+        }
+        fit = best.fit;
+    }
+    return {
+        ...fit, iterations, reweights, settled, pruned,
+        pieces: sparsePieces(support, orders.map(([d]) => d), spec),
+        ms: performance.now() - start,
+    };
+}
+
+/** Maximal runs of ones in a 0/1 mask: [{from, to}], inclusive. */
+function supportRuns(m) {
+    const runs = [];
+    let r = 0;
+    while (r < m.length) {
+        if (!m[r]) {
+            r++;
+            continue;
+        }
+        const from = r;
+        while (r < m.length && m[r])
+            r++;
+        runs.push({ from, to: r - 1 });
+    }
+    return runs;
+}
+
+/** The region terms of S, κ·Σdist²/h² + ε·Σ((g − c)/h)², for g in units of y (s: the median half-width). */
+function regionObjective(spec, s, g) {
+    let sum = 0;
+    for (let j = 0; j < g.length; j++) {
+        const h = spec.h[j];
+        const dev = g[j] - spec.c[j];
+        const out = Math.max(0, Math.abs(dev) - h);
+        sum += (spec.kappa * out * out + spec.epsilon * dev * dev) / (h * h);
+    }
+    return sum;
+}
+
+/**
+ * λ₁ and λ₂ for the sparse ambition: a·θ·G and a·(1 − θ)·G, so S/G is the region functional plus a·θ per flat
+ * join and a·(1 − θ) per bend, whatever the grid density. A join's count does not grow with the segments, so,
+ * unlike ambitionLambdas, there is no nseg factor.
+ *
+ * @param {{ambition: number, flat?: number, G: number}} opts
+ * @returns {{lambda1: number, lambda2: number}}
+ */
+export function sparseLambdas({ ambition, flat = 0, G }) {
+    return { lambda1: ambition * flat * G, lambda2: ambition * (1 - flat) * G };
+}
+
+/**
+ * δ_d, the size below which a d-th difference of β' counts as zero: SPARSE_DELTA (in units of the median
+ * half-width) for a step (d = 1); for d = 2 a bend θ changes the fit by about θ·nseg across [xl, xr], hence
+ * SPARSE_DELTA/nseg.
+ */
+function sparseDelta(d, nseg) {
+    return SPARSE_DELTA * nseg ** (1 - d);
+}
+
+/**
+ * @typedef {object} SparsePieces
+ * @property {{order: number, joins: {from: number, to: number, x: number}[], pieces: number, atEnds: number}[]}
+ *     orders  for each penalized order d: the joins (maximal runs of nonzero d-th differences, by coefficient
+ *     index, with x at their middle) and the pieces between them (flat for d = 1, straight for d = 2); a single
+ *     piece is a constant or a line. A join that reaches the first or last coefficient (atEnds of them, 0–2)
+ *     curves the fit's end rather than separating two pieces.
+ */
+
+/**
+ * Pieces and joins from the support of a sparse fit (which d-th differences are free). Coefficient k of a cubic
+ * B-spline basis peaks at xl + (k − 1)·(xr − xl)/nseg, so a run of differences r..r' (spanning coefficients
+ * r..r' + d) is placed at the coefficient in its middle.
+ *
+ * @param {Uint8Array[]|Float64Array[]} support  per penalized order, 1 where the difference is free
+ * @param {number[]} orders
+ * @param {Phase2Spec} spec
+ * @returns {SparsePieces}
+ */
+function sparsePieces(support, orders, spec) {
+    const deg = spec.deg ?? 3;
+    const step = (spec.xr - spec.xl) / spec.nseg;
+    return {
+        orders: orders.map((d, i) => {
+            const m = support[i];
+            const joins = supportRuns(m).map(({ from, to }) => {
+                const mid = (from + to + d) / 2;
+                return { from, to, x: spec.xl + (mid - (deg - 1) / 2) * step };
+            });
+            const atStart = joins.length > 0 && joins[0].from === 0 ? 1 : 0;
+            const atEnd = joins.length > 0 && joins[joins.length - 1].to === m.length - 1 ? 1 : 0;
+            return { order: d, joins, pieces: joins.length + 1 - atStart - atEnd, atEnds: atStart + atEnd };
+        }),
+    };
 }

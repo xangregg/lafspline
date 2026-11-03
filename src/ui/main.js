@@ -1,8 +1,10 @@
 // App entry point: state (⇄ URL hash) → data → band region (phase 1) → fit (phase 2) → chart and readouts.
 //
 // Everything runs on the main thread: the band takes milliseconds to tens of milliseconds (one λ search, one Monte
-// Carlo of B = 1000 cheap draws), a* (fit.js leavingAmbition) some 15–25 phase-2 fits of a few milliseconds each,
-// and a knob change one more fit. Bands and a* are cached by data and settings.
+// Carlo of B = 1000 cheap draws), a* (fit.js leavingAmbition) some 15–25 phase-2 fits of a few milliseconds each
+// (sparse fits are some 10–30 iterated fits each, so a* takes up to about half a second for n in the thousands),
+// and a knob change one more fit. Bands and a* are cached by data and settings; the ladder (a few milliseconds) is
+// kept on the band.
 
 import * as d3 from 'd3';
 import { simulate, signalFunction, SIGNALS } from '../core/signals.js';
@@ -10,7 +12,8 @@ import { parseTable, prepareXY, rowIndex } from '../core/data.js';
 import { readDataset } from '../core/datasets.js';
 import { bandRegion, checkBand } from '../core/band.js';
 import { defaultSegments } from '../core/pspline.js';
-import { regionSpec, leavingAmbition, fitIterated, maxAmbition, LEAVE_TOL } from '../core/fit.js';
+import { regionSpec, leavingAmbition, fitIterated, fitSparse, sparseLambdas, LEAVE_TOL } from '../core/fit.js';
+import { ladder } from '../core/ladder.js';
 import { createControls } from './controls.js';
 import { stateToHash, hashToState } from './urlstate.js';
 import { fmtExp } from './format.js';
@@ -20,6 +23,7 @@ import { onThemeChange } from './theme.js';
 
 const fmt = d3.format('.4~g');
 const fmtInt = d3.format(',');
+const fmtShort = d3.format('.2~g');
 const CACHE_LIMIT = 24; // bands kept
 const BAND_B = 1000; // Monte Carlo draws for the band's critical value
 const BAND_SEED = 1;
@@ -47,6 +51,7 @@ const state = {
     undersmooth: 1 / 16, // multiplier on the chosen λ
     nseg: null, // null = auto (pspline.defaultSegments)
     diff: 2, // penalty order
+    penalty: 'quadratic', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number)
     ambition: 0, // decades from a*, the largest ambition before the fit leaves the region
     flat: 0, // share of the ambition toward flat (D₁) rather than straight (D₂)
     logKappa: 4, // log₁₀ κ
@@ -186,7 +191,7 @@ function computeBand(st, data) {
 }
 
 function starKey(st, data) {
-    return [bandKey(st, data), st.flat, st.logKappa, st.logEpsilon].join('|');
+    return [bandKey(st, data), st.penalty, st.flat, st.logKappa, st.logEpsilon].join('|');
 }
 
 function phase2Options(st) {
@@ -208,16 +213,18 @@ function dataPositions(grid, x) {
 }
 
 /**
- * The phase-2 fit at the knob setting: a = a*·10^ambition, at most the cap. Re-checked against the region on the
- * whole check grid and at the data x.
+ * The phase-2 fit at the knob setting: a = a*·10^ambition, at most the top of the range. Re-checked against the
+ * region on the whole check grid and at the data x.
  */
 function computeFit(st, region, star) {
     const opts = phase2Options(st);
-    const spec0 = regionSpec(region, { ...opts, ambition: 0 });
-    const cap = maxAmbition(spec0);
+    const sparse = st.penalty === 'sparse';
     const wanted = star.ambition * 10 ** st.ambition;
-    const a = Math.min(wanted, cap);
-    const fit = fitIterated(regionSpec(region, { ...opts, ambition: a }));
+    const a = Math.min(wanted, star.top);
+    const spec = regionSpec(region, { ...opts, ambition: a });
+    const fit = sparse
+        ? fitSparse({ ...spec, ...sparseLambdas({ ambition: a, flat: opts.flat, G: region.grid.length }) })
+        : fitIterated(spec);
     const ratios = fit.g.map((g, j) => Math.abs(g - region.center[j]) / region.half[j]);
     let argMax = 0;
     for (let j = 1; j < ratios.length; j++) {
@@ -234,7 +241,7 @@ function computeFit(st, region, star) {
         if (r > 1 + LEAVE_TOL)
             leaving++;
     }
-    return { ...fit, a, clamped: wanted > cap, argMax, leaving, leavingAtData: atData, opts };
+    return { ...fit, a, sparse, clamped: wanted > star.top, argMax, leaving, leavingAtData: atData, opts };
 }
 
 function renderFitReadouts(sel, region, star, fit, st) {
@@ -249,8 +256,8 @@ function renderFitReadouts(sel, region, star, fit, st) {
     else if (fit.leaving === 0) {
         v.append('strong').text('fit within the region to 1% of its half-width');
         v.append('span').text(`: largest |g − c|/h = ${d3.format('.4f')(fit.maxRatio)}, at x = `
-            + `${fmt(region.grid[fit.argMax])}; ${fmtInt(fit.outside)} grid points touch the edge from outside, as a `
-            + 'soft region allows.');
+            + `${fmt(region.grid[fit.argMax])}; ${fmtInt(fit.outside)} grid `
+            + `${fit.outside === 1 ? 'point touches' : 'points touch'} the edge from outside, as a soft region allows.`);
     }
     else {
         v.append('strong').text('fit ∉ region');
@@ -265,33 +272,72 @@ function renderFitReadouts(sel, region, star, fit, st) {
         sel.append('p').attr('class', 'warning').text(`The iteration stopped after ${fit.iterations} solves without `
             + 'settling which points are outside: the fit is not the exact minimizer.');
     }
+    if (fit.sparse && !fit.settled) {
+        sel.append('p').attr('class', 'warning').text(`The bends and steps were still changing after `
+            + `${fit.reweights} reweightings; the count shown is where the reweighting stopped.`);
+    }
     const rows = [];
     const add = (label, value, note) => rows.push({ label, value, note });
     const decades = `${Math.abs(st.ambition)} decade${Math.abs(st.ambition) === 1 ? '' : 's'} `
         + `${st.ambition > 0 ? 'above' : 'below'} a*`;
+    const top = fit.sparse ? 'the top of the range' : 'the largest ambition computed reliably';
     let ambitionNote;
     if (star.capped)
-        ambitionNote = 'a*: no ambition up to the largest computed reliably takes the fit outside the region';
+        ambitionNote = `a*: no ambition up to ${top} takes the fit outside the region`;
     else if (fit.clamped)
-        ambitionNote = `${decades} is beyond the largest ambition computed reliably; using that`;
+        ambitionNote = `${decades} is beyond ${top}; using that`;
     else if (st.ambition === 0)
         ambitionNote = 'a*, the largest ambition before the fit leaves the region';
     else
         ambitionNote = `${decades}; a* = ${fmtExp(star.ambition)} is the largest before the fit leaves the region`;
+    if (fit.sparse)
+        ambitionNote += '. Each bend or step costs a per check-grid point';
     add('ambition a', fmtExp(fit.a), ambitionNote);
+    add('penalty', fit.sparse ? 'number of bends or steps' : 'squared differences', fit.sparse
+        ? 'adaptive ridge (Frommlet & Nuel 2016), an approximation of the count: a local optimum, not proven fewest'
+        : 'straighter (or flatter) everywhere; no piece is exactly straight');
+    if (fit.sparse)
+        addPieceRows(add, fit.pieces, region);
     add('toward', st.flat === 0 ? 'straight' : st.flat === 1 ? 'flat' : `${Math.round(100 * (1 - st.flat))}% straight, `
         + `${Math.round(100 * st.flat)}% flat`, 'second (straight) and first (flat) differences of the coefficients');
-    add('effective dimension', fmt(fit.ed),
-        `trace of the hat matrix, the center as data (band: ${fmt(region.params.ed)})`);
+    add('effective dimension', fmt(fit.ed), `trace of the hat matrix, the center as data (band: `
+        + `${fmt(region.params.ed)})${fit.sparse ? '; about the polynomial\'s coefficients plus one per free difference'
+            : ''}`);
     add('κ', fmtExp(fit.opts.kappa), 'weight on the squared distance outside the region');
     add('ε', fmtExp(fit.opts.epsilon), 'weight on the squared distance from the center');
     add('basis', `${region.params.nseg} segments`, 'cubic, on the band\'s knots');
-    const shortened = fit.damped ? `; ${fit.damped} step${fit.damped === 1 ? '' : 's'} shortened by the line search`
-        : '';
-    add('solver', `${fit.iterations} solve${fit.iterations === 1 ? '' : 's'}`, `iterated weights: `
-        + `${fit.converged ? 'converged, the exact minimizer' : 'not converged'}${shortened}`);
+    if (fit.sparse) {
+        add('solver', `${fit.reweights} reweighting${fit.reweights === 1 ? '' : 's'}, ${fit.iterations} solves`,
+            `${fit.settled ? 'the joins settled' : 'the joins had not settled'}; ${fit.pruned} dropped by backward `
+            + `elimination; the final fit is ${fit.converged ? 'the exact minimizer for its joins' : 'not converged'}`);
+    }
+    else {
+        const shortened = fit.damped ? `; ${fit.damped} step${fit.damped === 1 ? '' : 's'} shortened by the line `
+            + 'search' : '';
+        add('solver', `${fit.iterations} solve${fit.iterations === 1 ? '' : 's'}`, `iterated weights: `
+            + `${fit.converged ? 'converged, the exact minimizer' : 'not converged'}${shortened}`);
+    }
     add('computed in', `${fmt(fit.ms)} ms`, `a*: ${star.fits} fits, ${fmt(star.ms)} ms`);
     appendRows(sel, rows);
+}
+
+/**
+ * Rows for a sparse fit's pieces: straight pieces and bends (second differences), flat pieces and steps (first).
+ * A join's x is its middle coefficient's peak, good to about half a segment.
+ */
+function addPieceRows(add, pieces, region) {
+    const step = (region.params.xr - region.params.xl) / region.params.nseg;
+    const digits = Math.max(0, -Math.floor(Math.log10(step / 2)));
+    const plural = (k, word) => `${fmtInt(k)} ${word}${k === 1 ? '' : 's'}`;
+    for (const { order, joins, pieces: k, atEnds } of pieces.orders) {
+        const [piece, join] = order === 2 ? ['straight piece', 'bend'] : ['flat piece', 'step'];
+        const ends = atEnds ? ` (${atEnds} at an end of the range)` : '';
+        const where = joins.length
+            ? `${join}s at x ≈ ${joins.map(j => j.x.toFixed(digits)).join(', ')} (± ${fmtShort(step / 2)}, half a `
+                + 'segment)'
+            : (order === 2 ? 'a straight line' : 'a constant');
+        add(order === 2 ? 'straight' : 'flat', `${plural(k, piece)}, ${plural(joins.length, join)}${ends}`, where);
+    }
 }
 
 function appendRows(sel, rows) {
@@ -334,6 +380,11 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
         }
         const rows = [];
         const add = (label, value, note) => rows.push({ label, value, note });
+        for (const rung of region.ladder) {
+            const name = rung.shape === 'line' ? 'a straight line' : 'a constant';
+            add(name, rung.fits ? 'fits inside' : 'does not fit', `the best (minimax) ${rung.shape} reaches `
+                + `|g − c|/h = ${fmt(rung.ratio)}, at x = ${fmt(region.grid[rung.argMax])}; exact on the check grid`);
+        }
         let lambdaNote;
         if (p.lambdaSource === 'given')
             lambdaNote = 'given';
@@ -466,10 +517,12 @@ async function startup() {
         let phase2 = null;
         if (region) {
             region.dataAt ??= dataPositions(region.grid, data.x);
+            region.ladder ??= ladder(region);
             const sk = starKey(state, data);
             let star = starCache.get(sk);
             if (!star) {
-                star = leavingAmbition(regionSpec(region, { ...phase2Options(state), ambition: 0 }));
+                star = leavingAmbition(regionSpec(region, { ...phase2Options(state), ambition: 0 }),
+                    { sparse: state.penalty === 'sparse' });
                 remember(starCache, sk, star);
             }
             phase2 = { star, fit: computeFit(state, region, star) };
@@ -481,7 +534,7 @@ async function startup() {
             nsegAuto: defaultSegments(data.m),
             lambdaChosen: region && region.params.lambdaSource !== 'given' ? region.params.lambdaChosen : null,
             ambition: phase2 ? { a: phase2.fit.a, star: phase2.star.ambition, capped: phase2.star.capped,
-                clamped: phase2.fit.clamped } : null,
+                clamped: phase2.fit.clamped, sparse: phase2.fit.sparse } : null,
         });
         draw();
         renderReadouts(readouts, data, result, state.showTruth ? truthCheck : null, phase2, state);
@@ -490,8 +543,12 @@ async function startup() {
             status.classed('error', true).text(`${data.label}: no band (${result.error})${note}`);
         }
         else {
+            const pieces = phase2.fit.sparse
+                ? phase2.fit.pieces.orders.map(o => `, ${fmtInt(o.pieces)} ${o.order === 2 ? 'straight' : 'flat'} `
+                    + `piece${o.pieces === 1 ? '' : 's'}`).join('')
+                : '';
             status.classed('error', Boolean(linkNote)).text(`${data.label}: n = ${fmtInt(data.n)}; ${region.label}; `
-                + `fit ED ${fmt(phase2.fit.ed)}.${note}`);
+                + `fit ED ${fmt(phase2.fit.ed)}${pieces}.${note}`);
         }
         document.body.dataset.ready = 'true';
     }

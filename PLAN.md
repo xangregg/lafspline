@@ -142,6 +142,30 @@ a spline that is linear there, so a sparse D₂β gives straight pieces joined b
 the earlier project's "smooth joins" built in. A sparse D₁β gives flat pieces with smooth transitions (few jumps or steps). It
 is an approximation, with no proof of optimality like the earlier project's MIP; report it as such.
 
+**Done (phase 3)** (`fit.js` `fitSparse`, `sparseLambdas`, `sparseMaxAmbition`; `leavingAmbition(spec, {sparse})`):
+- λ_d = a·θ_d·G with θ₁ = θ, θ₂ = 1 − θ, so S/G is the region functional plus a per free difference. A join's count
+  does not grow with the segments, so there is no nseg factor. δ = 1e-4·nseg^(1−d) of the median half-width.
+- Each reweighting is one `fitIterated`, warm-started from the previous fit's sides (5–9 times fewer Newton
+  solves). The support (which differences exceed δ) settles within about 10 reweightings, but the nonzero
+  differences drift only linearly after that (1e-5 h per step after 100 steps). So the reweighting stops once the
+  support is unchanged for 3 steps, and a final refit pins the zeros and frees the rest: the exact minimizer of
+  the region terms plus λ·(free differences) for that support.
+- The weights are capped as the quadratic penalty is (1e10 times the center pull per coefficient), so a
+  difference counts as zero below δ_eff = max(δ, 1/√cap). With δ alone, under κ's pull no difference fell below
+  δ at large a, all counted as free, and a* came back as the center.
+- Backward elimination: drop each join in turn and keep the drop when the L0 objective falls (up to 3 passes). On
+  a ramp the reweighting settled on four straight pieces where three fit.
+- The knob is the same as for the quadratic penalty: decades from a*, found the same way. Its top is
+  10·S_poly/(G·θ_d), where S_poly is the region term of the polynomial (every difference pinned): above S_poly/G one
+  free difference costs more than the polynomial's whole region term, so the polynomial is the L0 optimum, and "capped"
+  means a line (or constant) fits.
+- Measured: synthetic kinks at 0.3 and 0.7 come back as bends at 0.300 and 0.700 (ED 4 = 2 + 2), smooth steps as
+  three flat pieces. Examples at a*: Nile 2 straight pieces (bend ≈ 1913), Tukey coal 3, ozone 7; chess, fibers and
+  neuroimage a line. a* takes 4–40 ms on the examples, 250–360 ms on Blocks and Bumps (n = 1024) and 1.9 s on a
+  sine with n = 5000 (main thread).
+- The count is not monotone in a (non-convexity): a smaller ambition can give fewer joins. The readout calls it
+  an approximation, a local optimum.
+
 ### 1.5 Reporting (display honesty)
 
 - Every phase-2 fit is re-checked against the region on the check grid and at the data x: largest ratio
@@ -157,6 +181,13 @@ Ideally not needed: as the ambition grows, a D₂ penalty drives the fit toward 
 toward a constant, so if one of those fits inside the region, high ambition should find it. Keep it in view as a
 report: "a constant (or a straight line) fits inside the region" is one QP each, and tells the user when simpler
 is enough. Revisit after phase 2.
+
+**Done (phase 3)** (`src/core/ladder.js`): no QP is needed. The weighted minimax constant and line on the check
+grid (smallest r with |g − c| ≤ r·h everywhere) are found by bisection on r and a golden-section search on the
+slope (the best ratio for a given slope is convex in it). This is exact to about 1e-12 and agrees with a HiGHS LP to
+its tolerance, in 3–12 ms for G up to 5,000. It depends only on the region, not on κ, ε or the ambition, so it says
+when a simpler shape than any phase-2 fit is enough. On chess recall a constant fits (0.695 of the half-width), though
+the default fit, toward straight, is a line.
 
 ## 2. Open questions
 
@@ -224,8 +255,8 @@ is enough. Revisit after phase 2.
       fits in milliseconds and stays within 1% of h at a*. The earlier project's side is still to do.)
 
 ### Phase 3 — Sparse ambition and the ladder report
-- [ ] Adaptive-ridge option for D₁ and D₂; count the resulting flat and straight pieces and bends.
-- [ ] "A constant / a straight line fits inside the region" report (open question in §1.6).
+- [x] Adaptive-ridge option for D₁ and D₂; count the resulting flat and straight pieces and bends (§1.4).
+- [x] "A constant / a straight line fits inside the region" report (§1.6).
 
 ### Phase 4 — Aₙ as a region
 - [ ] Aₙ in penalty form (open question 6), with the earlier project's interval families and calibrated τ.

@@ -17,6 +17,7 @@ export const AMBITION_RANGE = [-8, 4]; // decades of a/a* (fit.js leavingAmbitio
 export const LOG_KAPPA_RANGE = [1, 8]; // log₁₀ κ
 export const LOG_EPSILON_RANGE = [-6, 0]; // log₁₀ ε
 export const UNDERSMOOTH_VALUES = [1, 1 / 4, 1 / 16, 1 / 64];
+export const PENALTIES = ['quadratic', 'sparse']; // ambition penalty: squared differences, or their count
 
 const MAX_COLUMN = 10000; // column index sanity cap
 const USER = 'user';
@@ -88,6 +89,7 @@ const FIELDS = {
         },
     },
     diff: int(1, 3),
+    penalty: enumOf(PENALTIES),
     ambition: num(...AMBITION_RANGE),
     flat: num(0, 1),
     logKappa: num(...LOG_KAPPA_RANGE),

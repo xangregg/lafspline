@@ -7,7 +7,7 @@ import { SIGNALS } from '../src/core/signals.js';
 const DEFAULTS = {
     source: 'ramp', n: SIGNALS.ramp.n, sigma: SIGNALS.ramp.sigma, seed: 1, showTruth: true, userText: '',
     xCol: null, yCol: null, alpha: 0.95, covariance: 'bayes', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
-    nseg: null, diff: 2, ambition: 0, flat: 0, logKappa: 4, logEpsilon: -2,
+    nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, logKappa: 4, logEpsilon: -2,
 };
 
 test('defaults give an empty hash and an empty hash gives the defaults', async () => {
@@ -20,12 +20,13 @@ test('defaults give an empty hash and an empty hash gives the defaults', async (
 test('changed settings round-trip and only they are written', async () => {
     const st = {
         ...DEFAULTS, source: 'sine', n: 300, sigma: SIGNALS.sine.sigma, seed: 42, alpha: 0.9, covariance: 'sandwich',
-        undersmooth: 1 / 4, nseg: 25, diff: 3, ambition: -2.5, flat: 0.3, logKappa: 6, logEpsilon: -3,
+        undersmooth: 1 / 4, nseg: 25, diff: 3, penalty: 'sparse', ambition: -2.5, flat: 0.3, logKappa: 6,
+        logEpsilon: -3,
     };
     const { hash } = await stateToHash(st, DEFAULTS);
     // σ is the sine's own default, so it is not written
     assert.equal(hash, '#source=sine&n=300&seed=42&alpha=0.9&covariance=sandwich&undersmooth=4&nseg=25&diff=3'
-        + '&ambition=-2.5&flat=0.3&logKappa=6&logEpsilon=-3');
+        + '&penalty=sparse&ambition=-2.5&flat=0.3&logKappa=6&logEpsilon=-3');
     const back = await hashToState(hash, DEFAULTS);
     assert.deepEqual(back.state, st);
     assert.deepEqual(back.rejected, []);
@@ -50,11 +51,11 @@ test('choosing a signal brings its own σ and n', async () => {
 test('invalid and unknown values are ignored and reported', async () => {
     const { state, rejected } = await hashToState(
         '#source=nope&n=1&alpha=2&covariance=hc3&undersmooth=3&nseg=2&diff=4&ambition=9&flat=-0.1&logKappa=0'
-        + '&logEpsilon=x&zzz=1&seed=7',
+        + '&logEpsilon=x&zzz=1&seed=7&penalty=l1',
         DEFAULTS);
     assert.deepEqual(state, { ...DEFAULTS, seed: 7 });
     assert.deepEqual(rejected.sort(), ['alpha', 'ambition', 'covariance', 'diff', 'flat', 'logEpsilon', 'logKappa', 'n',
-        'nseg', 'source', 'undersmooth', 'zzz']);
+        'nseg', 'penalty', 'source', 'undersmooth', 'zzz']);
 });
 
 test('pasted data round-trips compressed; simulated-only keys are not written for user data', async () => {

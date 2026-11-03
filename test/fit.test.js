@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import loadHighs from 'highs';
 import {
     fitIterated, buildQP, qpResult, phase2Objective, checkRegion, ambitionLambdas, regionSpec, leavingAmbition,
-    maxAmbition, LEAVE_TOL,
+    maxAmbition, LEAVE_TOL, fitSparse, sparseLambdas, sparseMaxAmbition,
 } from '../src/core/fit.js';
 import { bandRegion } from '../src/core/band.js';
 import { solveModel } from '../src/core/lp-solve.js';
@@ -240,5 +240,91 @@ test('effective dimension: K with no ambition, falling toward the penalty order 
         assert.equal(fit.outside, 0);
         assert.ok(fit.ed < previous && fit.ed > 2, `a = ${a}: ED ${fit.ed}`);
         previous = fit.ed;
+    }
+});
+
+/** A region given directly on a uniform grid over [0, 1]: center cf(x), constant half-width h. */
+function syntheticSpec(cf, h, { G = 400, nseg = 40, flat = 0 } = {}) {
+    const grid = Float64Array.from({ length: G }, (_, j) => j / (G - 1));
+    return {
+        grid, xl: 0, xr: 1, nseg, deg: 3, c: grid.map(cf), h: new Float64Array(G).fill(h),
+        kappa: 1e4, epsilon: 1e-2, lambda1: 0, lambda2: 0, flat,
+    };
+}
+
+const logistic = (x, at, width) => 1 / (1 + Math.exp(-(x - at) / width));
+
+test('sparse ambition finds the bends of a piecewise-linear center and the steps of a stepped one', () => {
+    // A join is placed at the coefficient in its middle, so its x is good to about half a segment (1/80 here).
+    // Regression: with the zero threshold at δ_d alone, differences the capped weights could not push below it
+    // under κ's pull all counted as free, and a* came back as one join of 41 differences (the center).
+    const X_TOL = 1 / 80;
+    const ED_TOL = 1e-3; // a pinned difference holds at the weight cap, not exactly
+    const cases = [
+        { cf: x => 3 * Math.abs(x - 0.3) - 5 * Math.max(0, x - 0.7), h: 0.05, flat: 0, order: 2, base: 2 },
+        { cf: x => logistic(x, 0.3, 0.02) - logistic(x, 0.7, 0.02), h: 0.1, flat: 1, order: 1, base: 1 },
+    ];
+    for (const { cf, h, flat, order, base } of cases) {
+        const spec = syntheticSpec(cf, h, { flat });
+        const star = leavingAmbition(spec, { sparse: true });
+        assert.equal(star.capped, false);
+        const { fit } = star;
+        assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `order ${order}: ${fit.maxRatio}`);
+        assert.equal(fit.settled, true);
+        const [pieces] = fit.pieces.orders;
+        assert.equal(pieces.order, order);
+        assert.equal(pieces.pieces, 3, `order ${order}`);
+        assert.deepEqual(pieces.joins.map(j => Math.abs(j.x - 0.3) < X_TOL || Math.abs(j.x - 0.7) < X_TOL),
+            [true, true], pieces.joins.map(j => j.x).join(', '));
+        // the fit's parameters: the polynomial's, plus one per free difference
+        const free = pieces.joins.reduce((a, j) => a + j.to - j.from + 1, 0);
+        assert.ok(Math.abs(fit.ed - (base + free)) < ED_TOL, `order ${order}: ED ${fit.ed}, ${free} free`);
+    }
+});
+
+test('sparse ambition: a line or a constant when one fits; capped then, and a* is the top', () => {
+    for (const [cf, flat, ed] of [[x => 2 * x - 1, 0, 2], [() => 3, 1, 1]]) {
+        const spec = syntheticSpec(cf, 0.1, { flat });
+        const star = leavingAmbition(spec, { sparse: true });
+        assert.equal(star.capped, true);
+        assert.equal(star.ambition, star.top);
+        assert.equal(star.fit.pieces.orders[0].pieces, 1);
+        assert.equal(star.fit.pieces.orders[0].joins.length, 0);
+        assert.ok(Math.abs(star.fit.ed - ed) < 1e-3, `ED ${star.fit.ed}`);
+    }
+});
+
+test('sparse ambition at the top of its range gives the polynomial, even far outside the region', () => {
+    // sparseMaxAmbition's claim: above it the polynomial is the L0 optimum.
+    const spec = syntheticSpec(x => Math.sin(6 * x), 0.05);
+    const top = fitSparse({ ...spec, ...sparseLambdas({ ambition: sparseMaxAmbition(spec), G: spec.grid.length }) });
+    assert.equal(top.pieces.orders[0].joins.length, 0);
+    assert.ok(top.maxRatio > 2, `max ratio ${top.maxRatio}`);
+});
+
+test('sparse ambition drops a join the region does not need (backward elimination)', () => {
+    // Regression: on this ramp the reweighting settles on four straight pieces at every ambition from 1e-2 to
+    // 10^1.5; three fit inside.
+    const region = makeRegion('ramp', 0.1);
+    const spec = { ...regionSpec(region, { ambition: 0 }), ...sparseLambdas({ ambition: 1, G: region.grid.length }) };
+    const unpruned = fitSparse(spec, { prunePasses: 0 });
+    const fit = fitSparse(spec);
+    assert.equal(unpruned.pieces.orders[0].pieces, 4);
+    assert.equal(fit.pieces.orders[0].pieces, 3);
+    assert.equal(fit.pruned, 1);
+    assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
+});
+
+test('sparse fits stay inside up to a* and leave just above it', () => {
+    for (const [signal, sigma, flat] of [['sine', 0.2, 0], ['blocks', 1, 1]]) {
+        const region = makeRegion(signal, sigma);
+        const spec = regionSpec(region, { ambition: 0, flat });
+        const star = leavingAmbition(spec, { sparse: true });
+        assert.equal(star.capped, false, signal);
+        const G = region.grid.length;
+        const at = fitSparse({ ...spec, ...sparseLambdas({ ambition: star.ambition, flat, G }) });
+        assert.ok(at.maxRatio <= 1 + LEAVE_TOL, `${signal}: ${at.maxRatio}`);
+        const above = fitSparse({ ...spec, ...sparseLambdas({ ambition: star.ambition * 10 ** 0.05, flat, G }) });
+        assert.ok(above.maxRatio > 1 + LEAVE_TOL, `${signal}: ${above.maxRatio}`);
     }
 });

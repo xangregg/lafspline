@@ -60,6 +60,7 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/urlstate.js`: the field table is lafspline's state (band settings, ambition, flat share, κ, ε); the
   constraint codec (`encodeConstraints`, `decodeConstraints`, which import the earlier project's `constraints.js`) and the
   old-link rule for τ are dropped; `MAX_N` is 5,000 and a signal starts at its own n up to that (the earlier project caps it
-  at 200 for the MIP); `nseg` may be `auto` (null). The hash and data packing code is unchanged.
+  at 200 for the MIP); `nseg` may be `auto` (null); `penalty` (phase 3: `quadratic` or `sparse`). The hash and
+  data packing code is unchanged.
   `test/urlstate.test.js` is the earlier project's with the lafspline fields.
 - `styles.css`: slider and Advanced-panel rules appended.

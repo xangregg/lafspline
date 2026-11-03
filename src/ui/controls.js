@@ -26,6 +26,10 @@ const COVARIANCE_OPTIONS = [
     ['sandwich', 'sandwich (covers E f̂)'],
 ];
 const DIFF_OPTIONS = [[1, '1: toward flat'], [2, '2: toward straight'], [3, '3: toward quadratic']];
+const PENALTY_OPTIONS = [
+    ['quadratic', 'squared differences'],
+    ['sparse', 'number of bends or steps'],
+];
 
 function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
@@ -64,8 +68,8 @@ function debounce(fn, ms) {
  * @param {function(object): void} onChange  receives a partial state patch
  * @param {Array<{id: string, label: string}>} [examples]  bundled data sets (data/index.json)
  * @returns {{sync: function(object, {columns: string[], nsegAuto: number|null, lambdaChosen: number|null,
- *     ambition: {a: number, star: number, capped: boolean, clamped: boolean}|null}): void}}  sync refreshes the parts
- *     that depend on state or data
+ *     ambition: {a: number, star: number, capped: boolean, clamped: boolean, sparse: boolean}|null}): void}}  sync
+ *     refreshes the parts that depend on state or data
  */
 export function createControls(container, state, onChange, examples = []) {
     const later = debounce(onChange, DEBOUNCE);
@@ -191,6 +195,7 @@ export function createControls(container, state, onChange, examples = []) {
     const ambitionEnds = el('div', { class: 'slider-ends' }, [el('span', { text: '← detail' }),
         el('span', { text: 'simplicity →' })]);
     const ambitionHint = el('span', { class: 'field-hint' });
+    const penalty = select('penalty', PENALTY_OPTIONS);
     const flat = slider('flat', 0, 1, FLAT_STEP, v => `${Math.round(100 * v)}%`);
     const logKappa = numberInput('logKappa', { min: LOG_KAPPA_RANGE[0], max: LOG_KAPPA_RANGE[1], step: 0.5 });
     const logEpsilon = numberInput('logEpsilon', { min: LOG_EPSILON_RANGE[0], max: LOG_EPSILON_RANGE[1], step: 0.5 });
@@ -208,6 +213,8 @@ export function createControls(container, state, onChange, examples = []) {
         el('h2', { text: 'Fit' }),
         el('p', { class: 'field-hint', text: 'A second P-spline, penalized severely for leaving the region, slightly '
             + 'for leaving its center, and for ambition: pressure toward straight (or flat).' }),
+        field('ambition penalty', penalty, 'squared: straighter (or flatter) everywhere. Number: straight (or flat) '
+            + 'pieces joined by short bends (or steps), by the adaptive ridge, an approximation'),
         field('ambition (decades from a*)', el('div', {}, [ambition.row, ambitionEnds]), ambitionHint),
         field('toward flat', flat.row, 'share of the ambition on first differences (flat) instead of second '
             + '(straight)'),
@@ -249,13 +256,16 @@ export function createControls(container, state, onChange, examples = []) {
             ambitionHint.textContent = '0 is a*, the largest ambition before the fit leaves the region';
         }
         else if (amb.capped) {
-            ambitionHint.textContent = `the fit never leaves the region: a* is the largest ambition computed `
-                + `reliably (${fmtExp(amb.star)}), so above 0 nothing changes`;
+            ambitionHint.textContent = amb.sparse
+                ? `the fit never leaves the region: a* is the top of the range (${fmtExp(amb.star)}), where the fit `
+                    + 'has no bends or steps, so above 0 nothing changes'
+                : `the fit never leaves the region: a* is the largest ambition computed reliably `
+                    + `(${fmtExp(amb.star)}), so above 0 nothing changes`;
         }
         else {
             ambitionHint.textContent = `0 is a* = ${fmtExp(amb.star)}, the largest ambition before the fit `
                 + `leaves the region; now a = ${fmtExp(amb.a)}`
-                + (amb.clamped ? ' (the largest computed reliably)' : '');
+                + (amb.clamped ? (amb.sparse ? ' (the top of the range)' : ' (the largest computed reliably)') : '');
         }
     }
 
