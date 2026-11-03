@@ -130,7 +130,9 @@ is enough. Revisit after phase 2.
 6. **Aₙ in penalty form:** each Aₙ constraint |Σ_I (y − g)| ≤ c√|I| is linear in β, so it becomes the same kind
    of penalty on the excess; σ̂, interval families and calibrated τ come from the earlier project.
 7. **Phase-1 λ:** GCV versus REML or Fellner–Schall; whether to offer it as the long-term/short-term knob instead
-   of (or as well as) the ambition multiplier.
+   of (or as well as) the ambition multiplier. GCV can be bimodal (a noisy line: a shallow local minimum at
+   ED ≈ 6 and the global one at the line, ED → 2), so the grid stays ahead of any local refinement; and it
+   undersmooths serially correlated data (Nile: ED ≈ 15).
 8. **Local σ:** a band from a constant-σ smoother is too wide where the noise is small and too narrow where it is
    large (the earlier project's dog-ages example). A variance model (P-spline on log squared residuals) would give a
    heteroscedastic band.
@@ -140,7 +142,7 @@ is enough. Revisit after phase 2.
 ### Phase 0 — Scaffold and risk checks
 - [x] Repository, LICENSE (0BSD), `.gitignore`, `.nojekyll`; copy the reusable modules from the earlier project (list below)
       and record them in VENDORED.md; their tests pass; scaffold page loads without console errors.
-- [ ] P-spline core (`src/core/pspline.js`): B-spline basis (equally spaced knots, any degree), difference
+- [x] P-spline core (`src/core/pspline.js`): B-spline basis (equally spaced knots, any degree), difference
       matrices, banded penalized solve, hat-matrix diagonal and ED, GCV/AIC over log λ, σ̂, Bayesian and sandwich
       covariance. Tests: partition of unity, polynomial reproduction (λ → ∞ gives the degree-(d − 1) least-squares
       polynomial), agreement with a dense solve, and fixtures from JOPS or mgcv (R) for a few data sets.
