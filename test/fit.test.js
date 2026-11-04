@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import loadHighs from 'highs';
 import {
     fitIterated, buildQP, qpResult, phase2Objective, checkRegion, ambitionLambdas, regionSpec, leavingAmbition,
-    maxAmbition, LEAVE_TOL, fitSparse, sparseLambdas, sparseMaxAmbition,
+    maxAmbition, LEAVE_TOL, fitSparse, sparseLambdas, sparseMaxAmbition, fitShaped, shapedLambdas,
 } from '../src/core/fit.js';
 import { bandRegion } from '../src/core/band.js';
 import { solveModel } from '../src/core/lp-solve.js';
@@ -328,4 +328,89 @@ test('sparse fits stay inside up to a* and leave just above it', () => {
         const above = fitSparse({ ...spec, ...sparseLambdas({ ambition: star.ambition * 10 ** 0.05, flat, G }) });
         assert.ok(above.maxRatio > 1 + LEAVE_TOL, `${signal}: ${above.maxRatio}`);
     }
+});
+
+const NEUTRAL_SHAPE = { toFlat: 1, extremum: 0, inflection: 0, length: 0 };
+
+test('rounded bends with neutral costs and no length are the sparse fit toward straight, exactly', () => {
+    const region = makeRegion('sine', 0.2);
+    const spec = regionSpec(region, { ambition: 0 });
+    const G = region.grid.length;
+    for (const ambition of [1, 100, 1e4]) {
+        const plain = fitSparse({ ...spec, ...sparseLambdas({ ambition, G }) });
+        const shaped = fitShaped({ ...spec, ...shapedLambdas({ ambition, G }), shape: NEUTRAL_SHAPE });
+        assert.deepEqual(shaped.beta, plain.beta, `ambition ${ambition}`);
+    }
+});
+
+test('a bend length spreads the sharp tops of a sine into wider, gentler bends', () => {
+    // Measured (n = 200, 40 segments): at a*, the plain count's 5 bends are one second difference each, the largest
+    // |D₂β| 2.48 median half-widths; with length 0.05, bends up to 2 differences wide and the largest 0.97.
+    const SOFTER = 0.6; // largest |D₂β| with length 0.05 ÷ the plain count's, at most
+    const region = makeRegion('sine', 0.2);
+    const spec = regionSpec(region, { ambition: 0 });
+    const s = Float64Array.from(region.half).sort()[region.half.length >> 1];
+    const sharpest = beta => {
+        let m = 0;
+        for (let i = 2; i < beta.length; i++)
+            m = Math.max(m, Math.abs(beta[i] - 2 * beta[i - 1] + beta[i - 2]) / s);
+        return m;
+    };
+    const plain = leavingAmbition(spec, { sparse: true }).fit;
+    const star = leavingAmbition({ ...spec, shape: { ...NEUTRAL_SHAPE, length: 0.05 } }, { shaped: true });
+    const fit = star.fit;
+    assert.equal(star.capped, false);
+    assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
+    assert.ok(Math.max(...plain.pieces.orders[0].joins.map(j => j.to - j.from + 1)) === 1);
+    assert.ok(Math.max(...fit.bends.map(b => b.to - b.from + 1)) >= 2);
+    assert.ok(sharpest(fit.beta) < SOFTER * sharpest(plain.beta), `${sharpest(fit.beta)} vs ${sharpest(plain.beta)}`);
+    assert.equal(fit.extremes, 4);
+});
+
+test('rounded bends report extremes and inflections; a bend that levels off is not an extremum', () => {
+    const cases = [
+        // slopes −3, 3, −2: a minimum and a maximum, and one change of bending direction between them
+        { cf: x => 3 * Math.abs(x - 0.3) - 5 * Math.max(0, x - 0.7), bends: 2, extremes: 2, inflections: 1 },
+        // rising, then level
+        { cf: x => Math.min(2 * x, 0.8), bends: 1, extremes: 0, inflections: 0 },
+    ];
+    for (const { cf, bends, extremes, inflections } of cases) {
+        const spec = { ...syntheticSpec(cf, 0.05), shape: NEUTRAL_SHAPE };
+        const { fit } = leavingAmbition(spec, { shaped: true });
+        assert.equal(fit.bends.length, bends);
+        assert.equal(fit.extremes, extremes);
+        assert.equal(fit.inflections, inflections);
+    }
+});
+
+test('rounded bends need a straight penalty and valid costs', () => {
+    const spec = syntheticSpec(x => x, 0.1);
+    assert.throws(() => fitShaped({ ...spec, lambda2: 0 }), RangeError);
+    for (const shape of [{ toFlat: 0 }, { toFlat: 1.5 }, { extremum: -1 }, { length: -0.1 }])
+        assert.throws(() => fitShaped({ ...spec, lambda2: 1, shape }), RangeError, JSON.stringify(shape));
+});
+
+test('an extremum cost makes a fit level off where the region allows, instead of peaking and falling back', () => {
+    // A rise to 0.8 at x = 0.4 that then sags by 0.18: with h = 0.1 a fit that rises and stays level fits inside
+    const spec = syntheticSpec(x => (x < 0.4 ? 2 * x : 0.8 - 0.3 * (x - 0.4)), 0.1);
+    const plain = leavingAmbition({ ...spec, shape: NEUTRAL_SHAPE }, { shaped: true }).fit;
+    const { fit } = leavingAmbition({ ...spec, shape: { ...NEUTRAL_SHAPE, extremum: 2 } }, { shaped: true });
+    assert.equal(plain.extremes, 1);
+    assert.equal(fit.extremes, 0);
+    assert.equal(fit.bends.length, 1);
+    assert.equal(fit.shapeAccepted, 1);
+    assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
+});
+
+test('extremum and inflection costs leave a forced shape alone, and remove what the region does not force', () => {
+    // A rising line with a wiggle of amplitude 0.06 in a region of half-width 0.05: the wiggles are forced, but
+    // the fit need not fall between them. Measured: extremes 6 → 0 with both costs, inflections 7 either way.
+    const spec = syntheticSpec(x => x + 0.06 * Math.sin(10 * Math.PI * x), 0.05);
+    const plain = leavingAmbition({ ...spec, shape: NEUTRAL_SHAPE }, { shaped: true }).fit;
+    const { fit } = leavingAmbition({ ...spec, shape: { ...NEUTRAL_SHAPE, extremum: 2, inflection: 1 } },
+        { shaped: true });
+    assert.ok(plain.extremes >= 4, `plain: ${plain.extremes}`);
+    assert.equal(fit.extremes, 0);
+    assert.ok(fit.inflections >= plain.inflections - 1, `${fit.inflections} vs ${plain.inflections}`);
+    assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
 });

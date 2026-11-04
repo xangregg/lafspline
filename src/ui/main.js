@@ -18,7 +18,8 @@ import { bandRegion, checkBand, checkGrid } from '../core/band.js';
 import { bootstrapBand } from '../core/bootstrap.js';
 import { defaultSegments } from '../core/pspline.js';
 import {
-    regionSpec, leavingAmbition, fitIterated, fitSparse, sparseLambdas, splineValues, LEAVE_TOL,
+    regionSpec, leavingAmbition, fitIterated, fitSparse, sparseLambdas, fitShaped, shapedLambdas, splineValues,
+    LEAVE_TOL, SHAPE_DEFAULTS,
 } from '../core/fit.js';
 import { ladder } from '../core/ladder.js';
 import { anRegion, calibrateTau, checkFit } from '../core/regions.js';
@@ -79,9 +80,13 @@ const state = {
     undersmooth: 1 / 16, // multiplier on the chosen λ
     nseg: null, // null = auto (pspline.defaultSegments)
     diff: 2, // penalty order
-    penalty: 'quadratic', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number)
+    penalty: 'quadratic', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number) |
+    // 'shaped' (the number of bends, rounded)
     ambition: 0, // decades from a*, the largest ambition before the fit leaves the region
     flat: 0, // share of the ambition toward flat (D₁) rather than straight (D₂)
+    bendLength: SHAPE_DEFAULTS.length, // rounded bends: fraction of the x range (fit.js fitShaped)
+    extremumCost: SHAPE_DEFAULTS.extremum, // rounded bends: extra cost of an extremum, in plain bends
+    inflectionCost: SHAPE_DEFAULTS.inflection, // and of an inflection
     logKappa: 4, // log₁₀ κ
     logEpsilon: -2, // log₁₀ ε
 };
@@ -289,11 +294,15 @@ function computeBand(st, data) {
 }
 
 function starKey(st, data) {
-    return [regionKey(st, data), st.penalty, st.flat, st.logKappa, st.logEpsilon].join('|');
+    const shape = st.penalty === 'shaped' ? [st.bendLength, st.extremumCost, st.inflectionCost] : [st.flat];
+    return [regionKey(st, data), st.penalty, ...shape, st.logKappa, st.logEpsilon].join('|');
 }
 
 function phase2Options(st) {
-    return { flat: st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon };
+    const shaped = st.penalty === 'shaped';
+    return { flat: shaped ? 0 : st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon,
+        shape: shaped ? { length: st.bendLength, extremum: st.extremumCost, inflection: st.inflectionCost }
+            : undefined };
 }
 
 /** The positions in the (sorted, distinct) check grid of the distinct data x; the grid contains every data x. */
@@ -316,13 +325,19 @@ function dataPositions(grid, x) {
  */
 function computeFit(st, region, star) {
     const opts = phase2Options(st);
-    const sparse = st.penalty === 'sparse';
+    const shaped = st.penalty === 'shaped';
+    const sparse = st.penalty === 'sparse' || shaped;
     const wanted = star.ambition * 10 ** st.ambition;
     const a = Math.min(wanted, star.top);
-    const spec = regionSpec(region, { ...opts, ambition: a });
-    const fit = sparse
-        ? fitSparse({ ...spec, ...sparseLambdas({ ambition: a, flat: opts.flat, G: region.center.length }) })
-        : fitIterated(spec);
+    const spec = { ...regionSpec(region, { ...opts, ambition: a }), shape: opts.shape };
+    const G = region.center.length;
+    let fit;
+    if (shaped)
+        fit = fitShaped({ ...spec, ...shapedLambdas({ ambition: a, G }) });
+    else if (sparse)
+        fit = fitSparse({ ...spec, ...sparseLambdas({ ambition: a, flat: opts.flat, G }) });
+    else
+        fit = fitIterated(spec);
     const ratios = fit.g.map((g, j) => Math.abs(g - region.center[j]) / region.half[j]);
     let argMax = 0;
     for (let j = 1; j < ratios.length; j++) {
@@ -342,7 +357,7 @@ function computeFit(st, region, star) {
         if (r > 1 + LEAVE_TOL)
             leaving++;
     }
-    return { ...fit, a, sparse, clamped: wanted > star.top, argMax, leaving, leavingAtData: atData, opts };
+    return { ...fit, a, sparse, shaped, clamped: wanted > star.top, argMax, leaving, leavingAtData: atData, opts };
 }
 
 /**
@@ -428,13 +443,24 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         ambitionNote += `. Each bend or step costs a per ${an ? 'interval' : 'check-grid point'}`;
     add('ambition a', fmtExp(fit.a), ambitionNote);
     const counted = st.flat === 0 ? 'bends' : st.flat === 1 ? 'steps' : 'bends and steps';
-    add('penalty', fit.sparse ? `count of ${counted}` : 'squared differences', fit.sparse
+    let penaltyName = 'squared differences';
+    if (fit.shaped)
+        penaltyName = 'count of bends, rounded';
+    else if (fit.sparse)
+        penaltyName = `count of ${counted}`;
+    add('penalty', penaltyName, fit.sparse
         ? 'adaptive ridge (Frommlet & Nuel 2016), an approximation of the count: a local optimum, not proven fewest'
+            + (fit.shaped ? '. Each bend also pays for the square of its second differences, which spreads a large '
+                + 'turn over a wider, rounder bend' : '')
         : 'straighter (or flatter) everywhere; no piece is exactly straight');
     if (fit.sparse)
         addPieceRows(add, fit.pieces, region);
-    add('toward', st.flat === 0 ? 'straight' : st.flat === 1 ? 'flat' : `${Math.round(100 * (1 - st.flat))}% straight, `
-        + `${Math.round(100 * st.flat)}% flat`, 'second (straight) and first (flat) differences of the coefficients');
+    if (fit.shaped)
+        addShapeRows(add, fit, st);
+    const flatShare = fit.shaped ? 0 : st.flat;
+    add('toward', flatShare === 0 ? 'straight' : flatShare === 1 ? 'flat' : `${Math.round(100 * (1 - flatShare))}% `
+        + `straight, ${Math.round(100 * flatShare)}% flat`, 'second (straight) and first (flat) differences of the '
+        + 'coefficients');
     add('ED', fmt(fit.ed), `effective dimension: the trace of the hat matrix, ${an ? 'the interval means of y'
         : `the center`} as data${an ? '' : ` (band: ${fmt(region.params.ed)})`}${fit.sparse
         ? '; about the polynomial\'s coefficients plus one per free difference' : ''}`);
@@ -458,6 +484,27 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     }
     add('computed in', `${fmt(fit.ms)} ms`, `this fit; finding a* took ${star.fits} fits, ${fmt(star.ms)} ms`);
     appendRows(sel, rows);
+}
+
+/** Rows for rounded bends: the bend length, the widest bend, and the extremes and inflections the bends make. */
+function addShapeRows(add, fit, st) {
+    const widest = fit.bends.reduce((a, b) => Math.max(a, b.to - b.from + 1), 0);
+    add('bend length', st.bendLength.toFixed(3), `a bend leaves its tangent by one median half-width over this `
+        + `fraction of the x range; the widest bend spans ${fmtInt(widest)} second `
+        + `difference${widest === 1 ? '' : 's'} of the coefficients`);
+    const each = cost => (cost > 0 ? `each costs ${fmt(cost)} plain bend${cost === 1 ? '' : 's'} more`
+        : 'no extra cost');
+    add('extremes', fmtInt(fit.extremes), `bends whose two sides slope in opposite directions (a straight piece that `
+        + `rises less than 5% of the median half-width counts as level); ${each(st.extremumCost)}`,
+    'Local maxima and minima of the fit, counted at its bends.');
+    add('inflections', fmtInt(fit.inflections), `changes of the sign of the second differences of the coefficients; `
+        + each(st.inflectionCost), 'Places where the fit changes from bending one way to the other.');
+    if (st.extremumCost > 0 || st.inflectionCost > 0) {
+        add('shape search', `${fmtInt(fit.shapeAccepted)} kept of ${fmtInt(fit.shapeTried)}`, 'stretches kept '
+            + 'monotone or bending one way, searched (the others were ruled out: the region forces their extremes '
+            + 'or inflections) and kept because the whole cost fell; greedy, a local optimum',
+        'How often removing an extremum or an inflection paid.');
+    }
 }
 
 /**
@@ -830,8 +877,9 @@ async function startup() {
             const sk = starKey(state, data);
             let star = starCache.get(sk);
             if (!star) {
-                star = leavingAmbition(regionSpec(region, { ...phase2Options(state), ambition: 0 }),
-                    { sparse: state.penalty === 'sparse' });
+                const opts = phase2Options(state);
+                star = leavingAmbition({ ...regionSpec(region, { ...opts, ambition: 0 }), shape: opts.shape },
+                    { sparse: state.penalty === 'sparse', shaped: state.penalty === 'shaped' });
                 remember(starCache, sk, star);
             }
             const fit = computeFit(state, region, star);

@@ -7,6 +7,7 @@ import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import {
     MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
+    BEND_LENGTH_RANGE, SHAPE_COST_RANGE,
 } from './urlstate.js';
 import { fmtExp } from './format.js';
 import { infoIcon, setInfo } from './info.js';
@@ -15,6 +16,7 @@ const DEBOUNCE = 300; // ms for typed input
 const USER = 'user';
 const AMBITION_STEP = 0.1; // decades
 const FLAT_STEP = 0.05;
+const BEND_LENGTH_STEP = 0.005; // fraction of the x range
 const LOG_LAMBDA_STEP = 0.1; // natural log units on the given-λ slider
 const UNDERSMOOTH_OPTIONS = [
     [1, 'none: λ as chosen'],
@@ -55,6 +57,7 @@ const BOX_OPTIONS = [
 const PENALTY_OPTIONS = [
     ['quadratic', 'squared differences'],
     ['sparse', 'number of bends or steps'],
+    ['shaped', 'number of bends, rounded'],
 ];
 
 const TIPS = {
@@ -110,7 +113,16 @@ const TIPS = {
         + 'center, and for ambition: pressure toward straight (or flat) lines.',
     penalty: 'Squared differences: the fit gets straighter (or flatter) everywhere, smoothly. Number of bends or '
         + 'steps: straight (or flat) pieces joined by short bends (or steps), by the adaptive ridge, which '
-        + 'approximates the count.',
+        + 'approximates the count. Rounded: straight pieces whose bends also pay for their sharpness, so a large '
+        + 'turn (the top of a wave) spreads into a rounded bend while a small one stays short.',
+    bendLength: 'How round the bends of the rounded penalty are: a bend curves so that it leaves its tangent line by '
+        + 'one half-width of the region (its median) over this fraction of the x range. 0 gives the sharp bends of '
+        + 'the plain count. A bend\'s width grows with how far it turns, and the region limits it.',
+    extremumCost: 'Extra cost of each local maximum or minimum, in plain bends. The fit tries stretches forced '
+        + 'monotone and keeps one when the whole cost falls, so a fit that can rise and level off inside the region '
+        + 'does so instead of peaking and falling back. 0: extremes cost nothing extra.',
+    inflectionCost: 'Extra cost of each change of bending direction (an inflection), in plain bends: discourages '
+        + 'wiggles even where the fit keeps rising. The fit tries stretches kept bending one way, as for extremes.',
     ambition: 'Decades from a*, the largest ambition before the fit leaves the region by more than 1% of its '
         + 'half-width. 0 is the simplest fit inside; below it the fit follows more detail, above it the fit '
         + 'leaves the region.',
@@ -343,6 +355,15 @@ export function createControls(container, state, onChange, examples = []) {
     const ambitionInfo = infoIcon(TIPS.ambition, 'ambition');
     const penalty = select('penalty', PENALTY_OPTIONS);
     const flat = slider('flat', 0, 1, FLAT_STEP, v => `${Math.round(100 * v)}%`);
+    const flatField = field('toward flat', flat.row, TIPS.flat);
+    const bendLength = slider('bendLength', BEND_LENGTH_RANGE[0], BEND_LENGTH_RANGE[1], BEND_LENGTH_STEP,
+        v => v.toFixed(3));
+    const bendLengthField = field('bend length', bendLength.row, TIPS.bendLength);
+    const costAttrs = { min: SHAPE_COST_RANGE[0], max: SHAPE_COST_RANGE[1], step: 0.5 };
+    const shapeCosts = el('div', { class: 'row' }, [
+        field('per extremum', numberInput('extremumCost', costAttrs), TIPS.extremumCost),
+        field('per inflection', numberInput('inflectionCost', costAttrs), TIPS.inflectionCost),
+    ]);
     const logKappa = numberInput('logKappa', { min: LOG_KAPPA_RANGE[0], max: LOG_KAPPA_RANGE[1], step: 0.5 });
     const logEpsilon = numberInput('logEpsilon', { min: LOG_EPSILON_RANGE[0], max: LOG_EPSILON_RANGE[1], step: 0.5 });
     const advanced = el('details', {}, [
@@ -365,7 +386,9 @@ export function createControls(container, state, onChange, examples = []) {
         heading('Fit', TIPS.fitHead),
         field('ambition penalty', penalty, TIPS.penalty),
         field('ambition (decades from a*)', el('div', {}, [ambition.row, ambitionEnds]), ambitionInfo),
-        field('toward flat', flat.row, TIPS.flat),
+        flatField,
+        bendLengthField,
+        shapeCosts,
         advanced,
     );
 
@@ -419,6 +442,10 @@ export function createControls(container, state, onChange, examples = []) {
                 + (amb.clamped ? (amb.sparse ? ' (the top of the range).' : ' (the largest computed reliably).') : '.');
         }
         setInfo(ambitionInfo, TIPS.ambition + now);
+        // rounded bends are toward straight only
+        flatField.hidden = st.penalty === 'shaped';
+        bendLengthField.hidden = st.penalty !== 'shaped';
+        shapeCosts.hidden = st.penalty !== 'shaped';
     }
 
     return { sync };

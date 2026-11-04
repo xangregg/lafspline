@@ -209,6 +209,43 @@ is an approximation, with no proof of optimality like the earlier project's MIP;
 - The count is not monotone in a (non-convexity): a smaller ambition can give fewer joins. The readout calls it
   an approximation, a local optimum.
 
+### 1.4b Rounded bends (a third ambition penalty)
+
+The plain count charges λ per free second difference, so a turn costs least in one difference: at a*, the four tops
+of sin(4πt) (n = 500) were one difference each, a triangle wave. `fitShaped` (fit.js) is the same search (the
+shared `adaptiveRidge`; `fitSparse` is bit-for-bit unchanged on 30 cases) with each bend, a run of free second
+differences, also paying q·Σt². A turn T over m differences then costs about λ(m + qT²/m), least at a constant
+curvature √(1/q): a bend widens with its turn, and a small turn stays in one difference, costing about λ as before.
+The knob is a length L (fraction of the x range): q = (L·nseg)⁴/4 makes a bend leave its tangent by one median
+half-width over L, whatever the segments. Measured at a*: L = 0.05 rounds the sine's tops (largest |D₂β| 2.48 →
+0.97 median half-widths at n = 200), turns Tukey coal's sharp hump into one gentle bend and removes Nile's slight
+extremum; ozone, whose region forces its shape, barely changes; L ≤ 0.02 changes nothing on these.
+
+**Costs by a bend's shape**, judged by the straight pieces it joins (so a symmetric peak costs the same read from
+either end): extra for an extremum (sides sloping in opposite directions; a straight piece that rises less than 5%
+of the median half-width over its length is level, so a slight tilt after leveling off is no extremum) and per
+inflection (change of bending direction, the wiggle penalty), in units of a plain bend. In the reweighting alone
+these only moved a*, never the fit (sine, ozone, Tukey coal, Nile, dog ages, at a* and two decades below): the
+refit sets the signs of the free differences from the region, so nothing trades a sign-dependent cost.
+
+*Done:* a shape search on top. Each candidate removes two sign changes of the slopes (a maximum and a minimum) or
+of the free second differences (two inflections), or one at an end, as sign constraints on the coefficients'
+differences over a stretch (asymmetric penalties with a growing active set, after Bollaerts, Eilers & Van Mechelen
+2006); the whole search reruns under them, and the first rerun that lowers the objective is kept (greedy, up to 6).
+A candidate is screened by its constrained fit with no ambition: if that leaves the region, or its region terms
+already reach the objective, the rerun cannot win. The screen does not depend on the ambition, so the a* search
+shares it. Defaults: extremum 2, inflection 1.
+
+- Synthetic: a rise that sags by 0.18 in a region of half-width 0.1 becomes a rise that levels off (1 bend, no
+  extremum); a rising line with wiggles of 0.06 at h = 0.05 keeps its forced wiggles (7 inflections) but no
+  longer falls between them (extremes 6 → 0).
+- Examples: no change at a* on sine, ozone, Nile, dog ages; Tukey coal loses an inflection only with bend length 0
+  (0.05 already removes it). At these regions (λ × 1/16) their extremes and inflections are forced.
+- Cost of the a* search with the default costs: 40–200 ms on the examples and the sine (2–5 times without), 2.7 s
+  on Blocks (n = 1024). Without the screen's early stop and bound it was 0.5 s on Nile and 5.6 s on Blocks.
+- The leveling-off discount (cheaper per difference when one side of a bend is level) acts only in the
+  reweighting, where it never changed a fit; it stays in fit.js, neutral, and is not in the UI.
+
 ### 1.5 Reporting (display honesty)
 
 - Every phase-2 fit is re-checked against the region on the check grid and at the data x: largest ratio

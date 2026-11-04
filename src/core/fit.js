@@ -53,9 +53,22 @@ const BISECT_TOL = 0.02; // decades: a* search stops when the bracket is this na
 const MAX_REWEIGHTS = 100; // adaptive ridge: cap on reweightings
 const MAX_PRUNE_PASSES = 3; // adaptive ridge: backward-elimination passes over the joins
 const SUPPORT_STABLE = 3; // adaptive ridge stops after this many reweightings without a change of support
+const MAX_SIGN_REFITS = 20; // shape search: refits of one support while differences still break their sign
+const MAX_SHAPE_PASSES = 6; // shape search: accepted removals of extremes or inflections, at most
+const SHAPE_GAIN = 1e-9; // shape search: a candidate must lower the objective by this much, relative
 const SPARSE_TOP_FACTOR = 10; // sparse ambition: top of the range, relative to where the polynomial is optimal
 const SPARSE_MIN_TOP = 1e-12; // sparse ambition: top when the polynomial matches the center (S_poly = 0)
 const SPARSE_DELTA = 1e-4; // adaptive ridge: a step smaller than this (units of median h) counts as zero
+const LEVEL_RISE = 0.05; // shaped bends: a straight piece rising less than this (median h) over its length is level
+// Shaped bends (fitShaped): defaults of the costs, in units of one plain bend's cost λ per free second difference.
+// toFlat is neutral: it acts only through the reweighting, where it never changed a fit (PLAN §1.4b). Extremes and
+// inflections act through the shape search.
+export const SHAPE_DEFAULTS = Object.freeze({
+    toFlat: 1, // per difference of a bend whose flatter side has zero slope (1 when both sides are equally steep)
+    extremum: 2, // added once per bend whose sides slope in opposite directions (a local maximum or minimum)
+    inflection: 1, // added once per change of the bending direction (sign of the second differences)
+    length: 0.05, // fraction of the x range over which a bend leaves its tangent by one median half-width
+});
 
 /**
  * @typedef {object} Rows  linear functionals of the coefficients with contiguous support: row k is
@@ -655,26 +668,35 @@ export function maxAmbition(spec) {
  * the cap leaves, a* is the cap: the region holds the limiting polynomial (a line, for D₂).
  *
  * @param {Phase2Spec & {flat?: number}} spec  its λ₁, λ₂ and ambition are ignored
- * @param {{sparse?: boolean}} [opts]  sparse: the adaptive-ridge ambition (fitSparse, sparseLambdas,
- *     sparseMaxAmbition) instead of the quadratic one
+ * @param {{sparse?: boolean, shaped?: boolean}} [opts]  sparse: the adaptive-ridge ambition (fitSparse,
+ *     sparseLambdas, sparseMaxAmbition) instead of the quadratic one; shaped: shaped bends (fitShaped,
+ *     shapedLambdas, shapedMaxAmbition; spec.shape holds the costs)
  * @returns {{ambition: number, capped: boolean, unreachable: boolean, top: number, fit: object, fits: number,
  *     ms: number}}  fit: at a* (from fitIterated or fitSparse); unreachable: even the smallest ambition scanned
  *     leaves the region, so no a* exists and ambition and fit are that smallest one's; top: the cap (maxAmbition
- *     or sparseMaxAmbition); fits: phase-2 fits computed
+ *     or sparseMaxAmbition or shapedMaxAmbition); fits: phase-2 fits computed
  */
 export function leavingAmbition(spec, opts = {}) {
     const start = performance.now();
     const G = spec.c.length;
     const flat = spec.flat ?? 0;
     const sparse = opts.sparse ?? false;
+    const shaped = opts.shaped ?? false;
+    const screenCache = new Map();
     const at = logA => {
         const ambition = 10 ** logA;
+        if (shaped)
+            return fitShaped({ ...spec, ...shapedLambdas({ ambition, G }) }, { screenCache });
         return sparse
             ? fitSparse({ ...spec, ...sparseLambdas({ ambition, flat, G }) })
             : fitIterated({ ...spec, ...ambitionLambdas({ ambition, flat, G, nseg: spec.nseg }) });
     };
     const leaves = fit => fit.maxRatio > 1 + LEAVE_TOL;
-    const top = Math.log10(sparse ? sparseMaxAmbition(spec) : maxAmbition(spec));
+    let top = Math.log10(maxAmbition(spec));
+    if (shaped)
+        top = Math.log10(shapedMaxAmbition(spec));
+    else if (sparse)
+        top = Math.log10(sparseMaxAmbition(spec));
     let fits = 0;
     let lo = null;
     let loFit = null;
@@ -776,12 +798,38 @@ function differences(v, d) {
  *     dropped by backward elimination
  */
 export function fitSparse(spec, opts = {}) {
+    const orders = [[1, spec.lambda1], [2, spec.lambda2]].filter(([, lambda]) => lambda > 0);
+    return adaptiveRidge(spec, opts, orders, countModel(orders));
+}
+
+/** fitSparse's costs: λ_d per free d-th difference, whatever its size or place. */
+function countModel(orders) {
+    return {
+        weights: (i, t, delta, cap) => t.map(v => Math.min(1 / (v * v + delta * delta), cap)),
+        pins: (i, m, cap) => Float64Array.from(m, v => (v ? 0 : cap)),
+        cost: (scaled, support) => orders.reduce((sum, [, lambda], i) => sum + lambda
+            * support[i].reduce((a, v) => a + v, 0), 0),
+    };
+}
+
+/**
+ * The adaptive-ridge search shared by fitSparse and fitShaped: reweight until the support settles, refit with the
+ * support pinned, then backward elimination of joins. The model gives the reweighting's weights for order i from
+ * its differences t of β' (weights(i, t, delta, cap)), the pinned refit's weights for a support mask
+ * (pins(i, mask, cap)), and the ambition part of the objective for a support at the refit's β' (cost).
+ *
+ * opts.signs (fitShaped's shape search) asks first or second differences to keep a sign: signs[d][r] = ±1 for a
+ * difference that must not have the opposite sign, 0 where free. As in Bollaerts, Eilers & Van Mechelen (2006),
+ * a difference found on the wrong side gets the pinning weight, and stays in that active set; the reweighting adds
+ * to the set as it goes, and the refit repeats until no new difference violates its sign. Without signs nothing
+ * changes. The result's objective is the L0 objective of the final refit.
+ */
+function adaptiveRidge(spec, opts, orders, model) {
     const start = performance.now();
     const maxReweights = opts.maxReweights ?? MAX_REWEIGHTS;
     const prunePasses = opts.prunePasses ?? MAX_PRUNE_PASSES;
     const { s, nb } = prepare(spec);
     const G = spec.c.length;
-    const orders = [[1, spec.lambda1], [2, spec.lambda2]].filter(([, lambda]) => lambda > 0);
     const caps = orders.map(([, lambda]) => MAX_PENALTY_RATIO * spec.epsilon * G / (nb * lambda));
     // The cap on w makes the reweighting behave as if δ were at least 1/√cap, so that is also where a difference
     // counts as zero; with δ_d alone, differences the capped weights could not push below δ_d counted as free.
@@ -789,6 +837,24 @@ export function fitSparse(spec, opts = {}) {
     const base = { ...spec, w1: undefined, w2: undefined };
     const supportOf = beta => orders.map(([d], i) => differences(beta.map(v => v / s), d)
         .map(t => (Math.abs(t) > deltas[i] ? 1 : 0)));
+    const signs = opts.signs ?? null;
+    const signOrders = signs ? [1, 2].filter(d => signs[d]) : [];
+    // the sign constraints' pinning weight, relative to the (first) order's λ, which also scales a D₁ constraint
+    const signCap = caps[0];
+    const newActive = () => Object.fromEntries(signOrders.map(d => [d, new Uint8Array(signs[d].length)]));
+    const violate = (scaled, active) => signViolations(scaled, signs, active, spec.nseg);
+    /** The active set's pinning weights, added to weights for the orders' differences. */
+    const constrain = (weights, active) => {
+        const out = { ...weights };
+        if (active[1]) {
+            out.lambda1 = orders[0][1];
+            out.w1 = Float64Array.from(active[1], v => (v ? signCap : 0));
+        }
+        if (active[2])
+            out.w2 = weights.w2.map((w, r) => (active[2][r] ? Math.max(w, signCap) : w));
+        return out;
+    };
+    let active = newActive();
     let fit = fitIterated({ ...base, lambda1: 0, lambda2: 0 });
     let iterations = fit.iterations;
     let support = supportOf(fit.beta);
@@ -799,30 +865,33 @@ export function fitSparse(spec, opts = {}) {
         const weights = {};
         const scaled = fit.beta.map(v => v / s);
         orders.forEach(([d], i) => {
-            const delta = deltas[i];
-            weights[`w${d}`] = differences(scaled, d).map(t => Math.min(1 / (t * t + delta * delta), caps[i]));
+            weights[`w${d}`] = model.weights(i, differences(scaled, d), deltas[i], caps[i], scaled, reweights);
         });
-        fit = fitIterated({ ...base, ...weights }, { side: fit.side });
+        const grew = signs ? violate(scaled, active) : false;
+        fit = fitIterated({ ...base, ...(signs ? constrain(weights, active) : weights) }, { side: fit.side });
         iterations += fit.iterations;
         const next = supportOf(fit.beta);
-        stable = next.every((m, i) => m.every((v, r) => v === support[i][r])) ? stable + 1 : 0;
+        const same = next.every((m, i) => m.every((v, r) => v === support[i][r])) && !grew;
+        stable = same ? stable + 1 : 0;
         support = next;
     }
     const settled = stable >= SUPPORT_STABLE || orders.length === 0;
     let pruned = 0;
+    let objective = NaN;
     if (orders.length > 0) {
-        // The pinned refit for a support, and its L0 objective: region terms plus λ_d per free difference.
+        // The pinned refit for a support, and its L0 objective: region terms plus the model's ambition cost.
         const refit = (m, side) => {
             const pins = {};
             orders.forEach(([d], i) => {
-                pins[`w${d}`] = Float64Array.from(m[i], v => (v ? 0 : caps[i]));
+                pins[`w${d}`] = model.pins(i, m[i], caps[i]);
             });
-            const f = fitIterated({ ...base, ...pins }, { side });
+            let f = fitIterated({ ...base, ...(signs ? constrain(pins, active) : pins) }, { side });
             iterations += f.iterations;
-            let l0 = regionObjective(spec, s, f.g);
-            orders.forEach(([, lambda], i) => {
-                l0 += lambda * m[i].reduce((a, v) => a + v, 0);
-            });
+            for (let k = 0; signs && k < MAX_SIGN_REFITS && violate(f.beta.map(v => v / s), active); k++) {
+                f = fitIterated({ ...base, ...constrain(pins, active) }, { side: f.side });
+                iterations += f.iterations;
+            }
+            const l0 = regionObjective(spec, s, f.g) + model.cost(f.beta.map(v => v / s), m);
             return { fit: f, l0 };
         };
         let best = refit(support, fit.side);
@@ -848,12 +917,348 @@ export function fitSparse(spec, opts = {}) {
                 break;
         }
         fit = best.fit;
+        objective = best.l0;
     }
     return {
-        ...fit, iterations, reweights, settled, pruned,
+        ...fit, iterations, reweights, settled, pruned, support, l0: objective,
         pieces: sparsePieces(support, orders.map(([d]) => d), spec),
         ms: performance.now() - start,
     };
+}
+
+/**
+ * Add the differences of β' on the wrong side of their required sign to the active set (signs and active by order
+ * d = 1, 2); true when any was added. A difference within δ_d of zero is on neither side.
+ */
+function signViolations(scaled, signs, active, nseg) {
+    let added = false;
+    for (const d of [1, 2]) {
+        if (!signs[d])
+            continue;
+        const t = differences(scaled, d);
+        const tol = sparseDelta(d, nseg);
+        for (let r = 0; r < t.length; r++) {
+            if (signs[d][r] !== 0 && !active[d][r] && t[r] * signs[d][r] < -tol) {
+                active[d][r] = 1;
+                added = true;
+            }
+        }
+    }
+    return added;
+}
+
+/**
+ * Shaped bends: the sparse ambition toward straight (fitSparse with D₂ only), with each bend's cost depending on its
+ * shape. The plain count charges λ per free second difference, so the cheapest way to turn is in one difference:
+ * the top of a sine becomes a sharp corner. Here a bend, a run of free second differences t (of β', units of the
+ * median half-width), costs λ times
+ *
+ *     m·(toFlat + (1 − toFlat)·ρ)  +  extremum·[slopes on its two sides of opposite sign]  +  inflection·(changes
+ *     of the sign of t at its differences, counted from the previous bend)  +  q·Σ t²
+ *
+ * with m its differences and ρ = min/max of |slope| on its two sides: a bend that levels off (or starts from
+ * level) costs toFlat per difference, one between equally steep pieces 1. The bend is judged as a whole, by the
+ * pieces it joins, so a symmetric peak costs the same read from either end. The quadratic term spreads a turn:
+ * a turn T over m differences costs about λ(c·m + q·T²/m), least at a constant curvature √(c/q), so a bend's
+ * width grows with its turn while a small turn stays in one difference. q = (L·nseg)⁴/4 puts that curvature
+ * where, without extremum or toFlat costs (c = 1), the bend leaves its tangent by one median half-width over a
+ * length L of the x range (shape.length), whatever the segments. An extremum on a level piece (rise, flat, fall)
+ * counts at the bend that completes it.
+ *
+ * The search is fitSparse's (reweighting, pinned refit, backward elimination), with weights
+ * w_r = c_r/(t_r² + δ²) + q, where c_r spreads its bend's cost over the bend's differences (shapes from the
+ * previous fit; the first reweighting uses c = 1), and the pinned refit leaves free differences under q.
+ * Backward elimination compares supports by the exact cost above at their refits. With toFlat = 1 and the other
+ * costs 0 this is fitSparse with D₂ (test).
+ *
+ * The refit sets the signs of the free differences from the region alone, so the search above cannot trade an
+ * extremum or inflection away. The shape search can: it reruns the search under sign constraints on the
+ * differences (shapeCandidates: a stretch kept monotone, or bending one way) and keeps a rerun that lowers the
+ * objective. A candidate is screened first by its fit with no ambition: if that leaves the region, or its region
+ * terms are already no lower than the objective, the rerun cannot win and is skipped. Greedy, first improvement:
+ * a local optimum, like the rest.
+ *
+ * @param {Phase2Spec & {shape?: {toFlat?: number, extremum?: number, inflection?: number, length?: number}}} spec
+ *     lambda2 > 0: cost of one free second difference of a plain bend (shapedLambdas); lambda1, w1, w2 ignored;
+ *     shape: the costs (SHAPE_DEFAULTS), toFlat in (0, 1], extremum and inflection ≥ 0, length ≥ 0
+ * @param {{maxReweights?: number, prunePasses?: number, shapePasses?: number, screenCache?: Map}} [opts]
+ *     shapePasses: accepted removals at most (MAX_SHAPE_PASSES; 0 skips the shape search); screenCache: the
+ *     screen's results by candidate, to share between fits of the same spec at other ambitions
+ * @returns {ReturnType<typeof fitSparse> & {bends: Bend[], extremes: number, inflections: number,
+ *     shapeTried: number, shapeAccepted: number}}  shapeTried: candidates searched (past the screen); shapeAccepted:
+ *     kept
+ */
+export function fitShaped(spec, opts = {}) {
+    if (!(spec.lambda2 > 0))
+        throw new RangeError('fitShaped: lambda2 > 0 required');
+    const start = performance.now();
+    const shape = shapeOptions(spec.shape);
+    const q = (shape.length * spec.nseg) ** 4 / 4;
+    const lambda = spec.lambda2;
+    const model = {
+        weights: (i, t, delta, cap, scaled, reweights) => {
+            const c = reweights === 1 ? null : differenceCosts(bendShapes(scaled, t, delta, shape), t.length);
+            return t.map((v, r) => Math.min((c ? c[r] : 1) / (v * v + delta * delta) + q, cap));
+        },
+        pins: (i, m, cap) => Float64Array.from(m, v => (v ? q : cap)),
+        cost: (scaled, support) => {
+            const t = differences(scaled, 2);
+            let sum = 0;
+            for (const b of bendShapes(scaled, t, null, shape, support[0]))
+                sum += b.cost;
+            for (let r = 0; r < t.length; r++) {
+                if (support[0][r])
+                    sum += q * t[r] * t[r];
+            }
+            return lambda * sum;
+        },
+    };
+    const { s, nb } = prepare(spec);
+    const search = signs => adaptiveRidge({ ...spec, lambda1: 0 }, { ...opts, signs }, [[2, lambda]], model);
+    let fit = search(null);
+    let signs = null;
+    let tried = 0;
+    let accepted = 0;
+    if (shape.extremum > 0 || shape.inflection > 0) {
+        // Shape search: try each way of removing extremes (making a stretch monotone) or inflections (keeping the
+        // bending direction over a stretch) as sign constraints on the coefficients' differences, rerun the search
+        // under them, and keep the first that lowers the objective; repeat. A candidate whose fit with no ambition
+        // already leaves the region is skipped: the region forces that extremum or inflection.
+        // The screen does not depend on the ambition (λ only scales its pinning weights), so a* reuses it. Its fit
+        // has about the least region terms the constraints allow, a lower bound on a candidate's objective: one
+        // whose bound is no better than the current objective is skipped without a search.
+        const cache = opts.screenCache ?? new Map();
+        const screen = cand => {
+            if (!cache.has(cand.key)) {
+                const f = constrainedCenterFit(spec, cand, lambda, s, nb);
+                cache.set(cand.key, f.maxRatio <= 1 + LEAVE_TOL ? regionObjective(spec, s, f.g) : Infinity);
+            }
+            return cache.get(cand.key) < fit.l0;
+        };
+        for (let pass = 0; pass < (opts.shapePasses ?? MAX_SHAPE_PASSES); pass++) {
+            const scaledNow = fit.beta.map(v => v / s);
+            let improved = false;
+            for (const cand of shapeCandidates(scaledNow, fit.support[0], shape, signs)) {
+                if (!screen(cand))
+                    continue;
+                tried++;
+                const f = search(cand);
+                if (f.l0 < fit.l0 - SHAPE_GAIN * Math.abs(fit.l0)) {
+                    fit = f;
+                    signs = cand;
+                    accepted++;
+                    improved = true;
+                    break;
+                }
+            }
+            if (!improved)
+                break;
+        }
+    }
+    const scaled = fit.beta.map(v => v / s);
+    const bends = bendShapes(scaled, differences(scaled, 2), null, shape, fit.support[0]);
+    const step = (spec.xr - spec.xl) / spec.nseg;
+    const deg = spec.deg ?? 3;
+    for (const b of bends)
+        b.x = spec.xl + ((b.from + b.to + 2) / 2 - (deg - 1) / 2) * step;
+    return {
+        ...fit, bends, shapeTried: tried, shapeAccepted: accepted, ms: performance.now() - start,
+        extremes: bends.reduce((a, b) => a + (b.extremum ? 1 : 0), 0),
+        inflections: bends.reduce((a, b) => a + b.inflections, 0),
+    };
+}
+
+/**
+ * The fit with no ambition (a floor on the second differences only) under sign constraints: whether the region
+ * admits them at all. Iterates the active set as adaptiveRidge does, and stops once the fit is outside the region
+ * by more than LEAVE_TOL (more constraints keep it out), so a rejected candidate's fit is not converged.
+ */
+function constrainedCenterFit(spec, signs, lambda, s, nb) {
+    const cap = MAX_PENALTY_RATIO * spec.epsilon * spec.c.length / (nb * lambda);
+    const active = { 1: signs[1] ? new Uint8Array(signs[1].length) : null,
+        2: signs[2] ? new Uint8Array(signs[2].length) : null };
+    const weights = () => ({
+        lambda1: active[1] ? lambda : 0, w1: active[1] ? Float64Array.from(active[1], v => (v ? cap : 0)) : undefined,
+        lambda2: active[2] ? lambda : 0, w2: active[2] ? Float64Array.from(active[2], v => (v ? cap : 0)) : undefined,
+    });
+    let fit = fitIterated({ ...spec, ...weights() });
+    for (let k = 0; k < MAX_SIGN_REFITS && signViolations(fit.beta.map(v => v / s), signs, active, spec.nseg); k++) {
+        fit = fitIterated({ ...spec, ...weights() }, { side: fit.side });
+        // the active set only grows, so a fit already outside stays outside: stop there
+        if (fit.maxRatio > 1 + LEAVE_TOL)
+            break;
+    }
+    return fit;
+}
+
+/**
+ * Sign constraints that would remove extremes or inflections of β' (support: its free second differences), each
+ * added to the constraints already in force (current). The signs of the first differences (slopes; a level
+ * straight piece takes its neighbors' sign) or of the free second differences (bending direction) form segments
+ * of one sign; merging three neighboring segments into the first one's sign removes two sign changes (a maximum
+ * and a minimum, or two inflections), and merging the first two or the last two removes one at an end.
+ *
+ * @returns {{1?: Int8Array, 2?: Int8Array}[]}
+ */
+function shapeCandidates(scaled, support, shape, current) {
+    const u = differences(scaled, 1);
+    const t = differences(scaled, 2);
+    const candidates = [];
+    const add = (d, segs) => {
+        const K = segs.length;
+        const merges = [];
+        if (K >= 2) {
+            // the first segment joins the second, or the last the one before (both ways when there are two)
+            merges.push([0, 1, segs[1].sign], [K - 2, K - 1, segs[K - 2].sign]);
+        }
+        for (let k = 1; k + 1 < K; k++)
+            merges.push([k - 1, k + 1, segs[k - 1].sign]);
+        for (const [a, b, sign] of merges) {
+            const cand = { 1: current?.[1] ? Int8Array.from(current[1]) : null,
+                2: current?.[2] ? Int8Array.from(current[2]) : null };
+            cand[d] ??= new Int8Array(d === 1 ? u.length : t.length);
+            cand[d].fill(sign, segs[a].from, segs[b].to + 1);
+            cand.key = `${current?.key ?? ''}|${d}:${segs[a].from}-${segs[b].to}:${sign}`;
+            candidates.push(cand);
+        }
+    };
+    if (shape.extremum > 0) {
+        const runs = supportRuns(support);
+        const sign = new Int8Array(u.length);
+        for (let r = 0; r < u.length; r++)
+            sign[r] = Math.abs(u[r]) > SPARSE_DELTA ? Math.sign(u[r]) : 0;
+        // straight pieces that rise less than LEVEL_RISE over their length are level (as bendShapes)
+        let from = 0;
+        for (let k = 0; k <= runs.length; k++) {
+            const to = k < runs.length ? runs[k].from : u.length - 1;
+            if (Math.abs(u[to]) * Math.max(to - from + 1, 1) < LEVEL_RISE)
+                sign.fill(0, from, to + 1);
+            if (k < runs.length)
+                from = runs[k].to + 1;
+        }
+        add(1, signSegments(sign));
+    }
+    if (shape.inflection > 0)
+        add(2, signSegments(Int8Array.from(t, (v, r) => (support[r] ? Math.sign(v) : 0))));
+    return candidates;
+}
+
+/** Maximal runs of one sign in a sequence of −1, 0, +1, zeros joining the run before them (the first, at the start). */
+function signSegments(sign) {
+    const segs = [];
+    for (let r = 0; r < sign.length; r++) {
+        if (sign[r] === 0)
+            continue;
+        if (segs.length === 0)
+            segs.push({ from: 0, to: r, sign: sign[r] });
+        else if (sign[r] === segs[segs.length - 1].sign) {
+            segs[segs.length - 1].to = r;
+        }
+        else {
+            segs[segs.length - 1].to = r - 1;
+            segs.push({ from: r, to: r, sign: sign[r] });
+        }
+    }
+    if (segs.length > 0)
+        segs[segs.length - 1].to = sign.length - 1;
+    return segs;
+}
+
+function shapeOptions(shape = {}) {
+    const o = { ...SHAPE_DEFAULTS, ...shape };
+    if (!(o.toFlat > 0 && o.toFlat <= 1) || !(o.extremum >= 0) || !(o.inflection >= 0) || !(o.length >= 0))
+        throw new RangeError('fitShaped: toFlat in (0, 1], extremum, inflection and length ≥ 0 required');
+    return o;
+}
+
+/**
+ * @typedef {object} Bend  a run of free second differences, by index (inclusive), and what it costs (in units of
+ *     λ, without the quadratic term)
+ * @property {number} from
+ * @property {number} to
+ * @property {number} before   slope of β' (first difference) on its left
+ * @property {number} after    on its right
+ * @property {boolean} extremum  the straight pieces on its two sides slope in opposite directions (the last
+ *     piece that was not level, before a level one); a piece is level when it rises less than LEVEL_RISE median
+ *     half-widths over its length
+ * @property {number} inflections  changes of the sign of the second differences at its differences
+ * @property {number} cost
+ * @property {number} [x]      its middle (fitShaped's result)
+ */
+
+/**
+ * The bends of β' (scaled coefficients) with second differences t: the runs of the support (|t| > delta, or the
+ * mask), their shapes and costs (fitShaped).
+ *
+ * @returns {Bend[]}
+ */
+function bendShapes(scaled, t, delta, shape, mask) {
+    const m = mask ?? Uint8Array.from(t, v => (Math.abs(v) > delta ? 1 : 0));
+    const u = differences(scaled, 1);
+    const runs = supportRuns(m);
+    // A straight piece is level when it rises less than LEVEL_RISE over its whole length: a slight tilt the region
+    // allows (5e-4 median half-widths per segment after a bend that levels off) is no extremum.
+    const level = (slope, segments) => Math.abs(slope) * Math.max(segments, 1) < LEVEL_RISE;
+    const bends = [];
+    let lastSign = 0; // of the last straight piece that was not level
+    let lastBend = 0; // sign of the last free second difference
+    runs.forEach(({ from, to }, k) => {
+        // first differences u[a..b] are equal along a straight piece: before this bend from the previous one's end
+        const beforeLength = from - (k > 0 ? runs[k - 1].to + 1 : 0) + 1;
+        const afterLength = (k + 1 < runs.length ? runs[k + 1].from : u.length - 1) - (to + 1) + 1;
+        const before = u[from];
+        const after = u[to + 1];
+        if (!level(before, beforeLength))
+            lastSign = Math.sign(before);
+        const steepAfter = !level(after, afterLength);
+        const extremum = steepAfter && lastSign !== 0 && Math.sign(after) !== lastSign;
+        if (steepAfter)
+            lastSign = Math.sign(after);
+        let inflections = 0;
+        for (let r = from; r <= to; r++) {
+            const sg = Math.sign(t[r]);
+            if (sg !== 0 && lastBend !== 0 && sg !== lastBend)
+                inflections++;
+            if (sg !== 0)
+                lastBend = sg;
+        }
+        const steep = Math.max(Math.abs(before), Math.abs(after));
+        const rho = steep > 0 ? Math.min(Math.abs(before), Math.abs(after)) / steep : 1;
+        const cost = (to - from + 1) * (shape.toFlat + (1 - shape.toFlat) * rho)
+            + (extremum ? shape.extremum : 0) + shape.inflection * inflections;
+        bends.push({ from, to, before, after, extremum, inflections, cost });
+    });
+    return bends;
+}
+
+/** Each bend's cost spread evenly over its differences (1 outside the bends), for the reweighting. */
+function differenceCosts(bends, n) {
+    const c = new Float64Array(n).fill(1);
+    for (const b of bends)
+        c.fill(b.cost / (b.to - b.from + 1), b.from, b.to + 1);
+    return c;
+}
+
+/**
+ * λ₂ for shaped bends: a·G, as sparseLambdas toward straight (S/G is the region functional plus a per plain bend
+ * difference).
+ *
+ * @param {{ambition: number, G: number}} opts
+ * @returns {{lambda1: number, lambda2: number}}
+ */
+export function shapedLambdas({ ambition, G }) {
+    return { lambda1: 0, lambda2: ambition * G };
+}
+
+/**
+ * The top of the shaped ambition's range: sparseMaxAmbition toward straight, divided by toFlat, since the cheapest
+ * free difference costs toFlat·λ.
+ *
+ * @param {Phase2Spec & {shape?: object}} spec
+ * @returns {number}
+ */
+export function shapedMaxAmbition(spec) {
+    return sparseMaxAmbition({ ...spec, flat: 0 }) / shapeOptions(spec.shape).toFlat;
 }
 
 /** Maximal runs of ones in a 0/1 mask: [{from, to}], inclusive. */

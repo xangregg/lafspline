@@ -8,7 +8,8 @@ const DEFAULTS = {
     source: 'ramp', n: SIGNALS.ramp.n, sigma: SIGNALS.ramp.sigma, seed: 1, showTruth: true, userText: '',
     xCol: null, yCol: null, region: 'band', family: 'blocks', calibrate: true, tau: 3, boxes: 'tightest',
     alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
-    nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, logKappa: 4, logEpsilon: -2,
+    nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, bendLength: 0.05, extremumCost: 2,
+    inflectionCost: 1, logKappa: 4, logEpsilon: -2,
 };
 
 test('defaults give an empty hash and an empty hash gives the defaults', async () => {
@@ -49,6 +50,15 @@ test('bootstrap band settings round-trip; unknown weights are rejected', async (
     assert.equal(hash, '#region=boot&bootWeights=dirichlet');
     assert.deepEqual((await hashToState(hash, DEFAULTS)).state, st);
     assert.deepEqual((await hashToState('#bootWeights=poisson', DEFAULTS)).rejected, ['bootWeights']);
+});
+
+test('rounded bends round-trip; a bend length or cost out of range is rejected', async () => {
+    const st = { ...DEFAULTS, penalty: 'shaped', bendLength: 0.08, extremumCost: 0, inflectionCost: 3.5 };
+    const { hash } = await stateToHash(st, DEFAULTS);
+    assert.equal(hash, '#penalty=shaped&bendLength=0.08&extremumCost=0&inflectionCost=3.5');
+    assert.deepEqual((await hashToState(hash, DEFAULTS)).state, st);
+    assert.deepEqual((await hashToState('#bendLength=0.5&extremumCost=-1', DEFAULTS)).rejected,
+        ['bendLength', 'extremumCost']);
 });
 
 test('a given λ and no undersmoothing round-trip; auto segments are not written', async () => {

@@ -69,8 +69,8 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   old-link rule for τ are dropped; `MAX_N` is 5,000 and a signal starts at its own n up to that (the earlier project caps it
   at 200 for the MIP); `nseg` may be `auto` (null); `penalty` (phase 3: `quadratic` or `sparse`); `region`,
   `family`, `calibrate` and `tau` as the earlier project's, and `boxes` (phase 4: which Aₙ boxes are drawn); `region` also
-  takes `boot` (the bootstrap band), with `bootWeights` for its weights. The hash and data packing code is
-  unchanged.
+  takes `boot` (the bootstrap band), with `bootWeights` for its weights. `penalty` also takes `shaped` (rounded
+  bends), with `bendLength`, `extremumCost` and `inflectionCost`. The hash and data packing code is unchanged.
   `test/urlstate.test.js` is the earlier project's with the lafspline fields.
 - `styles.css`: slider and Advanced-panel rules appended.
 - `src/core/regions.js`: trimmed to Aₙ. The earlier project's smoother band (`bandRegion`, `bandClaim`, which need its
