@@ -122,6 +122,62 @@ test('with right-skewed noise the band reaches further below the fit; with growi
     assert.ok(last > WIDEN * first, `${last} vs ${first}`);
 });
 
+test('as λ → ∞ the bootstrap band becomes the least-squares line\'s simultaneous band', () => {
+    // With the penalty toward lines, a huge λ makes the P-spline the OLS line. The band's σ̂ and standard errors are
+    // then OLS's, and its half-width the Working–Hotelling band's ±√(2F₂,ᵥ;α)·s·√(1/n + (x − x̄)²/Sxx) up to the
+    // bootstrap's own estimate of the noise. Measured over 8 seeds (n = 100, B = 2000): ED 2.00016, fit within 5e-5 s,
+    // σ̂ and se within 4e-6, half-width 0.99–1.05 of WH on average and 0.89–1.12 pointwise, above ÷ below 0.89–1.13.
+    // WH holds for all x, so on the data's range it is about 1.5% wider than the exact band.
+    const LAMBDA = 1e8;
+    const ED_TOL = 1e-3;
+    const FIT_TOL = 1e-3; // in units of OLS's s
+    const SE_TOL = 1e-4; // relative, for σ̂ and the standard errors
+    const MEAN_RATIO = [0.95, 1.08]; // mean half-width ÷ WH's
+    const POINT_RATIO = [0.85, 1.2]; // half-width ÷ WH's at each grid point
+    const SYMMETRY = [0.8, 1.25]; // reach above ÷ reach below
+    const ALPHA = 0.95;
+    const n = 100;
+    const { x, y } = simulate('line', n, 0.25, SEED);
+    const band = bootstrapBand(x, y, { lambda: LAMBDA, alpha: ALPHA, B: 2000 });
+    const p = band.params;
+
+    const xm = x.reduce((a, b) => a + b) / n;
+    const ym = y.reduce((a, b) => a + b) / n;
+    let sxx = 0;
+    let sxy = 0;
+    for (let i = 0; i < n; i++) {
+        sxx += (x[i] - xm) ** 2;
+        sxy += (x[i] - xm) * (y[i] - ym);
+    }
+    const b1 = sxy / sxx;
+    const b0 = ym - b1 * xm;
+    let rss = 0;
+    for (let i = 0; i < n; i++)
+        rss += (y[i] - b0 - b1 * x[i]) ** 2;
+    const nu = n - 2;
+    const s = Math.sqrt(rss / nu);
+    // F₂,ᵥ has CDF 1 − (1 + 2f/ν)^(−ν/2), so 2F₂,ᵥ;α = ν((1 − α)^(−2/ν) − 1)
+    const wh = Math.sqrt(nu * ((1 - ALPHA) ** (-2 / nu) - 1));
+
+    assert.ok(Math.abs(p.ed - 2) < ED_TOL, `ED ${p.ed}`);
+    assert.ok(Math.abs(p.sigma / s - 1) < SE_TOL, `σ̂ ${p.sigma} vs ${s}`);
+    const ratios = [];
+    for (let j = 0; j < band.grid.length; j++) {
+        const g = band.grid[j];
+        const se = s * Math.sqrt(1 / n + (g - xm) ** 2 / sxx);
+        assert.ok(Math.abs(p.fit[j] - (b0 + b1 * g)) < FIT_TOL * s, `fit at ${g}`);
+        assert.ok(Math.abs(p.se[j] / se - 1) < SE_TOL, `se at ${g}: ${p.se[j]} vs ${se}`);
+        ratios.push(band.half[j] / (wh * se));
+    }
+    const meanRatio = ratios.reduce((a, b) => a + b) / ratios.length;
+    assert.ok(meanRatio > MEAN_RATIO[0] && meanRatio < MEAN_RATIO[1], `mean ÷ WH ${meanRatio}`);
+    assert.ok(Math.min(...ratios) > POINT_RATIO[0] && Math.max(...ratios) < POINT_RATIO[1],
+        `÷ WH ${Math.min(...ratios)} – ${Math.max(...ratios)}`);
+    const reach = p.up.map((u, j) => u / p.down[j]);
+    assert.ok(Math.min(...reach) > SYMMETRY[0] && Math.max(...reach) < SYMMETRY[1],
+        `${Math.min(...reach)} – ${Math.max(...reach)}`);
+});
+
 test('data on a line, with the penalty toward lines, leave no spread for a bootstrap band', () => {
     const x = Float64Array.from({ length: 30 }, (_, i) => i);
     const y = x.map(v => 2 + 0.5 * v);
