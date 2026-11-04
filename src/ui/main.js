@@ -13,7 +13,7 @@
 import * as d3 from 'd3';
 import { simulate, signalFunction, SIGNALS } from '../core/signals.js';
 import { parseTable, prepareXY, rowIndex } from '../core/data.js';
-import { readDataset } from '../core/datasets.js';
+import { readDataset, splitMetadata, datasetId, indexEntry } from '../core/datasets.js';
 import { bandRegion, checkBand, checkGrid } from '../core/band.js';
 import { bootstrapBand } from '../core/bootstrap.js';
 import { defaultSegments } from '../core/pspline.js';
@@ -57,6 +57,12 @@ const MESSAGE_MS = 4000; // toolbar message display time
 const USER = 'user';
 const EXAMPLE_PREFIX = 'example:';
 const EXAMPLES_INDEX = 'data/index.json';
+// Data sets kept on this machine only: localdata/ is ignored by git except its README, so it exists in every clone.
+// A static site cannot list a directory, but a local server that lists directories (npm run serve) can; the app
+// asks only when served from this machine, so the published site never requests it.
+const LOCAL_PREFIX = 'local:';
+const LOCAL_DIR = 'localdata/';
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
 const state = {
     source: 'ramp',
@@ -119,7 +125,7 @@ function distinctCount(x) {
 
 /**
  * The data: observations, true f for simulated data, notes; {error} when there is nothing to fit, {pending, id}
- * while a bundled example is loading. As the earlier project's deriveData.
+ * while a bundled example is loading (id: its source, example:… or local:…). As the earlier project's deriveData.
  */
 function deriveData(st, exampleTexts, examples) {
     let x;
@@ -129,17 +135,17 @@ function deriveData(st, exampleTexts, examples) {
     let dataKey;
     let label;
     const notes = [];
-    if (st.source.startsWith(EXAMPLE_PREFIX)) {
-        const id = st.source.slice(EXAMPLE_PREFIX.length);
+    if (examples.has(st.source)) {
+        const id = st.source;
         const loaded = exampleTexts.get(id);
-        label = examples.get(id)?.label ?? id;
+        label = examples.get(id).label;
         if (loaded === undefined)
             return { pending: true, id, label, columns };
         if (loaded.error)
             return { error: `Could not load the example: ${loaded.error}`, columns };
         const d = readDataset(loaded);
         if (d.errors.length)
-            return { error: `Example ${id}: ${d.errors.join('; ')}`, columns };
+            return { error: `Example ${id.slice(id.indexOf(':') + 1)}: ${d.errors.join('; ')}`, columns };
         x = d.x;
         y = d.y;
         columns = [d.xName, d.yName];
@@ -154,20 +160,28 @@ function deriveData(st, exampleTexts, examples) {
             notes.push(`${fmtInt(d.ties)} observations share an x with another.`);
     }
     else if (st.source === USER) {
-        const table = getTable(st.userText);
+        // leading '# key: value' lines, as in the example files: skipped, and their x and y name the default columns
+        const { meta, body } = splitMetadata(st.userText);
+        const table = getTable(body);
         columns = table.names;
-        label = 'Your data';
+        label = meta.label ? `Your data: ${meta.label}` : 'Your data';
         if (table.columns.length === 0)
             return { error: 'Paste or drop data with at least one numeric column.', columns };
         const two = columns.length >= 2;
-        const xCol = st.xCol !== null && st.xCol < columns.length ? st.xCol : (two ? 0 : -1);
-        const yCol = st.yCol !== null && st.yCol < columns.length ? st.yCol : (two ? 1 : 0);
+        const named = (name, fallback) => (name !== undefined && columns.includes(name) ? columns.indexOf(name)
+            : fallback);
+        const xCol = st.xCol !== null && st.xCol < columns.length ? st.xCol : named(meta.x, two ? 0 : -1);
+        const yCol = st.yCol !== null && st.yCol < columns.length ? st.yCol : named(meta.y, two ? 1 : 0);
         st.xCol = xCol;
         st.yCol = yCol;
         const d = prepareXY(xCol < 0 ? rowIndex(table.rows) : table.columns[xCol], table.columns[yCol]);
         x = d.x;
         y = d.y;
         dataKey = `user|${hashText(st.userText)}|${xCol}|${yCol}`;
+        if (meta.source)
+            notes.push(`Source: ${meta.source}`);
+        if (meta.note)
+            notes.push(meta.note);
         if (d.dropped)
             notes.push(`${fmtInt(d.dropped)} incomplete row(s) dropped`);
         if (d.ties)
@@ -754,21 +768,73 @@ async function loadExamples() {
     }
 }
 
+/**
+ * The CSV files in localdata/, when the page is served from this machine by a server that lists directories: index
+ * entries like data/index.json's, with each file's text (so it is not fetched twice). A file without '# label:' or
+ * '# source:' lines gets its name and path; one that cannot be read as a data set is left out with a warning.
+ */
+async function loadLocalExamples() {
+    if (!LOCAL_HOSTS.has(location.hostname))
+        return [];
+    let names;
+    try {
+        const response = await fetch(LOCAL_DIR);
+        if (!response.ok)
+            throw new Error(`HTTP ${response.status}`);
+        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+        names = [...page.querySelectorAll('a[href]')]
+            .map(a => decodeURIComponent(a.getAttribute('href').split(/[?#]/)[0]))
+            .filter(name => name.endsWith('.csv'));
+    }
+    catch (err) {
+        console.warn(`No local data sets: ${LOCAL_DIR} could not be listed (${err.message ?? err})`);
+        return [];
+    }
+    const entries = await Promise.all([...new Set(names)].sort().map(async name => {
+        try {
+            if (datasetId(name) === null)
+                throw new Error('the name must be lower-case letters, digits and hyphens, ending in .csv');
+            const response = await fetch(LOCAL_DIR + encodeURIComponent(name));
+            if (!response.ok)
+                throw new Error(`HTTP ${response.status}`);
+            // the file's own label and source, when it has them, override these (later keys win)
+            const text = `# label: ${name}\n# source: ${LOCAL_DIR}${name} (local)\n${await response.text()}`;
+            const { entry, errors } = indexEntry(name, text);
+            if (!entry)
+                throw new Error(errors.join('; '));
+            return { ...entry, text };
+        }
+        catch (err) {
+            console.warn(`Local data set ${name} left out: ${err.message ?? err}`);
+            return null;
+        }
+    }));
+    return entries.filter(Boolean);
+}
+
 function rejectedNote(rejected) {
     return rejected.length ? `Ignored invalid link setting(s): ${rejected.join(', ')}.` : null;
 }
 
 async function startup() {
-    const [loaded, exampleList] = await Promise.all([hashToState(location.hash, DEFAULTS), loadExamples()]);
-    const examples = new Map(exampleList.map(e => [e.id, e]));
+    const [loaded, exampleList, localList] = await Promise.all([hashToState(location.hash, DEFAULTS), loadExamples(),
+        loadLocalExamples()]);
+    // data sets by source: bundled (data/) and local (localdata/), with the path to fetch
+    const examples = new Map([
+        ...exampleList.map(e => [EXAMPLE_PREFIX + e.id, { ...e, path: `data/${e.file}` }]),
+        ...localList.map(e => [LOCAL_PREFIX + e.id, { ...e, path: LOCAL_DIR + e.file }]),
+    ]);
     Object.assign(state, loaded.state);
     let linkNote = rejectedNote(loaded.rejected);
-    if (state.source.startsWith(EXAMPLE_PREFIX) && !examples.has(state.source.slice(EXAMPLE_PREFIX.length))) {
-        linkNote = `The link's example data set '${state.source.slice(EXAMPLE_PREFIX.length)}' is not in this version; `
-            + 'showing the default.';
+    const isFile = state.source.startsWith(EXAMPLE_PREFIX) || state.source.startsWith(LOCAL_PREFIX);
+    if (isFile && !examples.has(state.source)) {
+        const name = state.source.slice(state.source.indexOf(':') + 1);
+        linkNote = state.source.startsWith(LOCAL_PREFIX)
+            ? `The link's local data set '${name}' is not in ${LOCAL_DIR} here; showing the default.`
+            : `The link's example data set '${name}' is not in this version; showing the default.`;
         Object.assign(state, { source: DEFAULTS.source, n: DEFAULTS.n, sigma: DEFAULTS.sigma });
     }
-    const exampleTexts = new Map(); // id → file text, or {error}
+    const exampleTexts = new Map(localList.map(e => [LOCAL_PREFIX + e.id, e.text])); // source → text, or {error}
     const status = d3.select('#status');
     const readouts = document.getElementById('readouts');
     const chart = createMainChart(document.getElementById('main-chart'));
@@ -783,10 +849,10 @@ async function startup() {
         update();
         scheduleHash();
     };
-    let controls = createControls(controlsEl, state, onChange, exampleList);
+    let controls = createControls(controlsEl, state, onChange, exampleList, localList);
     function rebuildControls() {
         controlsEl.replaceChildren();
-        controls = createControls(controlsEl, state, onChange, exampleList);
+        controls = createControls(controlsEl, state, onChange, exampleList, localList);
     }
 
     function draw() {
@@ -853,7 +919,7 @@ async function startup() {
             controls.sync(state, { columns: data.columns });
             if (!exampleTexts.has(data.id)) {
                 exampleTexts.set(data.id, undefined);
-                fetch(`data/${examples.get(data.id)?.file ?? `${data.id}.csv`}`)
+                fetch(examples.get(data.id).path)
                     .then(r => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
                     .then(text => exampleTexts.set(data.id, text))
                     .catch(err => exampleTexts.set(data.id, { error: err.message ?? String(err) }))

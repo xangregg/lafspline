@@ -38,6 +38,7 @@ src/ui/                 D3 charts, controls, state
 src/lp-worker.js        module Web Worker wrapping HiGHS (if the QP solver is used)
 vendor/highs/           highs.mjs + highs.wasm copied from node_modules/highs/build/
 data/                   example data sets (CSV with # label: / # source: lines) and index.json
+localdata/              data sets kept on this machine (git ignores all but its README); listed by the app on localhost
 tools/check-page.mjs    headless-Chrome page check (console errors, worker exceptions, screenshot)
 test/*.test.js          node:test + node:assert/strict
 package.json            "type": "module", scripts below

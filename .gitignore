@@ -1,3 +1,7 @@
 node_modules/
 .DS_Store
 .idea/
+# data sets kept on this machine (license not cleared for redistribution): everything in localdata/ but its README,
+# which keeps the directory in every clone so the app's listing request for it never fails (src/ui/main.js)
+localdata/*
+!localdata/README.md

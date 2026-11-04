@@ -70,7 +70,9 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   at 200 for the MIP); `nseg` may be `auto` (null); `penalty` (phase 3: `quadratic` or `sparse`); `region`,
   `family`, `calibrate` and `tau` as the earlier project's, and `boxes` (phase 4: which Aₙ boxes are drawn); `region` also
   takes `boot` (the bootstrap band), with `bootWeights` for its weights. `penalty` also takes `shaped` (rounded
-  bends), with `bendLength`, `extremumCost` and `inflectionCost`. The hash and data packing code is unchanged.
+  bends), with `bendLength`, `extremumCost` and `inflectionCost`. `source` also takes `local:<id>`, a data set in
+  `localdata/` (main.js lists them when the app runs from this machine). The hash and data packing code is
+  unchanged.
   `test/urlstate.test.js` is the earlier project's with the lafspline fields.
 - `styles.css`: slider and Advanced-panel rules appended.
 - `src/core/regions.js`: trimmed to Aₙ. The earlier project's smoother band (`bandRegion`, `bandClaim`, which need its

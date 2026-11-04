@@ -123,6 +123,13 @@ test('bundled examples are kept in links by id; simulation settings are not writ
     const back = await hashToState(hash, DEFAULTS);
     assert.equal(back.state.source, 'example:nile-flow');
     assert.deepEqual(back.rejected, []);
-    for (const bad of ['example:', 'example:Nile', 'example:a b', 'example:../x'])
+    for (const bad of ['example:', 'example:Nile', 'example:a b', 'example:../x', 'local:../x', 'other:x'])
         assert.deepEqual((await hashToState(`#source=${encodeURIComponent(bad)}`, DEFAULTS)).rejected, ['source'], bad);
+});
+
+test('local data sets are kept in links by id, as bundled ones are', async () => {
+    const st = { ...DEFAULTS, source: 'local:kyoto-cherry-blossom' };
+    const { hash } = await stateToHash(st, DEFAULTS);
+    assert.equal(hash, '#source=local%3Akyoto-cherry-blossom');
+    assert.equal((await hashToState(hash, DEFAULTS)).state.source, 'local:kyoto-cherry-blossom');
 });

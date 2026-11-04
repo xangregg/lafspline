@@ -182,12 +182,13 @@ function debounce(fn, ms) {
  * @param {object} state    initial state (see main.js)
  * @param {function(object): void} onChange  receives a partial state patch
  * @param {Array<{id: string, label: string}>} [examples]  bundled data sets (data/index.json)
+ * @param {Array<{id: string, label: string}>} [local]  data sets in localdata/ (this machine only)
  * @returns {{sync: function(object, {columns: string[], nsegAuto: number|null, lambdaChosen: number|null,
  *     lambdaUsed: number|null, ambition: {a: number, star: number, capped: boolean, clamped: boolean,
  *     sparse: boolean}|null}): void}}  sync refreshes the parts that depend on state or data; lambdaChosen is the
  *     λ GCV or AIC chose, lambdaUsed the band's λ (after undersmoothing)
  */
-export function createControls(container, state, onChange, examples = []) {
+export function createControls(container, state, onChange, examples = [], local = []) {
     const later = debounce(onChange, DEBOUNCE);
     const numberInput = (key, attrs, parse = Number) => {
         const input = el('input', { type: 'number', value: String(state[key] ?? ''), ...attrs });
@@ -225,6 +226,10 @@ export function createControls(container, state, onChange, examples = []) {
     if (examples.length) {
         source.append(el('optgroup', { label: 'Examples' },
             examples.map(e => el('option', { value: `example:${e.id}`, text: e.label }))));
+    }
+    if (local.length) {
+        source.append(el('optgroup', { label: 'Local data (not published)' },
+            local.map(e => el('option', { value: `local:${e.id}`, text: e.label }))));
     }
     const sim = el('optgroup', { label: 'Simulated' });
     for (const [key, spec] of Object.entries(SIGNALS))

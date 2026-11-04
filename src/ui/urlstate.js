@@ -66,7 +66,8 @@ export function signalDefaults(source) {
     return spec ? { n: Math.min(spec.n, MAX_N), sigma: spec.sigma } : null;
 }
 
-const EXAMPLE = /^example:[a-z0-9][a-z0-9-]*$/; // bundled data sets (data/); the app checks the id exists
+// bundled data sets (data/) and local ones (localdata/, this machine only); the app checks the id exists
+const EXAMPLE = /^(example|local):[a-z0-9][a-z0-9-]*$/;
 
 // Every persisted state key with its codec. Ranges match the inputs in controls.js.
 const FIELDS = {

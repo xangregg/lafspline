@@ -28,13 +28,7 @@ Each `.csv` file here appears in the app's dataset list under **Examples** and i
 3. Run `npm run data:index` to regenerate `data/index.json`. It reports any problem with a file and writes
    nothing until all files are valid. `npm test` fails if the index is out of date.
 
-The fits assume independent noise with constant variance. Real data often have serial correlation or
-noise that changes with x; note it, since the region's coverage claim does not hold then.
+## Keeping one local
 
-## License
-
-The files in `data/` are third-party measurements, included for demonstration with their sources cited. They
-are not covered by this repository's license; see each file's `# source:` line. Measurements themselves are
-facts, but cite the original publication (not only the package or site the file was taken from), and check a
-data set's terms of use before adding it: some are restricted (e.g. non-commercial only) or ask for a specific
-citation. Copy numbers, not documentation text, beyond a short attributed quotation.
+A data set that should not be published (its license does not allow redistribution) goes in `localdata/` instead:
+git ignores it there, and the app lists it when run from this machine. See `localdata/README.md`.
