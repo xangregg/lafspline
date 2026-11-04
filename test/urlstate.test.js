@@ -7,7 +7,7 @@ import { SIGNALS } from '../src/core/signals.js';
 const DEFAULTS = {
     source: 'ramp', n: SIGNALS.ramp.n, sigma: SIGNALS.ramp.sigma, seed: 1, showTruth: true, userText: '',
     xCol: null, yCol: null, region: 'band', family: 'blocks', calibrate: true, tau: 3, boxes: 'tightest',
-    alpha: 0.95, covariance: 'bayes', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
+    alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
     nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, logKappa: 4, logEpsilon: -2,
 };
 
@@ -41,6 +41,14 @@ test('Aₙ settings round-trip', async () => {
     assert.deepEqual(back.state, st);
     assert.deepEqual((await hashToState('#region=Bn&family=some&tau=0&boxes=x', DEFAULTS)).rejected.sort(),
         ['boxes', 'family', 'region', 'tau']);
+});
+
+test('bootstrap band settings round-trip; unknown weights are rejected', async () => {
+    const st = { ...DEFAULTS, region: 'boot', bootWeights: 'dirichlet' };
+    const { hash } = await stateToHash(st, DEFAULTS);
+    assert.equal(hash, '#region=boot&bootWeights=dirichlet');
+    assert.deepEqual((await hashToState(hash, DEFAULTS)).state, st);
+    assert.deepEqual((await hashToState('#bootWeights=poisson', DEFAULTS)).rejected, ['bootWeights']);
 });
 
 test('a given λ and no undersmoothing round-trip; auto segments are not written', async () => {

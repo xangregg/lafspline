@@ -86,6 +86,40 @@ coverage of f smoothed with the same λ (the sandwich band's own target); half-w
 - Too many segments for the data (100 for n = 100) lets GCV choose near-interpolation (ED ≈ 99.6), leaving no
   degrees of freedom for σ̂; `bandRegion` refuses with a reason. The default (≤ m/2 segments) avoids it.
 
+**A bootstrap band (added after phase 4, for comparison; `src/core/bootstrap.js`).** Around the same P-spline,
+from B = 1000 refits at the same λ with positive fractional weights on the observations that sum to n, so it
+can be asymmetric and wider where the noise is. What the coverage simulation (`tools/sim-band.mjs`, now with
+`--noise gauss|skew|hetero` and `boot` configurations) found along the way, 100 replications per row:
+
+- Refits spread like the residuals, which a smoother shrinks: on a sine (n = 200, ED 23) the spread was 0.85 times
+  f̂'s. The replicates use residuals divided by √(1 − 2h_i + (HHᵀ)_ii), the exact factor (test).
+- A width that follows each point's bootstrap spread undercovers badly (60% for 95%; 22% with skewed noise): the
+  spread comes from the few residuals near x. Studentizing each replicate by its own local standard error
+  (bootstrap-t) gave 78–86%; a locally studentized band would need q ≈ 5.0 where the true standard error needs
+  3.3. Widths pooled over the whole grid overcovered (98–100%). What works: replicates studentized by their global
+  σ̂* and the constant-noise standard error, each point standardized by its own RMS for the coverage check, and
+  the widths averaged over ±10% of the x range.
+- The asymmetry is in the tails: with Exp(1) − 1 noise the true 10⁻³ tails of f̂ − E f̂ (sine, n = 400) were
+  1.35–1.6 times as long above as below, but semi-deviations of the replicates saw 1.05. The band's shape is the
+  replicates' own quantiles, pooled over the window, at the pointwise tail level that holds for a fraction α of
+  them at every point. Its ratio is then 1.29 with matched weights and 1.47 with Dirichlet weights.
+- Reflected (bootstrap-t) or unreflected (percentile): within 0–5 points of coverage, in no consistent
+  direction; reflected, as theory says.
+- Weights: Dirichlet (the Bayesian bootstrap: mean 1, variance 1, skewness 2) against weights matched to a
+  resampled count's mean, variance and skewness (1, 1, 1: a generalized gamma, positive but a fifth below 0.1).
+
+Coverage of E f̂ at α = 0.95, λ = GCV × 1/16, over line, sine, ramp and HeaviSine at n = 100 and 500:
+
+| noise | sandwich band | bootstrap, matched (default) | bootstrap, Dirichlet |
+|---|---|---|---|
+| Gaussian | 88–97% | 91–100% | 88–95% |
+| skewed (Exp(1) − 1) | 74–91% | 84–100% (line: 84–86%) | 77–95% |
+| heteroscedastic (sd 0.25σ → 1.75σ) | 69–79% | 93–100% | 81–95% |
+
+The matched band is the wider of the two at n = 100 (1.7σ against 1.4σ on the sine) and overcovers there. On
+HeaviSine at n = 100 its local widths reach the jump, so it holds f at the data x in 89–98% of samples (sandwich
+43–64%). It takes 0.1 s at n = 200, 0.3 s at 1000, 1.4 s at 5000 (Bayesian band: 12–36 ms).
+
 ### 1.3 Phase 2: the fit
 
 A second P-spline g = B̃β (the same or a denser basis), with β minimizing

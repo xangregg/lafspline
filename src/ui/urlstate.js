@@ -10,6 +10,7 @@
 
 import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
+import { WEIGHTS } from '../core/bootstrap.js';
 
 const MAX_DATA_CHARS = 8000; // encoded data longer than this stays out of the link (chat apps truncate long URLs)
 export const MAX_N = 5000; // simulated sample size cap, used by controls.js
@@ -23,6 +24,7 @@ export const FAMILIES = ['blocks', 'quarter', 'every', 'all']; // Aₙ intervals
 export const BOX_VIEWS = ['tightest', 'all', 'off']; // Aₙ boxes drawn on the chart
 export const AN_MAX_SEGMENTS = 100; // phase-2 basis for Aₙ: its long intervals make the Newton system dense
 export const TAU_RANGE = [0.1, 20];
+export const REGIONS = ['band', 'boot', 'An']; // P-spline band, bootstrap band, Aₙ
 
 const MAX_COLUMN = 10000; // column index sanity cap
 const USER = 'user';
@@ -75,13 +77,14 @@ const FIELDS = {
     showTruth: bool,
     xCol: int(-1, MAX_COLUMN),
     yCol: int(0, MAX_COLUMN),
-    region: enumOf(['band', 'An']),
+    region: enumOf(REGIONS),
     family: enumOf(FAMILIES),
     calibrate: bool,
     tau: num(...TAU_RANGE),
     boxes: enumOf(BOX_VIEWS),
     alpha: num(0.5, 0.999),
     covariance: enumOf(['bayes', 'sandwich']),
+    bootWeights: enumOf(WEIGHTS),
     lambdaMode: enumOf(['gcv', 'aic', 'given']),
     logLambda: num(...LOG_LAMBDA_RANGE),
     // written as the divisor (16 for λ × 1/16): a slash would be percent-encoded in the link

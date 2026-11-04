@@ -88,8 +88,12 @@ export function quantile(sorted, alpha) {
 
 /**
  * Gamma(shape, 1) by Marsaglia & Tsang (2000), shape ≥ 1.
+ *
+ * @param {import('./rng.js').Rng} rng
+ * @param {number} shape  ≥ 1
+ * @returns {number}
  */
-function gammaDraw(rng, shape) {
+export function gammaDraw(rng, shape) {
     const d = shape - 1 / 3;
     const c = 1 / Math.sqrt(9 * d);
     for (;;) {
@@ -206,6 +210,34 @@ function bandClaim(p) {
 }
 
 /**
+ * The phase-1 P-spline fit of a band: λ given, or chosen by GCV or AIC and multiplied by the undersmoothing
+ * factor. Shared with the bootstrap band (bootstrap.js), so both regions sit on the same fit.
+ *
+ * @param {ArrayLike<number>} x
+ * @param {ArrayLike<number>} y
+ * @param {object} [opts]  as bandRegion: lambda, criterion, undersmooth, nseg, deg, diff, w
+ * @returns {{fit: import('./pspline.js').PSplineFit, lambdaSource: 'gcv'|'aic'|'given', lambdaChosen: number,
+ *     atEdge: boolean, undersmooth: number, deg: number, diff: number}}  lambdaChosen: the criterion's λ before
+ *     undersmoothing (NaN when given); atEdge: it is at an end of the λ search
+ */
+export function bandFit(x, y, opts = {}) {
+    const deg = opts.deg ?? DEFAULT_DEGREE;
+    const diff = opts.diff ?? DEFAULT_DIFF;
+    const basisOpts = { w: opts.w, nseg: opts.nseg, deg, diff };
+    if (opts.lambda !== undefined) {
+        const fit = fitPSpline(x, y, { ...basisOpts, lambda: opts.lambda });
+        return { fit, lambdaSource: 'given', lambdaChosen: NaN, atEdge: false, undersmooth: 1, deg, diff };
+    }
+    const criterion = opts.criterion ?? 'gcv';
+    const choice = selectLambda(x, y, { ...basisOpts, criterion });
+    const undersmooth = opts.undersmooth ?? DEFAULT_UNDERSMOOTH;
+    const fit = undersmooth === 1
+        ? choice.fit
+        : fitPSpline(x, y, { ...basisOpts, lambda: choice.lambda * undersmooth });
+    return { fit, lambdaSource: criterion, lambdaChosen: choice.lambda, atEdge: choice.atEdge, undersmooth, deg, diff };
+}
+
+/**
  * Simultaneous band around a P-spline fit of y on x.
  *
  * @param {ArrayLike<number>} x  any order, ties allowed
@@ -230,27 +262,7 @@ export function bandRegion(x, y, opts = {}) {
     const covariance = opts.covariance ?? 'bayes';
     const B = opts.B ?? DEFAULT_B;
     const seed = opts.seed ?? DEFAULT_SEED;
-    const deg = opts.deg ?? DEFAULT_DEGREE;
-    const diff = opts.diff ?? DEFAULT_DIFF;
-    const basisOpts = { w: opts.w, nseg: opts.nseg, deg, diff };
-    let lambdaSource;
-    let lambdaChosen = NaN;
-    let atEdge = false;
-    let undersmooth = 1;
-    let fit;
-    if (opts.lambda !== undefined) {
-        lambdaSource = 'given';
-        fit = fitPSpline(x, y, { ...basisOpts, lambda: opts.lambda });
-    }
-    else {
-        const criterion = opts.criterion ?? 'gcv';
-        const choice = selectLambda(x, y, { ...basisOpts, criterion });
-        lambdaSource = criterion;
-        lambdaChosen = choice.lambda;
-        atEdge = choice.atEdge;
-        undersmooth = opts.undersmooth ?? DEFAULT_UNDERSMOOTH;
-        fit = undersmooth === 1 ? choice.fit : fitPSpline(x, y, { ...basisOpts, lambda: choice.lambda * undersmooth });
-    }
+    const { fit, lambdaSource, lambdaChosen, atEdge, undersmooth, deg, diff } = bandFit(x, y, opts);
     const { basis } = fit.system;
     const grid = checkGrid(fit.system.x, basis.xl, basis.xr, basis.nseg, opts.gridPerSegment);
     const gridBasis = bsplineBasis(grid, basis.xl, basis.xr, basis.nseg, basis.deg);

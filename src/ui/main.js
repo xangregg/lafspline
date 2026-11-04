@@ -1,8 +1,9 @@
-// App entry point: state (⇄ URL hash) → data → region (phase 1: a P-spline band, or Aₙ) → fit (phase 2) → chart and
-// readouts.
+// App entry point: state (⇄ URL hash) → data → region (phase 1: a P-spline band, a bootstrap band, or Aₙ) → fit
+// (phase 2) → chart and readouts.
 //
 // Everything runs on the main thread: the band takes milliseconds to tens of milliseconds (one λ search, one Monte
-// Carlo of B = 1000 cheap draws), a* (fit.js leavingAmbition) some 15–25 phase-2 fits of a few milliseconds each
+// Carlo of B = 1000 cheap draws; the bootstrap band's 1000 replicates are each a banded refit, 0.1 s at n = 200 to
+// 1.4 s at n = 5000), a* (fit.js leavingAmbition) some 15–25 phase-2 fits of a few milliseconds each
 // (sparse fits are some 10–30 iterated fits each, so a* takes up to about half a second for n in the thousands),
 // and a knob change one more fit. Aₙ takes a calibration of τ (B = 1000 draws of its multiscale statistic, tens to
 // hundreds of milliseconds, cached by design and interval family) and its phase-2 solves are dense (at most
@@ -14,6 +15,7 @@ import { simulate, signalFunction, SIGNALS } from '../core/signals.js';
 import { parseTable, prepareXY, rowIndex } from '../core/data.js';
 import { readDataset } from '../core/datasets.js';
 import { bandRegion, checkBand, checkGrid } from '../core/band.js';
+import { bootstrapBand } from '../core/bootstrap.js';
 import { defaultSegments } from '../core/pspline.js';
 import {
     regionSpec, leavingAmbition, fitIterated, fitSparse, sparseLambdas, splineValues, LEAVE_TOL,
@@ -38,6 +40,7 @@ const fmtShort = d3.format('.2~g');
 const CACHE_LIMIT = 24; // bands kept
 const BAND_B = 1000; // Monte Carlo draws for the band's critical value
 const BAND_SEED = 1;
+const BOOT_B = 1000; // bootstrap band replicates
 const AN_B = 1000; // Monte Carlo draws of Aₙ's multiscale statistic for a calibrated τ
 const AN_LAMBDA = 2; // Aₙ's interval lengths grow by this factor per level (the paper's)
 const CENTER_COLOR = 'series-3';
@@ -57,13 +60,14 @@ const state = {
     userText: '',
     xCol: null, // column index, −1 = row number, null = auto (first column if there are ≥ 2)
     yCol: null, // column index, null = auto (second column if there are ≥ 2, else the only one)
-    region: 'band', // phase-1 region: 'band' (P-spline) | 'An' (Davies, Kovac & Meise's multiresolution region)
+    region: 'band', // phase 1: 'band' (P-spline) | 'boot' (bootstrap band) | 'An' (Davies, Kovac & Meise's)
     family: 'blocks', // Aₙ intervals: 'blocks' | 'quarter' (¼-width steps) | 'every' (every position) | 'all'
     calibrate: true, // Aₙ: τ calibrated for coverage alpha, instead of tau
     tau: 3, // Aₙ: τ when not calibrated
     boxes: 'tightest', // Aₙ boxes on the chart: 'tightest' (the level of the largest ratio) | 'all' | 'off'
     alpha: 0.95, // coverage: the band's, and Aₙ's when calibrated
     covariance: 'bayes', // 'bayes' | 'sandwich'
+    bootWeights: 'matched', // bootstrap band: 'matched' (like resampled counts) | 'dirichlet' (Bayesian bootstrap)
     lambdaMode: 'gcv', // 'gcv' | 'aic' | 'given'
     logLambda: 0, // natural log, when lambdaMode is 'given'
     undersmooth: 1 / 16, // multiplier on the chosen λ
@@ -176,7 +180,8 @@ function deriveData(st, exampleTexts, examples) {
 
 function bandKey(st, data) {
     const lambda = st.lambdaMode === 'given' ? `given:${st.logLambda}` : `${st.lambdaMode}:${st.undersmooth}`;
-    return [data.dataKey, st.alpha, st.covariance, lambda, st.nseg ?? 'auto', st.diff].join('|');
+    const kind = st.region === 'boot' ? `boot:${st.bootWeights}` : st.covariance;
+    return [data.dataKey, st.alpha, kind, lambda, st.nseg ?? 'auto', st.diff].join('|');
 }
 
 function familyOf(st) {
@@ -251,7 +256,10 @@ function remember(cache, key, value) {
 }
 
 function computeBand(st, data) {
-    const opts = { alpha: st.alpha, covariance: st.covariance, diff: st.diff, B: BAND_B, seed: BAND_SEED };
+    const boot = st.region === 'boot';
+    const opts = boot
+        ? { alpha: st.alpha, weights: st.bootWeights, diff: st.diff, B: BOOT_B, seed: BAND_SEED }
+        : { alpha: st.alpha, covariance: st.covariance, diff: st.diff, B: BAND_B, seed: BAND_SEED };
     if (st.nseg !== null)
         opts.nseg = st.nseg;
     if (st.lambdaMode === 'given') {
@@ -263,7 +271,7 @@ function computeBand(st, data) {
     }
     const start = performance.now();
     try {
-        const region = bandRegion(data.x, data.y, opts);
+        const region = boot ? bootstrapBand(data.x, data.y, opts) : bandRegion(data.x, data.y, opts);
         return { region, ms: performance.now() - start };
     }
     catch (err) {
@@ -550,6 +558,30 @@ function appendClaim(sel, short, full) {
     p.node().append(infoIcon(full, 'the claim'));
 }
 
+/**
+ * The bootstrap band's own readouts: its critical value, how far it reaches below and above the fit, and how
+ * asymmetric it is (bootstrap.js).
+ */
+function addBootstrapRows(add, region) {
+    const p = region.params;
+    add('q below / above', `${fmt(d3.mean(p.qBelow))} / ${fmt(d3.mean(p.qAbove))}`, `averages over the grid; `
+        + `pointwise tail level ${fmtShort(p.tailLevel)}, B = ${fmtInt(p.B)} replicates, `
+        + `${p.weights === 'dirichlet' ? 'Dirichlet' : 'matched'} weights`,
+        'Critical values: the band reaches q·se below and above the fit, where se is the standard error for constant '
+        + 'noise. They are the replicates\' upper and lower tail quantiles (standardized, pooled over ±10% of the x '
+        + 'range) at the pointwise tail level that holds for a fraction α of the replicates everywhere at once. '
+        + 'Reflected, as a bootstrap-t interval: when the replicates run high, f̂ itself may have run high, so the '
+        + 'band reaches further below.');
+    add('half-width', `${fmt(d3.min(region.half))} – ${fmt(d3.max(region.half))}`, `below f̂ ${fmt(d3.min(p.down))} – `
+        + `${fmt(d3.max(p.down))}, above ${fmt(d3.min(p.up))} – ${fmt(d3.max(p.up))}; units of y`,
+        'Half the band\'s width, smallest to largest over the grid; the band is centered at its midpoint, which '
+        + 'differs from the phase-1 fit f̂ where the band is asymmetric.');
+    const ratios = p.up.map((u, j) => u / p.down[j]);
+    add('above ÷ below', `${fmt(d3.min(ratios))} – ${fmt(d3.max(ratios))}`, '1 is symmetric',
+        'The band\'s reach above the fit divided by its reach below, smallest to largest over the grid. Above 1 '
+        + 'the replicates ran further below the fit there (a long lower tail of the residuals).');
+}
+
 /** What a region contains and under which assumptions, in one line (the region's claim has the details). */
 function shortClaim(result) {
     if (result.an) {
@@ -560,6 +592,10 @@ function shortClaim(result) {
         return `${level}, if the noise is independent Gaussian; no smoothness is assumed about f.`;
     }
     const p = result.region.params;
+    if (p.covariance === 'bootstrap') {
+        return `Contains the P-spline's mean (f smoothed), not f, at every check-grid point with probability ≈ `
+            + `${p.alpha}, for independent observations; the noise need not be Gaussian or of constant variance.`;
+    }
     return p.covariance === 'sandwich'
         ? `Contains the P-spline's mean (f smoothed), not f, at every check-grid point with probability ≈ ${p.alpha}, `
             + 'for independent Gaussian noise.'
@@ -614,10 +650,17 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
             + 'the number of coefficients (λ = 0).' });
         add('σ̂', fmt(p.sigma), `from the residuals, ν = n − ED = ${fmt(p.df)} degrees of freedom`,
             'Estimated standard deviation of the noise: √(RSS/ν), units of y.');
-        add('q', fmt(p.q), `${p.alpha} quantile of the max over the grid, Monte Carlo B = ${fmtInt(p.B)}`,
-            'Critical value: the band is the center ± q standard errors. q exceeds the pointwise 1.96 because the band '
-            + 'must hold at every grid point at once: it is the α quantile of the largest |error|/se over the grid.');
-        add('half-width', `${fmt(d3.min(region.half))} – ${fmt(d3.max(region.half))}`, 'q × standard error, units of y');
+        if (p.covariance === 'bootstrap') {
+            addBootstrapRows(add, region);
+        }
+        else {
+            add('q', fmt(p.q), `${p.alpha} quantile of the max over the grid, Monte Carlo B = ${fmtInt(p.B)}`,
+                'Critical value: the band is the center ± q standard errors. q exceeds the pointwise 1.96 because the '
+                + 'band must hold at every grid point at once: it is the α quantile of the largest |error|/se over '
+                + 'the grid.');
+            add('half-width', `${fmt(d3.min(region.half))} – ${fmt(d3.max(region.half))}`,
+                'q × standard error, units of y');
+        }
         add('basis', `${p.nseg} segments`, `B-splines of degree ${p.deg}, penalty order ${p.diff}`);
         add('check grid', `${fmtInt(region.grid.length)} points`, 'the distinct data x and 4 points per segment');
         add('computed in', `${fmt(result.ms)} ms`);
@@ -693,8 +736,11 @@ async function startup() {
         const truth = data.fAt && state.showTruth;
         const fits = [];
         if (region && !an) {
-            fits.push({ key: 'center', label: 'band center (phase 1)', g: region.center, x: region.grid,
-                colorVar: CENTER_COLOR, primary: !phase2 });
+            // a bootstrap band need not be symmetric: draw the P-spline it is built around, not its midpoint
+            const boot = region.params.covariance === 'bootstrap';
+            fits.push({ key: 'center', label: boot ? 'P-spline fit (phase 1)' : 'band center (phase 1)',
+                g: boot ? region.params.fit : region.center, x: region.grid, colorVar: CENTER_COLOR,
+                primary: !phase2 });
         }
         if (phase2) {
             fits.push({ key: 'fit', label: 'fit (phase 2)', g: phase2.curve.g, x: phase2.curve.x, colorVar: FIT_COLOR,

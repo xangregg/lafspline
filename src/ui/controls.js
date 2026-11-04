@@ -34,7 +34,12 @@ const COVARIANCE_OPTIONS = [
 const DIFF_OPTIONS = [[1, '1: toward flat'], [2, '2: toward straight'], [3, '3: toward quadratic']];
 const REGION_OPTIONS = [
     ['band', 'P-spline band'],
+    ['boot', 'bootstrap band'],
     ['An', 'Aₙ (multiresolution)'],
+];
+const WEIGHT_OPTIONS = [
+    ['matched', 'like resampled counts'],
+    ['dirichlet', 'Dirichlet'],
 ];
 const FAMILY_OPTIONS = [
     ['blocks', 'blocks (the paper\'s, lengths doubling)'],
@@ -62,11 +67,20 @@ const TIPS = {
     xCol: 'The column for x; (row number) uses the order of the rows.',
     yCol: 'The column for y.',
     regionHead: 'Phase 1: a confidence region for f, from the data alone. The fit (phase 2) must stay inside it.',
-    region: 'P-spline band: a simultaneous band around a P-spline fit, which covers f if f is smooth. Aₙ (Davies, '
-        + 'Kovac & Meise 2009): bounds on the sums of the residuals over intervals of the observations, assuming '
-        + 'nothing about the smoothness of f.',
+    region: 'P-spline band: a simultaneous band around a P-spline fit, which covers f if f is smooth. Bootstrap '
+        + 'band: around the same fit, from refits with random fractional weights on the observations, so it can be '
+        + 'asymmetric and wider where the noise is; it covers the smoothed f. Aₙ (Davies, Kovac & Meise 2009): '
+        + 'bounds on the sums of the residuals over intervals of the observations, assuming nothing about the '
+        + 'smoothness of f.',
     alphaBand: 'The probability that the band contains f at every point of the check grid at once (the data x and '
         + '4 points per segment), by Monte Carlo with B = 1000.',
+    alphaBoot: 'The probability that the band contains the smoothed f at every point of the check grid at once (the '
+        + 'data x and 4 points per segment), by the bootstrap with B = 1000 replicates.',
+    weights: 'Every observation gets a positive weight in each replicate, and the weights sum to n. Like resampled '
+        + 'counts: the same mean, variance and skewness (about a fifth of the weights are below 0.1, as a count is 0 '
+        + 'with probability 0.37); it held its coverage best in simulations. Dirichlet: the Bayesian bootstrap of '
+        + 'Rubin (1981), or fractional-random-weight bootstrap; its weights are twice as skewed as counts. With '
+        + 'skewed noise its band\'s asymmetry came nearer the truth, but its coverage was lower.',
     alphaAn: 'τ is calibrated by Monte Carlo so that Aₙ contains f with this probability.',
     family: 'The intervals of observations Aₙ checks. Blocks: the paper\'s, of lengths 1, 2, 4, … in fixed '
         + 'positions. Overlapping: windows of each length shifted by ¼ of the length or by one observation, which '
@@ -280,6 +294,8 @@ export function createControls(container, state, onChange, examples = []) {
     const alphaInfo = infoIcon(TIPS.alphaBand, 'coverage α');
     const alphaField = field('coverage α', alphaInput, alphaInfo);
     const covariance = select('covariance', COVARIANCE_OPTIONS);
+    const covarianceField = field('covariance', covariance, TIPS.covariance);
+    const weightsField = field('weights', select('bootWeights', WEIGHT_OPTIONS), TIPS.weights);
     const undersmooth = select('undersmooth', UNDERSMOOTH_OPTIONS, Number);
     let lambdaUsed = null; // the band's λ, so that switching to a given λ starts from it
     const lambdaMode = el('select', {}, LAMBDA_OPTIONS.map(([value, t]) => el('option', { value, text: t })));
@@ -301,7 +317,8 @@ export function createControls(container, state, onChange, examples = []) {
     const undersmoothField = field('undersmoothing', undersmooth, TIPS.undersmooth);
     const diff = select('diff', DIFF_OPTIONS, Number);
     const bandBox = el('div', { class: 'group' }, [
-        field('covariance', covariance, TIPS.covariance),
+        covarianceField,
+        weightsField,
         field('λ', lambdaMode, lambdaInfo),
         logLambdaField,
         undersmoothField,
@@ -381,7 +398,9 @@ export function createControls(container, state, onChange, examples = []) {
         bandBox.hidden = an;
         tauField.hidden = !an || st.calibrate;
         alphaField.hidden = an && !st.calibrate;
-        setInfo(alphaInfo, an ? TIPS.alphaAn : TIPS.alphaBand);
+        covarianceField.hidden = st.region !== 'band';
+        weightsField.hidden = st.region !== 'boot';
+        setInfo(alphaInfo, an ? TIPS.alphaAn : st.region === 'boot' ? TIPS.alphaBoot : TIPS.alphaBand);
         nsegInput.placeholder = nsegAuto !== null ? `auto (${nsegAuto})` : 'auto';
         setInfo(nsegInfo, TIPS.nseg + (an ? TIPS.nsegAn : ''));
         if (document.activeElement !== alphaInput)
