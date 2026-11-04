@@ -21,10 +21,11 @@ import {
 import { ladder } from '../core/ladder.js';
 import { anRegion, calibrateTau, checkFit } from '../core/regions.js';
 import { anBoxes } from '../core/an.js';
-import { familyIntervals, familyLevels, familyText } from '../core/intervals.js';
+import { familyIntervals, familyLevels } from '../core/intervals.js';
 import { tauFromSample } from '../core/calibrate.js';
 import { constraintBoxes } from '../core/region.js';
 import { createControls } from './controls.js';
+import { infoIcon } from './info.js';
 import { stateToHash, hashToState, AN_MAX_SEGMENTS } from './urlstate.js';
 import { fmtExp } from './format.js';
 import { createMainChart } from './chart.js';
@@ -369,13 +370,14 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
             + `${an ? 'intervals' : 'check-grid points'}${atData}; largest ${ratio} = ${fmt(fit.maxRatio)}, `
             + `${boxPlace(region, fit.argMax, x)}.`);
     }
-    sel.append('p').attr('class', 'claim').text(an
-        ? `Checked against the region below, ${region.label}, on its ${fmtInt(G)} intervals: the fit's mean over each `
+    v.node().append(infoIcon(an
+        ? `Checked against the region above, ${region.label}, on its ${fmtInt(G)} intervals: the fit's mean over each `
             + 'interval of observations must lie within c/√|I| of the mean of y there. Aₙ looks only at the '
             + 'observations, so between them the ambition penalty alone shapes the fit. The region is soft: '
             + 'leaving it costs κ per squared box half-height, and the check says by how much.'
-        : `Checked against the region below, the ${region.label}, on its check grid. The region is soft: leaving it `
-            + 'costs κ per squared half-width, so the fit can cross its edge, and the check says by how much.');
+        : `Checked against the region above, the ${region.label}, on its check grid. The region is soft: leaving it `
+            + 'costs κ per squared half-width, so the fit can cross its edge, and the check says by how much.',
+    'the check'));
     if (star.unreachable) {
         sel.append('p').attr('class', 'warning').text(`No fit with this basis gets inside ${an ? 'Aₙ' : 'the region'}, `
             + `even with no ambition: the largest ${ratio} is ${fmt(star.fit.maxRatio)}. A cubic spline on `
@@ -392,7 +394,7 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
             + `${fit.reweights} reweightings; the count shown is where the reweighting stopped.`);
     }
     const rows = [];
-    const add = (label, value, note) => rows.push({ label, value, note });
+    const add = (label, value, note, tip) => rows.push({ label, value, note, tip });
     const decades = `${Math.abs(st.ambition)} decade${Math.abs(st.ambition) === 1 ? '' : 's'} `
         + `${st.ambition > 0 ? 'above' : 'below'} a*`;
     const top = fit.sparse ? 'the top of the range' : 'the largest ambition computed reliably';
@@ -410,14 +412,15 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     if (fit.sparse)
         ambitionNote += `. Each bend or step costs a per ${an ? 'interval' : 'check-grid point'}`;
     add('ambition a', fmtExp(fit.a), ambitionNote);
-    add('penalty', fit.sparse ? 'number of bends or steps' : 'squared differences', fit.sparse
+    const counted = st.flat === 0 ? 'bends' : st.flat === 1 ? 'steps' : 'bends and steps';
+    add('penalty', fit.sparse ? `count of ${counted}` : 'squared differences', fit.sparse
         ? 'adaptive ridge (Frommlet & Nuel 2016), an approximation of the count: a local optimum, not proven fewest'
         : 'straighter (or flatter) everywhere; no piece is exactly straight');
     if (fit.sparse)
         addPieceRows(add, fit.pieces, region);
     add('toward', st.flat === 0 ? 'straight' : st.flat === 1 ? 'flat' : `${Math.round(100 * (1 - st.flat))}% straight, `
         + `${Math.round(100 * st.flat)}% flat`, 'second (straight) and first (flat) differences of the coefficients');
-    add('effective dimension', fmt(fit.ed), `trace of the hat matrix, ${an ? 'the interval means of y'
+    add('ED', fmt(fit.ed), `effective dimension: the trace of the hat matrix, ${an ? 'the interval means of y'
         : `the center`} as data${an ? '' : ` (band: ${fmt(region.params.ed)})`}${fit.sparse
         ? '; about the polynomial\'s coefficients plus one per free difference' : ''}`);
     add('κ', fmtExp(fit.opts.kappa), 'weight on the squared distance outside the region');
@@ -427,8 +430,9 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         ? `cubic, equal segments over the data's x range${region.nsegCapped ? `; capped at ${AN_MAX_SEGMENTS}` : ''}`
         : 'cubic, on the band\'s knots');
     if (fit.sparse) {
-        add('solver', `${fit.reweights} reweighting${fit.reweights === 1 ? '' : 's'}, ${fit.iterations} solves`,
-            `${fit.settled ? 'the joins settled' : 'the joins had not settled'}; ${fit.pruned} dropped by backward `
+        add('solver', `${fit.iterations} solves`, `adaptive ridge: ${fit.reweights} reweighting`
+            + `${fit.reweights === 1 ? '' : 's'}; ${fit.settled ? 'the joins settled' : 'the joins had not settled'}; `
+            + `${fit.pruned} dropped by backward `
             + `elimination; the final fit is ${fit.converged ? 'the exact minimizer for its joins' : 'not converged'}`);
     }
     else {
@@ -437,7 +441,7 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         add('solver', `${fit.iterations} solve${fit.iterations === 1 ? '' : 's'}`, `iterated weights: `
             + `${fit.converged ? 'converged, the exact minimizer' : 'not converged'}${shortened}`);
     }
-    add('computed in', `${fmt(fit.ms)} ms`, `a*: ${star.fits} fits, ${fmt(star.ms)} ms`);
+    add('computed in', `${fmt(fit.ms)} ms`, `this fit; finding a* took ${star.fits} fits, ${fmt(star.ms)} ms`);
     appendRows(sel, rows);
 }
 
@@ -456,7 +460,13 @@ function addPieceRows(add, pieces, region) {
             ? `${join}s at x ≈ ${joins.map(j => j.x.toFixed(digits)).join(', ')} (± ${fmtShort(step / 2)}, half a `
                 + 'segment)'
             : (order === 2 ? 'a straight line' : 'a constant');
-        add(order === 2 ? 'straight' : 'flat', `${plural(k, piece)}, ${plural(joins.length, join)}${ends}`, where);
+        const what = order === 2
+            ? 'Pieces where the fit is exactly straight (second differences of its coefficients are zero), and the '
+                + 'short bends between them.'
+            : 'Pieces where the fit is exactly flat (first differences of its coefficients are zero), and the '
+                + 'steps between them.';
+        add(order === 2 ? 'straight' : 'flat', `${plural(k, piece)}, ${plural(joins.length, join)}${ends}`, where,
+            what);
     }
 }
 
@@ -464,7 +474,8 @@ function addLadderRows(add, region, x) {
     const an = region.kind === 'An';
     for (const rung of region.ladder) {
         const name = rung.shape === 'line' ? 'a straight line' : 'a constant';
-        add(name, rung.fits ? 'fits inside' : 'does not fit', `the best (minimax) ${rung.shape} reaches `
+        add(name, `${rung.fits ? 'fits inside' : 'does not fit'} (${fmt(rung.ratio)})`,
+            `the best (minimax) ${rung.shape} reaches `
             + `${an ? '|w(I)|/c' : '|g − c|/h'} = ${fmt(rung.ratio)}, ${boxPlace(region, rung.argMax, x)}; exact `
             + `${an ? 'on every interval' : 'on the check grid'}`);
     }
@@ -481,21 +492,29 @@ function renderAnReadouts(sel, result, truthCheck, data) {
             : ` on ${fmtInt(truthCheck.violations)} of ${fmtInt(an.lo.length)} intervals (largest |w(I)|/c = `
                 + `${fmt(truthCheck.maxRatio)}, ${boxPlace(region, truthCheck.argMax, data.x)}).`);
     }
-    sel.append('p').attr('class', 'claim').text(`${region.claim} Aₙ bounds the residuals' sum over each interval `
-        + 'of the observations: |Σ_I (y − g)| ≤ c·√|I|.');
+    appendClaim(sel, shortClaim(result), `${region.claim} Aₙ bounds the residuals' sum over each interval of the `
+        + 'observations: |Σ_I (y − g)| ≤ c·√|I|.');
     const rows = [];
-    const add = (label, value, note) => rows.push({ label, value, note });
+    const add = (label, value, note, tip) => rows.push({ label, value, note, tip });
     addLadderRows(add, region, data.x);
-    add('σ̂', fmt(p.sigma), 'from first differences (Davies, Kovac & Meise eq. 10), tie-aware');
+    add('σ̂', fmt(p.sigma), 'from first differences (Davies, Kovac & Meise eq. 10), tie-aware',
+        'Estimated standard deviation of the noise, units of y. First differences of y are nearly free of the '
+        + 'signal, so σ̂ needs no fit.');
     const cal = p.calibration;
     add('τ', fmt(p.tau), cal
         ? `calibrated for coverage ${fmt(cal.alpha)} by Monte Carlo (B = ${fmtInt(cal.B)}) for this n, design and `
             + `intervals; Monte Carlo 95% interval ${fmt(cal.tauLo)} – ${fmt(cal.tauHi)}`
         : 'given');
     add('threshold c', fmt(an.scale), 'σ̂·√(τ log n), units of y');
-    const kind = { blocks: 'the paper\'s blocks', overlapping: 'overlapping windows', all: 'every interval' };
-    add('intervals', fmtInt(an.lo.length), `${kind[result.family.kind]}${result.family.kind === 'all' ? ''
-        : ` (${familyText(result.family)}: interval lengths grow by λ per level)`}`);
+    const f = result.family;
+    const lengths = `lengths ${[1, 2, 3].map(k => f.lambda ** (k - 1)).join(', ')}, …`;
+    const kind = {
+        blocks: `the paper's blocks, ${lengths}`,
+        overlapping: `overlapping windows, ${lengths}, ${f.offsets === Infinity ? 'at every position'
+            : `in steps of 1/${f.offsets} of the length`}`,
+        all: 'every interval',
+    };
+    add('intervals', fmtInt(an.lo.length), kind[f.kind]);
     add('box half-height', `${fmt(d3.min(region.half))} – ${fmt(d3.max(region.half))}`, 'c/√|I|, units of y');
     add('computed in', `${fmt(result.ms)} ms`, result.calMs === null
         ? (cal ? 'the calibration sample was already computed for these x and intervals' : '')
@@ -503,21 +522,54 @@ function renderAnReadouts(sel, result, truthCheck, data) {
     appendRows(sel, rows);
 }
 
+/** A note fragment ("from the residuals, ν = 69") as a sentence, for a tip. */
+function sentence(text) {
+    const t = text.charAt(0).toUpperCase() + text.slice(1);
+    return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
+/**
+ * Readout rows {label, value, note?, tip?}: label and value shown; the tip (what the item is) and the note (how
+ * this value came about) behind an ⓘ on the label, so the readouts stay compact while every detail stays one
+ * hover or tap away.
+ */
 function appendRows(sel, rows) {
     const dl = sel.append('dl');
     for (const r of rows) {
-        dl.append('dt').text(r.label);
+        const dt = dl.append('dt').text(r.label);
+        const text = [r.tip, r.note ? sentence(r.note) : ''].filter(Boolean).join(' ');
+        if (text)
+            dt.node().append(infoIcon(text, r.label));
         dl.append('dd').text(r.value);
-        if (r.note)
-            dl.append('dd').attr('class', 'dd-note').text(r.note);
     }
+}
+
+/** A short claim, shown, with the full statement behind an ⓘ. */
+function appendClaim(sel, short, full) {
+    const p = sel.append('p').attr('class', 'claim').text(short);
+    p.node().append(infoIcon(full, 'the claim'));
+}
+
+/** What a region contains and under which assumptions, in one line (the region's claim has the details). */
+function shortClaim(result) {
+    if (result.an) {
+        const p = result.an.params;
+        const level = p.calibration
+            ? `Contains f with probability ≈ ${fmt(p.calibration.alpha)} (τ calibrated)`
+            : `τ = ${fmt(p.tau)} is given, so its coverage is not calibrated`;
+        return `${level}, if the noise is independent Gaussian; no smoothness is assumed about f.`;
+    }
+    const p = result.region.params;
+    return p.covariance === 'sandwich'
+        ? `Contains the P-spline's mean (f smoothed), not f, at every check-grid point with probability ≈ ${p.alpha}, `
+            + 'for independent Gaussian noise.'
+        : `Contains f at every check-grid point with probability ≈ ${p.alpha}, if f is smooth and the noise `
+            + 'independent Gaussian.';
 }
 
 function renderReadouts(container, data, result, truthCheck, phase2, st) {
     const sel = d3.select(container);
     sel.selectAll('*').remove();
-    if (phase2)
-        renderFitReadouts(sel, result.region, phase2.star, phase2.fit, st, data.x);
     sel.append('h2').text('Region');
     if (result.error) {
         sel.append('p').attr('class', 'error').text(`No ${st.region === 'An' ? 'Aₙ' : 'band'}: ${result.error}`);
@@ -536,7 +588,7 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
                 : ` at ${fmtInt(truthCheck.outside)} of ${fmtInt(region.grid.length)} check-grid points (largest `
                     + `|f − c|/h = ${fmt(truthCheck.maxRatio)}, at x = ${fmt(region.grid[truthCheck.argMax])}).`);
         }
-        sel.append('p').attr('class', 'claim').text(region.claim);
+        appendClaim(sel, shortClaim(result), region.claim);
         if (p.atEdge) {
             const end = Math.log(p.lambdaChosen) > 0 ? 'largest' : 'smallest';
             sel.append('p').attr('class', 'warning').text(`${p.lambdaSource.toUpperCase()} chose the ${end} λ searched`
@@ -545,7 +597,7 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
                     : ': the optimum may lie further out; consider fewer segments or a given λ.'));
         }
         const rows = [];
-        const add = (label, value, note) => rows.push({ label, value, note });
+        const add = (label, value, note, tip) => rows.push({ label, value, note, tip });
         addLadderRows(add, region, data.x);
         let lambdaNote;
         if (p.lambdaSource === 'given')
@@ -554,22 +606,32 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
             lambdaNote = `chosen by ${p.lambdaSource.toUpperCase()}`;
         else
             lambdaNote = `${p.lambdaSource.toUpperCase()} chose ${fmt(p.lambdaChosen)}; × ${fmt(p.undersmooth)} undersmoothing`;
-        add('λ', `${fmt(p.lambda)} (log ${p.lambda > 0 ? Math.log(p.lambda).toFixed(2) : '−∞'})`, lambdaNote);
-        add('effective dimension', fmt(p.ed));
-        add('σ̂', fmt(p.sigma), `from the residuals, ν = n − ED = ${fmt(p.df)} degrees of freedom`);
-        add('critical value q', fmt(p.q), `${p.alpha} quantile of the max over the grid, Monte Carlo B = ${fmtInt(p.B)}`);
+        add('λ', `${fmt(p.lambda)} (log ${p.lambda > 0 ? Math.log(p.lambda).toFixed(2) : '−∞'})`, lambdaNote,
+            'The smoothing parameter of the band\'s P-spline: the weight on the squared differences of its '
+            + 'coefficients. Larger is smoother, with a narrower band; log is natural.');
+        rows.push({ label: 'ED', value: fmt(p.ed), tip: 'Effective dimension, the trace of the P-spline\'s hat '
+            + 'matrix: the number of parameters its fit spends, between the penalty order (λ → ∞, a polynomial) and '
+            + 'the number of coefficients (λ = 0).' });
+        add('σ̂', fmt(p.sigma), `from the residuals, ν = n − ED = ${fmt(p.df)} degrees of freedom`,
+            'Estimated standard deviation of the noise: √(RSS/ν), units of y.');
+        add('q', fmt(p.q), `${p.alpha} quantile of the max over the grid, Monte Carlo B = ${fmtInt(p.B)}`,
+            'Critical value: the band is the center ± q standard errors. q exceeds the pointwise 1.96 because the band '
+            + 'must hold at every grid point at once: it is the α quantile of the largest |error|/se over the grid.');
         add('half-width', `${fmt(d3.min(region.half))} – ${fmt(d3.max(region.half))}`, 'q × standard error, units of y');
-        add('basis', `${p.nseg} segments, degree ${p.deg}`, `penalty order ${p.diff}`);
+        add('basis', `${p.nseg} segments`, `B-splines of degree ${p.deg}, penalty order ${p.diff}`);
         add('check grid', `${fmtInt(region.grid.length)} points`, 'the distinct data x and 4 points per segment');
         add('computed in', `${fmt(result.ms)} ms`);
         appendRows(sel, rows);
     }
+    // phase 2 after phase 1, in the order they are computed (and as in the controls)
+    if (phase2)
+        renderFitReadouts(sel, result.region, phase2.star, phase2.fit, st, data.x);
     sel.append('h2').text('Data');
-    const dl = sel.append('dl');
-    dl.append('dt').text('observations');
-    dl.append('dd').text(fmtInt(data.n));
-    dl.append('dt').text('distinct x');
-    dl.append('dd').text(fmtInt(data.m));
+    appendRows(sel, [
+        { label: 'observations', value: fmtInt(data.n), tip: 'Rows with both x and y.' },
+        { label: 'distinct x', value: fmtInt(data.m), tip: 'Observations that share an x are tied: the region never '
+            + 'separates them, and segments and the check grid are set from the distinct values.' },
+    ]);
     if (data.notes.length)
         sel.append('ul').attr('class', 'notes').selectAll('li').data(data.notes).join('li').text(d => d);
 }
@@ -736,6 +798,7 @@ async function startup() {
             columns: data.columns,
             nsegAuto: defaultSegments(data.m),
             lambdaChosen: region && !an && region.params.lambdaSource !== 'given' ? region.params.lambdaChosen : null,
+            lambdaUsed: region && !an ? region.params.lambda : null,
             ambition: phase2 ? { a: phase2.fit.a, star: phase2.star.ambition, capped: phase2.star.capped,
                 clamped: phase2.fit.clamped, sparse: phase2.fit.sparse } : null,
         });

@@ -9,6 +9,7 @@
 // Copied from the earlier project with the field table rewritten for lafspline's state (see VENDORED.md).
 
 import { SIGNALS } from '../core/signals.js';
+import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 
 const MAX_DATA_CHARS = 8000; // encoded data longer than this stays out of the link (chat apps truncate long URLs)
 export const MAX_N = 5000; // simulated sample size cap, used by controls.js
@@ -82,7 +83,7 @@ const FIELDS = {
     alpha: num(0.5, 0.999),
     covariance: enumOf(['bayes', 'sandwich']),
     lambdaMode: enumOf(['gcv', 'aic', 'given']),
-    logLambda: num(-30, 40),
+    logLambda: num(...LOG_LAMBDA_RANGE),
     // written as the divisor (16 for λ × 1/16): a slash would be percent-encoded in the link
     undersmooth: {
         write: v => String(Math.round(1 / v)),

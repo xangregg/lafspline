@@ -26,6 +26,7 @@ const RANGE_TOL = 1e-10; // relative to xr − xl: x this far outside [xl, xr] s
 // λ search (natural log): a grid, then golden-section refinement around the best grid point.
 const LOG_LAMBDA_MIN = -10;
 const LOG_LAMBDA_MAX = 18;
+export const LOG_LAMBDA_RANGE = [LOG_LAMBDA_MIN, LOG_LAMBDA_MAX]; // also the given-λ slider's range (ui)
 const LOG_LAMBDA_STEP = 0.25;
 const LOG_LAMBDA_TOL = 1e-4; // golden-section stopping width in log λ
 const GOLDEN = (Math.sqrt(5) - 1) / 2;

@@ -33,7 +33,7 @@ lafspline's own.
 `lp.js`: trimmed (see below).
 `urlstate.js` (+ test): copied in phase 2 with the field table rewritten (see below).
 `main.js` and `controls.js` are lafspline's own, patterned on the earlier project's (the data source, paste/drop and
-example loading code, and the URL hash and Copy link wiring, are the earlier project's). `format.js` is lafspline's own.
+example loading code, and the URL hash and Copy link wiring, are the earlier project's). `format.js` and `info.js` (the ⓘ explanations) are lafspline's own.
 Not copied: `residual.js` (Aₙ's residual view). Phase 4 draws the boxes of the tightest level on the main chart
 instead.
 
