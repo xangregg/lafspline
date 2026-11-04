@@ -92,6 +92,8 @@ export const SHAPE_DEFAULTS = Object.freeze({
  * @property {number} [deg]         degree (3)
  * @property {number} kappa         weight on the squared distance outside the region (κ)
  * @property {number} epsilon       weight on the squared distance from the center (ε > 0)
+ * @property {Float64Array} [target]  what ε pulls toward, per row, inside the region (default c, its midpoint): a
+ *     region that is not symmetric about its estimate (the bootstrap band) passes the estimate
  * @property {number} lambda1       weight on ‖D₁β‖²/s² (toward flat)
  * @property {number} lambda2       weight on ‖D₂β‖²/s² (toward straight)
  * @property {Float64Array} [w1]    weights on the squared first differences (adaptive ridge; 1 without)
@@ -122,12 +124,15 @@ function prepare(spec) {
         throw new RangeError('phase 2: half-widths must be positive');
     const cs = Float64Array.from(c, v => v / s);
     const hs = Float64Array.from(h, v => v / s);
+    if (spec.target && spec.target.length !== rows.n)
+        throw new RangeError('phase 2: target differs in length from the rows');
+    const ts = spec.target ? Float64Array.from(spec.target, v => v / s) : cs;
     const nb = nseg + deg;
     let widest = 0;
     for (let k = 0; k < rows.n; k++)
         widest = Math.max(widest, rows.width[k]);
     const W = Math.min(nb, Math.max(widest, Math.max(deg, 2) + 1));
-    return { spec, s, cs, hs, rows, W, nb };
+    return { spec, s, cs, hs, ts, rows, W, nb };
 }
 
 /**
@@ -274,7 +279,7 @@ function objective(p, beta, g) {
         const lo = p.cs[j] - p.hs[j];
         const hi = p.cs[j] + p.hs[j];
         const out = g[j] > hi ? g[j] - hi : g[j] < lo ? lo - g[j] : 0;
-        sum += (kappa * out * out + epsilon * (g[j] - p.cs[j]) ** 2) / (p.hs[j] * p.hs[j]);
+        sum += (kappa * out * out + epsilon * (g[j] - p.ts[j]) ** 2) / (p.hs[j] * p.hs[j]);
     }
     const P = new Float64Array(p.nb * p.W);
     addAmbition(P, p);
@@ -405,7 +410,7 @@ function newtonSystem(p, side) {
         const k = side[j] !== 0 ? kappa : 0;
         const edge = p.cs[j] + side[j] * p.hs[j];
         weight[j] = (epsilon + k) / h2;
-        target[j] = (epsilon * p.cs[j] + k * edge) / (epsilon + k);
+        target[j] = (epsilon * p.ts[j] + k * edge) / (epsilon + k);
     }
     const { A, rhs } = rowCrossProducts(p.rows, weight, target, p.nb, p.W);
     addAmbition(A, p);
@@ -476,7 +481,7 @@ function lineSearch(p, P, beta, g, betaN, gN) {
             const hi = p.cs[j] + p.hs[j];
             const lo = p.cs[j] - p.hs[j];
             const r = gj > hi ? gj - hi : gj < lo ? gj - lo : 0;
-            s += 2 * (kappa * r + epsilon * (gj - p.cs[j])) * gd[j] / (p.hs[j] * p.hs[j]);
+            s += 2 * (kappa * r + epsilon * (gj - p.ts[j])) * gd[j] / (p.hs[j] * p.hs[j]);
         }
         return s;
     };
@@ -508,11 +513,11 @@ export function buildQP(spec, opts = {}) {
     const p = prepare(spec);
     const hard = opts.hard ?? false;
     const { kappa, epsilon } = spec;
-    const { rows, nb, W, cs, hs } = p;
+    const { rows, nb, W, cs, hs, ts } = p;
     const G = rows.n;
     const numCols = hard ? nb : nb + G;
     const invH2 = Float64Array.from(hs, v => 1 / (v * v));
-    const { A, rhs } = rowCrossProducts(rows, invH2, cs, nb, W);
+    const { A, rhs } = rowCrossProducts(rows, invH2, ts, nb, W);
     for (let i = 0; i < A.length; i++)
         A[i] *= epsilon;
     addAmbition(A, p);
@@ -545,7 +550,7 @@ export function buildQP(spec, opts = {}) {
         colCost[k] = -2 * epsilon * rhs[k];
     let offset = 0;
     for (let j = 0; j < G; j++)
-        offset += epsilon * cs[j] * cs[j] * invH2[j];
+        offset += epsilon * ts[j] * ts[j] * invH2[j];
 
     // rows: l'_j ≤ (Bβ')_j (+ t_j) ≤ u'_j
     const rowStarts = new Int32Array(G + 1);
@@ -636,7 +641,7 @@ export function regionSpec(region, opts) {
     const nseg = opts.nseg ?? region.params.nseg;
     const flat = opts.flat ?? 0;
     return {
-        grid: region.grid, rows: region.rows, c: region.center, h: region.half,
+        grid: region.grid, rows: region.rows, c: region.center, h: region.half, target: region.target,
         xl: region.params.xl, xr: region.params.xr, nseg, deg: 3,
         kappa: opts.kappa ?? DEFAULT_KAPPA,
         epsilon: opts.epsilon ?? DEFAULT_EPSILON,
@@ -1278,13 +1283,17 @@ function supportRuns(m) {
     return runs;
 }
 
-/** The region terms of S, κ·Σdist²/h² + ε·Σ((g − c)/h)², for g in units of y (s: the median half-width). */
+/**
+ * The region terms of S, κ·Σdist²/h² + ε·Σ((g − t)/h)², for g in units of y (s: the median half-width; t the
+ * target, the center by default).
+ */
 function regionObjective(spec, s, g) {
+    const target = spec.target ?? spec.c;
     let sum = 0;
     for (let j = 0; j < g.length; j++) {
         const h = spec.h[j];
-        const dev = g[j] - spec.c[j];
-        const out = Math.max(0, Math.abs(dev) - h);
+        const out = Math.max(0, Math.abs(g[j] - spec.c[j]) - h);
+        const dev = g[j] - target[j];
         sum += (spec.kappa * out * out + spec.epsilon * dev * dev) / (h * h);
     }
     return sum;

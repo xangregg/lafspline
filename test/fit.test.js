@@ -414,3 +414,18 @@ test('extremum and inflection costs leave a forced shape alone, and remove what 
     assert.ok(fit.inflections >= plain.inflections - 1, `${fit.inflections} vs ${plain.inflections}`);
     assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
 });
+
+test('a target moves the center pull inside the region, not its edges', () => {
+    // Without ambition the fit sits where ε pulls it; a target off the midpoint moves it there (inside the region),
+    // while a target outside does not take the fit out: κ holds it at the edge.
+    const TOL = 1e-3; // of h
+    const h = 0.1;
+    const spec = syntheticSpec(x => Math.sin(3 * x), h);
+    const shifted = spec.c.map(v => v + 0.5 * h);
+    const fit = fitIterated({ ...spec, target: shifted });
+    assert.ok(maxDiffOverH(fit.g, shifted, spec.h) < TOL, `${maxDiffOverH(fit.g, shifted, spec.h)}`);
+    const far = fitIterated({ ...spec, target: spec.c.map(v => v + 3 * h) });
+    assert.ok(far.maxRatio < 1 + 10 / spec.kappa, `${far.maxRatio}`);
+    assert.ok(far.maxRatio > 1 - TOL, `${far.maxRatio}`);
+    assert.throws(() => fitIterated({ ...spec, target: new Float64Array(3) }), RangeError);
+});

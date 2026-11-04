@@ -465,8 +465,13 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         : `the center`} as data${an ? '' : ` (band: ${fmt(region.params.ed)})`}${fit.sparse
         ? '; about the polynomial\'s coefficients plus one per free difference' : ''}`);
     add('κ', fmtExp(fit.opts.kappa), 'weight on the squared distance outside the region');
-    add('ε', fmtExp(fit.opts.epsilon), an ? 'weight on the squared distance from the box centers, the interval '
-        + 'means of y' : 'weight on the squared distance from the center');
+    let pullNote = 'weight on the squared distance from the center';
+    if (an)
+        pullNote = 'weight on the squared distance from the box centers, the interval means of y';
+    else if (region.target)
+        pullNote = 'weight on the squared distance from the bootstrap replicates\' median (reflected as the band\'s '
+            + 'edges are), not the midpoint of the edges, which a long tail on one side moves away from the estimate';
+    add('ε', fmtExp(fit.opts.epsilon), pullNote);
     add('basis', `${region.params.nseg} segments`, an
         ? `cubic, equal segments over the data's x range${region.nsegCapped ? `; capped at ${AN_MAX_SEGMENTS}` : ''}`
         : 'cubic, on the band\'s knots');
@@ -620,7 +625,8 @@ function addBootstrapRows(add, region) {
     const p = region.params;
     add('q below / above', `${fmt(d3.mean(p.qBelow))} / ${fmt(d3.mean(p.qAbove))}`, `averages over the grid; `
         + `pointwise tail level ${fmtShort(p.tailLevel)}, B = ${fmtInt(p.B)} replicates, `
-        + `${p.weights === 'dirichlet' ? 'Dirichlet' : 'matched'} weights`,
+        + `${p.weights === 'dirichlet' ? 'Dirichlet' : 'matched'} weights, refits to `
+        + `${p.refit === 'exact' ? 'all orders' : 'first order'} in the weights`,
         'Critical values: the band reaches q·se below and above the fit, where se is the standard error for constant '
         + 'noise. They are the replicates\' upper and lower tail quantiles (standardized, pooled over ±10% of the x '
         + 'range) at the pointwise tail level that holds for a fraction α of the replicates everywhere at once. '

@@ -8,7 +8,8 @@
 // units of the true σ; the mean effective dimension. σ is estimated in every case, as the app does.
 //
 // Configurations are covariance:factor, where covariance is bayes or sandwich (band.js) or the bootstrap band
-// (bootstrap.js) as boot[-weights[-window]], e.g. boot, boot-dirichlet, boot-matched-Infinity.
+// (bootstrap.js) as boot[-weights[-window[-refit]]], e.g. boot, boot-dirichlet, boot-matched-Infinity,
+// boot-matched-0.1-linear.
 // --noise sets the noise ε: gauss (the signals' own), skew (Exp(1) − 1: mean 0, sd 1, right-skewed) or hetero
 // (Gaussian with sd growing from 0.25 to 1.75 times σ across x, average 1).
 //
@@ -84,9 +85,10 @@ function sample(name, n, sigma, seed, noise) {
 function makeBand(x, y, config, B) {
     const common = { alpha: ALPHA, undersmooth: config.undersmooth, B, seed: CALIBRATION_SEED };
     if (config.covariance.startsWith('boot')) {
-        // boot-<weights>-<window>, each optional: boot, boot-dirichlet, boot-matched-0.2
-        const [, weights, window] = config.covariance.split('-');
-        return bootstrapBand(x, y, { ...common, weights, window: window === undefined ? undefined : Number(window) });
+        // boot-<weights>-<window>-<refit>, each optional: boot, boot-dirichlet, boot-matched-0.2-linear
+        const [, weights, window, refit] = config.covariance.split('-');
+        return bootstrapBand(x, y, { ...common, weights, window: window === undefined ? undefined : Number(window),
+            refit });
     }
     return bandRegion(x, y, { ...common, covariance: config.covariance });
 }

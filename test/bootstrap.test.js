@@ -4,7 +4,9 @@ import {
     bootstrapBand, dirichletWeights, matchedWeights, refitChange, scaledResiduals,
 } from '../src/core/bootstrap.js';
 import { fitPSpline, solveCholesky } from '../src/core/pspline.js';
-import { checkBand } from '../src/core/band.js';
+import { checkBand, bandRegion } from '../src/core/band.js';
+import { readDataset } from '../src/core/datasets.js';
+import { readFileSync } from 'node:fs';
 import { simulate } from '../src/core/signals.js';
 import { createRng } from '../src/core/rng.js';
 
@@ -104,7 +106,9 @@ test('the bootstrap band contains its fit, is reproducible, and is nearly symmet
 });
 
 test('with right-skewed noise the band reaches further below the fit; with growing noise it widens', () => {
-    const SKEW_RATIO = 1.15; // mean reach below / mean reach above, at least (measured: about 1.4)
+    // mean reach below / mean reach above, at least. Measured on 4 seeds: 1.08–1.18 with the default refits (first
+    // order in the weights), 1.24–1.30 with exact refits
+    const SKEW_RATIO = 1.05;
     const WIDEN = 2.5; // mean half-width over the last fifth of x / the first fifth, at least (noise sd ratio 7)
     const n = 400;
     const sim = simulate('sine', n, 0.3, SEED);
@@ -182,4 +186,30 @@ test('data on a line, with the penalty toward lines, leave no spread for a boots
     const x = Float64Array.from({ length: 30 }, (_, i) => i);
     const y = x.map(v => 2 + 0.5 * v);
     assert.throws(() => bootstrapBand(x, y, { B: 10, lambda: 1e6 }), RangeError);
+});
+
+test('a sparse stretch with a small λ does not make the band swing: Tukey coal stays near the sandwich band', () => {
+    // Regression: with exact refits, ED 25 of n = 49 (two points per segment) gave a half-width 15 times the
+    // sandwich band's at 1920 and 3.5 times near 1950. Measured with the default refits: 0.33–1.76 times, mean 1.05.
+    const MAX_RATIO = 2.5;
+    const text = readFileSync(new URL('../data/tukey-coal.csv', import.meta.url), 'utf8');
+    const { x, y } = readDataset(text);
+    const opts = { undersmooth: 1 / 16 };
+    const band = bootstrapBand(x, y, { ...opts, B: 1000 });
+    const sw = bandRegion(x, y, { ...opts, covariance: 'sandwich', B: 1000 });
+    const ratios = band.half.map((h, j) => h / sw.half[j]);
+    assert.ok(Math.max(...ratios) < MAX_RATIO, `${Math.max(...ratios)}`);
+    const exact = bootstrapBand(x, y, { ...opts, B: 1000, refit: 'exact' });
+    assert.ok(Math.max(...exact.half.map((h, j) => h / sw.half[j])) > 4 * MAX_RATIO);
+});
+
+test('the band\'s target is the replicates\' median: inside the band, at the fit when the noise is symmetric', () => {
+    const TOL = 0.1; // of the half-width, for Gaussian noise
+    const { x, y } = simulate('sine', 300, 0.3, SEED);
+    const band = bootstrapBand(x, y, { B });
+    for (let j = 0; j < band.grid.length; j++) {
+        assert.ok(band.lower[j] < band.target[j] && band.target[j] < band.upper[j]);
+        assert.ok(Math.abs(band.target[j] - band.params.fit[j]) < TOL * band.half[j], `${band.grid[j]}`);
+    }
+    assert.throws(() => bootstrapBand(x, y, { B: 10, refit: 'quadratic' }), RangeError);
 });

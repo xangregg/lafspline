@@ -3,7 +3,9 @@
 //
 // The fit f̂ is the band's (band.js bandFit: the same λ choice and undersmoothing). Each replicate refits it at the
 // same λ with random fractional weights on the observations: every weight positive (no observation drops out), the
-// weights summing to n (so λ keeps its balance with the data). Two weight distributions:
+// weights summing to n (so λ keeps its balance with the data). By default the refit is taken to first order in the
+// weights (linearChange), which keeps a few small weights from making a sparse stretch swing. Two weight
+// distributions:
 // - 'matched' (default): w ∝ G^(1/p), G ~ Gamma(k), with k and p chosen so that the weights have the mean,
 //   variance and skewness of a resampled count (1, 1, 1). In simulations it held its coverage best.
 // - 'dirichlet': w_i = n·E_i/ΣE, E_i ~ Exp(1), the Bayesian bootstrap (Rubin 1981) or fractional-random-weight
@@ -42,6 +44,10 @@ import { createRng } from './rng.js';
 
 const DEFAULT_B = 1000; // bootstrap replicates
 const DEFAULT_SEED = 1;
+const REFITS = ['linear', 'exact'];
+// First order in the weights: the exact refit A_b⁻¹ swings far when the few points that pin a segment or an end get
+// small weights under a small λ (Tukey coal, ED 25 of n = 49: 15 times the sandwich band at 1920); see linearChange.
+const DEFAULT_REFIT = 'linear';
 const DEFAULT_WINDOW = 0.1; // half-width of the window the band's widths average over, as a fraction of the x range
 const MIN_RESIDUAL_VARIANCE = 1e-9; // factors below this (an interpolated point, h_i ≈ 1): the residual counts as 0
 const ZERO_RESIDUAL = 1e-10; // relative to the range of y: residuals no larger leave no spread to resample
@@ -150,10 +156,30 @@ export function refitChange(fit, wb, r) {
 }
 
 /**
+ * refitChange to first order in the weights: A⁻¹Bᵀ(W_b − W)r with the fit's own A, a multiplier bootstrap. Its
+ * covariance is A⁻¹Bᵀ diag(Var w·r²) BA⁻¹, the heteroscedasticity-robust sandwich, and the weights' skewness carries
+ * the residuals' into its tails. The exact refit's A_b changes with the weights; where a few observations pin a
+ * segment or an end and λ is small, a small weight on them leaves those coefficients barely held, and the refit
+ * measures that reweighted design's fragility rather than f̂'s variability. In simulations (PLAN §1.2) the two
+ * covered alike at n = 500; at n = 100 the exact band was up to 1.6 times as wide and overcovered. O(n·deg + nb·p).
+ */
+function linearChange(fit, wb, r) {
+    const { basis, W, w } = fit.system;
+    const bw = basis.deg + 1;
+    const rhs = new Float64Array(basis.nb);
+    for (let i = 0; i < basis.n; i++) {
+        const c = (wb[i] - w[i]) * r[i];
+        for (let k = 0; k < bw; k++)
+            rhs[basis.first[i] + k] += basis.values[i * bw + k] * c;
+    }
+    return solveCholesky(fit.L, basis.nb, W, rhs);
+}
+
+/**
  * The studentized replicates T_bj = d_b(x_j)/(σ̂*_b·s_j) on the grid, replicate b at [b·G, (b + 1)·G).
  * O(B·(n·deg² + nb·p + G·deg)); B·G single-precision values (4 bytes each).
  */
-function studentizedReplicates(fit, gb, r, unitSe, { B, seed, weights }) {
+function studentizedReplicates(fit, gb, r, unitSe, { B, seed, weights, refit }) {
     const rng = createRng(seed);
     const { basis, w: prior } = fit.system;
     const n = prior.length;
@@ -175,7 +201,7 @@ function studentizedReplicates(fit, gb, r, unitSe, { B, seed, weights }) {
         }
         for (let i = 0; i < n; i++)
             wb[i] *= total / sum;
-        const delta = refitChange(fit, wb, r);
+        const delta = refit === 'linear' ? linearChange(fit, wb, r) : refitChange(fit, wb, r);
         // σ̂*: the replicate's weighted root mean square residual, in the bootstrap's world where f̂ is the truth
         // and the rescaled residuals the noise
         let ss = 0;
@@ -298,7 +324,8 @@ function bootstrapClaim(p) {
     const weights = p.weights === 'dirichlet'
         ? 'Dirichlet weights (the Bayesian bootstrap, twice as skewed as resampled counts)'
         : 'weights distributed like resampled counts in mean, variance and skewness';
-    return `Simultaneous bootstrap band around a P-spline (${basis}). B = ${p.B} refits at the same λ, each with `
+    const refits = p.refit === 'exact' ? 'refits' : 'refits (to first order in the weights)';
+    return `Simultaneous bootstrap band around a P-spline (${basis}). B = ${p.B} ${refits} at the same λ, each with `
         + `positive fractional weights on the observations that sum to n: ${weights}. The residuals are rescaled to `
         + 'the size of the noise and the replicates studentized by their σ̂; the band\'s reach below and above the '
         + 'fit is the replicates\' upper and lower tail (reflected, as a bootstrap-t interval), pooled over '
@@ -307,13 +334,14 @@ function bootstrapClaim(p) {
         + `x of the check grid with probability ≈ ${p.alpha}, for independent observations; the noise need not be `
         + 'Gaussian, and its spread may change slowly along x. In simulations at 95% with the default undersmoothing '
         + '(a line, a sine, a ramp and HeaviSine; n = 100 and 500; Gaussian, skewed or heteroscedastic noise) it '
-        + 'contained E f̂ in 84–100% of samples, least often for a line with skewed noise. λ is treated as fixed, and '
+        + 'contained E f̂ in 86–98% of samples, least often for a line with skewed noise. λ is treated as fixed, and '
         + 'the band contains f itself only where the smoothing bias is small compared with the half-width.';
 }
 
 /**
  * Simultaneous bootstrap band around a P-spline fit of y on x. The result is a band region (band.js) whose center
- * is the band's midpoint, which differs from the fit where the band is asymmetric.
+ * is the band's midpoint, which differs from the fit where the band is asymmetric; its target, for phase 2's pull
+ * inside the region, is the replicates' median reflected as the edges are (the band at level ½).
  *
  * @param {ArrayLike<number>} x  any order, ties allowed
  * @param {ArrayLike<number>} y
@@ -325,7 +353,10 @@ function bootstrapClaim(p) {
  * @param {'matched'|'dirichlet'} [opts.weights]  ('matched')
  * @param {number} [opts.window]   half-width of the window the widths average over, a fraction of the x range
  *     (0.1); 0 uses each point's own, Infinity one value for the whole grid
- * @returns {import('./band.js').BandRegion}  params add fit (f̂ at the grid), se (σ̂·s, units of y), up and down
+ * @param {'exact'|'linear'} [opts.refit]  each replicate the exact reweighted refit, or its first order in the
+ *     weights (the fit's own A; see linearChange)
+ * @returns {import('./band.js').BandRegion & {target: Float64Array}}  params add fit (f̂ at the grid), se (σ̂·s,
+ *     units of y), up and down
  *     (the band's reach above and below f̂), tUp and tDown (t⁺, t⁻ per point)
  */
 export function bootstrapBand(x, y, opts = {}) {
@@ -356,7 +387,10 @@ export function bootstrapBand(x, y, opts = {}) {
     }
     const unitSe = standardErrors(fit, gb, 'sandwich').map(v => v / fit.sigma);
     const Bused = Math.max(1, Math.min(B, Math.floor(MAX_STORED / G)));
-    const T = studentizedReplicates(fit, gb, r, unitSe, { B: Bused, seed, weights });
+    const refit = opts.refit ?? DEFAULT_REFIT;
+    if (!REFITS.includes(refit))
+        throw new RangeError(`bootstrapBand: unknown refit ${refit}`);
+    const T = studentizedReplicates(fit, gb, r, unitSe, { B: Bused, seed, weights, refit });
     // τ_j: each point's root mean square, to standardize before pooling and for the coverage check
     const tau = new Float64Array(G);
     for (let b = 0; b < Bused; b++) {
@@ -402,8 +436,11 @@ export function bootstrapBand(x, y, opts = {}) {
     const up = se.map((v, j) => qAbove[j] * v);
     const lower = fhat.map((f, j) => f - down[j]);
     const upper = fhat.map((f, j) => f + up[j]);
+    // the band at level ½: the replicates' median, reflected as the edges are. Phase 2 pulls toward it rather than
+    // toward the midpoint of the edges, which a long tail on one side moves away from the estimate.
+    const median = fhat.map((f, j) => f - quantileAt(table, 'hi', j, TAIL_LEVELS - 1) * tauBar[j] * se[j]);
     const params = {
-        n: fit.system.n, alpha, B: Bused, seed, covariance: 'bootstrap', weights, window,
+        n: fit.system.n, alpha, B: Bused, seed, covariance: 'bootstrap', weights, window, refit,
         tailLevel: table.levels[level], qBelow, qAbove, q: (mean(qBelow) + mean(qAbove)) / 2,
         criterion: opts.criterion ?? 'gcv', lambdaSource, lambdaChosen, atEdge, undersmooth, lambda: fit.lambda,
         ed: fit.ed, sigma: fit.sigma, df: fit.system.n - fit.ed, xl: basis.xl, xr: basis.xr, nseg: basis.nseg,
@@ -417,6 +454,6 @@ export function bootstrapBand(x, y, opts = {}) {
         grid,
         center: lower.map((l, j) => (l + upper[j]) / 2),
         half: lower.map((l, j) => (upper[j] - l) / 2),
-        lower, upper, params,
+        lower, upper, target: median, params,
     };
 }

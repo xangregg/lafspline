@@ -120,6 +120,26 @@ The matched band is the wider of the two at n = 100 (1.7σ against 1.4σ on the 
 HeaviSine at n = 100 its local widths reach the jump, so it holds f at the data x in 89–98% of samples (sandwich
 43–64%). It takes 0.1 s at n = 200, 0.3 s at 1000, 1.4 s at 5000 for 1000 replicates (Bayesian band: 12–36 ms).
 
+**Refits to first order in the weights (default since the rounded-bends work).** On Tukey coal (n = 49, ED 25 at λ ×
+1/16: two observations per segment, hat 0.93 at the ends) the band was 15 times the sandwich band's half-width at
+1920 and 3.5 times near 1950, with critical values 11–13. About 21% of the matched weights fall below 0.1; when
+the few points that pin a segment or an end get such weights, the exact refit A_b⁻¹ barely holds those
+coefficients at a small λ and swings far, measuring the fragility of a reweighted design, not f̂'s variability (f̂
+is linear in y). Chess recall's end showed the same in milder form (above ÷ below 2.6 at x = 80, so the band's
+midpoint rose while f̂ leveled off). The replicate is now A⁻¹Bᵀ(W_b − W)r with the fit's own A, a multiplier
+bootstrap: covariance the heteroscedasticity-robust sandwich, tails from the weights' skewness times the residuals'.
+Coal 0.33–1.76 times the sandwich band (mean 1.05), chess's end 1.24; elsewhere within a few percent. Coverage of
+E f̂ (200 replications, the same rows as above, matched weights): at n = 500 alike (linear 88–98%, exact 88.5–100%);
+at n = 100 linear 86–94.5%, exact 88–100% with bands up to 1.6 times as wide (HeaviSine 2.12σ against 3.45σ).
+The price: under skewed noise the band leans less (mean reach below ÷ above 1.08–1.18 on a skewed sine, n = 400,
+against 1.24–1.30 exact). `refit: 'exact'` remains for comparison (`tools/sim-band.mjs` boot-matched-0.1-exact).
+Re-measured with it, the replicate study (B) gives about the same: at B = 2000, edges within a median 0.08–0.11 of
+the half-width and the ratio's extremes ±0.02–0.07 from seed to seed.
+
+**Phase 2's target.** The pull ε now aims at a target the region may supply (fit.js `target`, default its center).
+The bootstrap band supplies the replicates' median reflected as its edges are (the band at level ½), so a long tail
+on one side no longer pulls the fit toward it; its edges, and so the check, are unchanged.
+
 **Replicates (B).** `tools/boot-replicates.mjs`: 20 seeds at each B against a band at B = 8000, on neuroimage (n = 28), dog ages (94), ozone
 (1197) and simulated sines (n = 200 Gaussian, 400 skewed). The mean half-width is unbiased from B = 500 and varies
 by 1.4–3% between seeds at 1000 (1–2% at 2000). The edges vary more: the largest gap to the reference anywhere on
