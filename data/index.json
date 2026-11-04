@@ -86,5 +86,16 @@
     "n": 49,
     "m": 49,
     "note": "sinusoidal pattern"
+  },
+  {
+    "id": "xkcd-curve-fitting",
+    "file": "xkcd-curve-fitting.csv",
+    "label": "xkcd 2048, Curve-Fitting",
+    "source": "Randall Munroe, xkcd 2048 (2018-09-19), https://xkcd.com/2048/, CC BY-NC 2.5; points digitized from the comic's 2x image (the same 31 dots in every panel; LINEAR and LINEAR, NO SLOPE agree to 0.3 px)",
+    "x": "x",
+    "y": "y",
+    "n": 31,
+    "m": 30,
+    "note": "units are comic pixels from the axes' corner (the comic has no scales); two dots share an x; the comic's point is that many curves fit these data"
   }
 ]

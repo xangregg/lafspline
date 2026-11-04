@@ -1,0 +1,37 @@
+# label: xkcd 2048, Curve-Fitting
+# source: Randall Munroe, xkcd 2048 (2018-09-19), https://xkcd.com/2048/, CC BY-NC 2.5; points digitized from the comic's 2x image (the same 31 dots in every panel; LINEAR and LINEAR, NO SLOPE agree to 0.3 px)
+# x: x
+# y: y
+# note: units are comic pixels from the axes' corner (the comic has no scales); two dots share an x; the comic's point is that many curves fit these data
+x,y
+13.9,22.1
+26.9,58.2
+28.5,31.0
+32.3,90.6
+36.1,25.6
+39.1,41.1
+41.8,36.1
+45.5,41.9
+58.2,50.9
+61.0,71.2
+66.3,40.1
+67.3,30.8
+71.1,36.0
+71.7,28.6
+81.2,22.1
+93.6,24.5
+98.4,51.1
+105.8,70.9
+113.7,128.9
+113.7,75.4
+113.9,60.2
+115.8,68.9
+122.9,110.2
+128.3,91.8
+131.2,10.0
+133.7,82.0
+134.1,59.8
+135.8,94.6
+136.9,101.1
+139.9,109.8
+142.3,91.6
