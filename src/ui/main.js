@@ -2,8 +2,8 @@
 // (phase 2) → chart and readouts.
 //
 // Everything runs on the main thread: the band takes milliseconds to tens of milliseconds (one λ search, one Monte
-// Carlo of B = 1000 cheap draws; the bootstrap band's 1000 replicates are each a banded refit, 0.1 s at n = 200 to
-// 1.4 s at n = 5000), a* (fit.js leavingAmbition) some 15–25 phase-2 fits of a few milliseconds each
+// Carlo of B = 1000 cheap draws; the bootstrap band's replicates are each a banded refit, 0.2 s for 2000 at
+// n = 200 to 1.4 s for 1000 at n = 5000), a* (fit.js leavingAmbition) some 15–25 phase-2 fits of a few milliseconds each
 // (sparse fits are some 10–30 iterated fits each, so a* takes up to about half a second for n in the thousands),
 // and a knob change one more fit. Aₙ takes a calibration of τ (B = 1000 draws of its multiscale statistic, tens to
 // hundreds of milliseconds, cached by design and interval family) and its phase-2 solves are dense (at most
@@ -40,7 +40,13 @@ const fmtShort = d3.format('.2~g');
 const CACHE_LIMIT = 24; // bands kept
 const BAND_B = 1000; // Monte Carlo draws for the band's critical value
 const BAND_SEED = 1;
-const BOOT_B = 1000; // bootstrap band replicates
+// Bootstrap band replicates. Over 20 seeds against B = 8000, the band's edges somewhere on the grid were off by a
+// median 0.11–0.17 of the half-width at B = 1000 and 0.08–0.12 at 2000, and the above ÷ below range was widened by
+// noise by up to 0.09 at 1000 (PLAN §1.2). 2000 costs up to about 0.6 s (at n = 1000); above it, 1000 keeps the
+// band under about 1.5 s.
+const BOOT_B_SMALL = 2000;
+const BOOT_B_LARGE = 1000;
+const BOOT_SMALL_N = 1000; // observations, at most, for BOOT_B_SMALL
 const AN_B = 1000; // Monte Carlo draws of Aₙ's multiscale statistic for a calibrated τ
 const AN_LAMBDA = 2; // Aₙ's interval lengths grow by this factor per level (the paper's)
 const CENTER_COLOR = 'series-3';
@@ -258,7 +264,8 @@ function remember(cache, key, value) {
 function computeBand(st, data) {
     const boot = st.region === 'boot';
     const opts = boot
-        ? { alpha: st.alpha, weights: st.bootWeights, diff: st.diff, B: BOOT_B, seed: BAND_SEED }
+        ? { alpha: st.alpha, weights: st.bootWeights, diff: st.diff, seed: BAND_SEED,
+            B: data.n <= BOOT_SMALL_N ? BOOT_B_SMALL : BOOT_B_LARGE }
         : { alpha: st.alpha, covariance: st.covariance, diff: st.diff, B: BAND_B, seed: BAND_SEED };
     if (st.nseg !== null)
         opts.nseg = st.nseg;
@@ -579,7 +586,9 @@ function addBootstrapRows(add, region) {
     const ratios = p.up.map((u, j) => u / p.down[j]);
     add('above ÷ below', `${fmt(d3.min(ratios))} – ${fmt(d3.max(ratios))}`, '1 is symmetric',
         'The band\'s reach above the fit divided by its reach below, smallest to largest over the grid. Above 1 '
-        + 'the replicates ran further below the fit there (a long lower tail of the residuals).');
+        + 'the replicates ran further below the fit there (a long lower tail of the residuals). The extremes are '
+        + 'Monte Carlo estimates, and noise widens them: with B = 2000 replicates they varied by about ±0.05 from '
+        + 'seed to seed, with 1000 by ±0.1.');
 }
 
 /** What a region contains and under which assumptions, in one line (the region's claim has the details). */

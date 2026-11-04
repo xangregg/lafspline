@@ -75,7 +75,8 @@ const TIPS = {
     alphaBand: 'The probability that the band contains f at every point of the check grid at once (the data x and '
         + '4 points per segment), by Monte Carlo with B = 1000.',
     alphaBoot: 'The probability that the band contains the smoothed f at every point of the check grid at once (the '
-        + 'data x and 4 points per segment), by the bootstrap with B = 1000 replicates.',
+        + 'data x and 4 points per segment), by the bootstrap with B = 2000 replicates (1000 above 1000 '
+        + 'observations).',
     weights: 'Every observation gets a positive weight in each replicate, and the weights sum to n. Like resampled '
         + 'counts: the same mean, variance and skewness (about a fifth of the weights are below 0.1, as a count is 0 '
         + 'with probability 0.37); it held its coverage best in simulations. Dirichlet: the Bayesian bootstrap of '

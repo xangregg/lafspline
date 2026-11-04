@@ -118,7 +118,16 @@ Coverage of E f̂ at α = 0.95, λ = GCV × 1/16, over line, sine, ramp and Heav
 
 The matched band is the wider of the two at n = 100 (1.7σ against 1.4σ on the sine) and overcovers there. On
 HeaviSine at n = 100 its local widths reach the jump, so it holds f at the data x in 89–98% of samples (sandwich
-43–64%). It takes 0.1 s at n = 200, 0.3 s at 1000, 1.4 s at 5000 (Bayesian band: 12–36 ms).
+43–64%). It takes 0.1 s at n = 200, 0.3 s at 1000, 1.4 s at 5000 for 1000 replicates (Bayesian band: 12–36 ms).
+
+**Replicates (B).** 20 seeds at each B against a band at B = 8000, on neuroimage (n = 28), dog ages (94), ozone
+(1197) and simulated sines (n = 200 Gaussian, 400 skewed). The mean half-width is unbiased from B = 500 and varies
+by 1.4–3% between seeds at 1000 (1–2% at 2000). The edges vary more: the largest gap to the reference anywhere on
+the grid is a median 0.11–0.17 of the half-width at B = 1000 and 0.08–0.12 at 2000 (90th percentile 0.15–0.34 and
+0.11–0.22), shrinking as 1/√B. The above ÷ below range, an extreme over the grid, is widened by noise: neuroimage's
+upper end is 1.27 at B = 250, 1.11 at 1000 and 1.06 at 2000 against 1.06; the skewed sine's 0.91 at 1000 against
+0.82. **Decided:** B = 2000 for n ≤ 1000 (up to about 0.6 s), 1000 above (up to about 1.5 s at n = 5000); the
+ratio's tip says its extremes are Monte Carlo estimates.
 
 ### 1.3 Phase 2: the fit
 
