@@ -80,7 +80,7 @@
     "id": "nostalgia-music",
     "file": "nostalgia-music.csv",
     "label": "Song ratings by relative age",
-    "source": "Davies, Page, Driesener, Anesbury, Yang & Bruwer (2022), The power of nostalgia: Age and preference for popular music, Marketing Letters 33, 681–692, https://link.springer.com/article/10.1007/s11002-022-09626-7",
+    "source": "Davies, Page, Driesener, Anesbury, Yang & Bruwer (2022), The power of nostalgia: Age and preference for popular music, Marketing Letters 33, 681–692, https://link.springer.com/article/10.1007/s11002-022-09626-7; Creative Commons Attribution 4.0 International License, https://creativecommons.org/licenses/by/4.0/",
     "x": "Song age",
     "y": "rating",
     "n": 106,

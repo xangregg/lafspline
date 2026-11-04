@@ -1,5 +1,5 @@
 # label: Song ratings by relative age
-# source: Davies, Page, Driesener, Anesbury, Yang & Bruwer (2022), The power of nostalgia: Age and preference for popular music, Marketing Letters 33, 681–692, https://link.springer.com/article/10.1007/s11002-022-09626-7
+# source: Davies, Page, Driesener, Anesbury, Yang & Bruwer (2022), The power of nostalgia: Age and preference for popular music, Marketing Letters 33, 681–692, https://link.springer.com/article/10.1007/s11002-022-09626-7; Creative Commons Attribution 4.0 International License, https://creativecommons.org/licenses/by/4.0/
 # x: Song age
 # y: rating
 # note: peak around 17 (the paper's two-lines test puts it at 16.8); song age is the listener's age when the song was in the Billboard Top 10 (negative: before birth); rating is each respondent's standardized rating, averaged by song age
