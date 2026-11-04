@@ -120,7 +120,7 @@ The matched band is the wider of the two at n = 100 (1.7σ against 1.4σ on the 
 HeaviSine at n = 100 its local widths reach the jump, so it holds f at the data x in 89–98% of samples (sandwich
 43–64%). It takes 0.1 s at n = 200, 0.3 s at 1000, 1.4 s at 5000 for 1000 replicates (Bayesian band: 12–36 ms).
 
-**Replicates (B).** 20 seeds at each B against a band at B = 8000, on neuroimage (n = 28), dog ages (94), ozone
+**Replicates (B).** `tools/boot-replicates.mjs`: 20 seeds at each B against a band at B = 8000, on neuroimage (n = 28), dog ages (94), ozone
 (1197) and simulated sines (n = 200 Gaussian, 400 skewed). The mean half-width is unbiased from B = 500 and varies
 by 1.4–3% between seeds at 1000 (1–2% at 2000). The edges vary more: the largest gap to the reference anywhere on
 the grid is a median 0.11–0.17 of the half-width at B = 1000 and 0.08–0.12 at 2000 (90th percentile 0.15–0.34 and
