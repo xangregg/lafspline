@@ -20,8 +20,8 @@ const BEND_LENGTH_STEP = 0.005; // fraction of the x range
 const LOG_LAMBDA_STEP = 0.1; // natural log units on the given-λ slider
 const UNDERSMOOTH_OPTIONS = [
     [1, 'none: λ as chosen'],
-    [1 / 4, 'λ × 1/4'],
-    [1 / 16, 'λ × 1/16 (default)'],
+    [1 / 4, 'λ × 1/4 (default)'],
+    [1 / 16, 'λ × 1/16'],
     [1 / 64, 'λ × 1/64'],
 ];
 const LAMBDA_OPTIONS = [
@@ -103,7 +103,8 @@ const TIPS = {
         + 'cross-validation) or AIC, or given.',
     logLambda: `Natural log of λ, over the range GCV searches (${LOG_LAMBDA_RANGE[0]} to ${LOG_LAMBDA_RANGE[1]}).`,
     undersmooth: 'Multiplies the chosen λ. A smaller λ follows bends more closely, so the band covers them too, at '
-        + 'the cost of a wider band; with 1/16 the band contained smooth test signals in 94.5–98% of simulations.',
+        + 'the cost of a wider band; with 1/4 or 1/16 the P-spline band contained smooth test signals in 94–98.5% of '
+        + 'simulations.',
     diff: 'Order of the coefficient differences in the band\'s penalty: a large λ pulls the P-spline toward a '
         + 'polynomial of degree order − 1.',
     nseg: 'Equal segments of the cubic B-spline basis, for the band and the fit. Empty: automatic, about half the '

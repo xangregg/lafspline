@@ -136,6 +136,13 @@ against 1.24–1.30 exact). `refit: 'exact'` remains for comparison (`tools/sim-
 Re-measured with it, the replicate study (B) gives about the same: at B = 2000, edges within a median 0.08–0.11 of
 the half-width and the ratio's extremes ±0.02–0.07 from seed to seed.
 
+**App defaults (after the rounded bends):** the bootstrap band, λ × 1/4, rounded bends at 3 decades below a*. The
+core defaults (band.js DEFAULT_UNDERSMOOTH 1/16) are unchanged; the claims name the undersmoothing their
+simulations used. Coverage at λ × 1/4 (200 replications; line, sine, ramp, HeaviSine; n = 100, 500): the bootstrap
+band contained E f̂ in 84–98% (Gaussian 86–96.5%, skewed 84–97%, heteroscedastic 90.5–98%) and f in 79–95.5% on the
+smooth three (0–7% on HeaviSine); the Bayesian P-spline band contained f in 94–98.5% on line, sine and ramp (400
+replications; sine half-width 1.30σ at n = 100 against 1.49σ at 1/16).
+
 **Phase 2's target.** The pull ε now aims at a target the region may supply (fit.js `target`, default its center).
 The bootstrap band supplies the replicates' median reflected as its edges are (the band at level ½), so a long tail
 on one side no longer pulls the fit toward it; its edges, and so the check, are unchanged.

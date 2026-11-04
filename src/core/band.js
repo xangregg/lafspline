@@ -205,8 +205,8 @@ function bandClaim(p) {
     }
     return `Simultaneous band around a P-spline (${basis}), from the Bayesian covariance, which widens the band to `
         + `allow for the smoothing bias on average. Contains f ${where} ${level} ${noise}, if f is smooth: in `
-        + 'simulations at 95% with the default undersmoothing it contained a line, a sine and a logistic ramp in '
-        + '94–98% of samples. It does not contain jumps or corners of f sharper than the penalty allows.';
+        + 'simulations at 95% with λ × 1/4 or 1/16 (λ by GCV) it contained a line, a sine and a logistic ramp in '
+        + '94–98.5% of samples. It does not contain jumps or corners of f sharper than the penalty allows.';
 }
 
 /**

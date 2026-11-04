@@ -67,7 +67,7 @@ const state = {
     userText: '',
     xCol: null, // column index, −1 = row number, null = auto (first column if there are ≥ 2)
     yCol: null, // column index, null = auto (second column if there are ≥ 2, else the only one)
-    region: 'band', // phase 1: 'band' (P-spline) | 'boot' (bootstrap band) | 'An' (Davies, Kovac & Meise's)
+    region: 'boot', // phase 1: 'band' (P-spline) | 'boot' (bootstrap band) | 'An' (Davies, Kovac & Meise's)
     family: 'blocks', // Aₙ intervals: 'blocks' | 'quarter' (¼-width steps) | 'every' (every position) | 'all'
     calibrate: true, // Aₙ: τ calibrated for coverage alpha, instead of tau
     tau: 3, // Aₙ: τ when not calibrated
@@ -77,12 +77,12 @@ const state = {
     bootWeights: 'matched', // bootstrap band: 'matched' (like resampled counts) | 'dirichlet' (Bayesian bootstrap)
     lambdaMode: 'gcv', // 'gcv' | 'aic' | 'given'
     logLambda: 0, // natural log, when lambdaMode is 'given'
-    undersmooth: 1 / 16, // multiplier on the chosen λ
+    undersmooth: 1 / 4, // multiplier on the chosen λ
     nseg: null, // null = auto (pspline.defaultSegments)
     diff: 2, // penalty order
-    penalty: 'quadratic', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number) |
+    penalty: 'shaped', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number) |
     // 'shaped' (the number of bends, rounded)
-    ambition: 0, // decades from a*, the largest ambition before the fit leaves the region
+    ambition: -3, // decades from a*, the largest ambition before the fit leaves the region
     flat: 0, // share of the ambition toward flat (D₁) rather than straight (D₂)
     bendLength: SHAPE_DEFAULTS.length, // rounded bends: fraction of the x range (fit.js fitShaped)
     extremumCost: SHAPE_DEFAULTS.extremum, // rounded bends: extra cost of an extremum, in plain bends

@@ -313,6 +313,18 @@ function mean(a) {
     return a.reduce((sum, v) => sum + v, 0) / a.length;
 }
 
+// Simulated coverage of E f̂ by undersmoothing factor (tools/sim-band.mjs, 200 replications per row; PLAN §1.2)
+const SIMULATED = [
+    [1 / 4, 'with λ × 1/4 it contained E f̂ in 84–98% of samples, least often for a ramp with skewed noise at n = 100 '
+        + 'and for lines'],
+    [1 / 16, 'with λ × 1/16 it contained E f̂ in 86–98% of samples, least often for a line with skewed noise'],
+];
+
+function simulated(undersmooth) {
+    const hit = SIMULATED.find(([u]) => Math.abs(u - undersmooth) < 1e-12);
+    return hit ? hit[1] : 'with λ × 1/4 and 1/16 (not this undersmoothing) it contained E f̂ in 84–98% of samples';
+}
+
 function bootstrapClaim(p) {
     let lambdaHow = `λ chosen by ${p.lambdaSource.toUpperCase()}`;
     if (p.lambdaSource === 'given')
@@ -332,10 +344,10 @@ function bootstrapClaim(p) {
         + `±${round(100 * p.window)}% of the x range, at the tail level that holds for a fraction ${p.alpha} of the `
         + `replicates at every point at once. Contains the P-spline's mean, f smoothed by the same penalty, at every `
         + `x of the check grid with probability ≈ ${p.alpha}, for independent observations; the noise need not be `
-        + 'Gaussian, and its spread may change slowly along x. In simulations at 95% with the default undersmoothing '
-        + '(a line, a sine, a ramp and HeaviSine; n = 100 and 500; Gaussian, skewed or heteroscedastic noise) it '
-        + 'contained E f̂ in 86–98% of samples, least often for a line with skewed noise. λ is treated as fixed, and '
-        + 'the band contains f itself only where the smoothing bias is small compared with the half-width.';
+        + `Gaussian, and its spread may change slowly along x. In simulations at 95% ${simulated(p.undersmooth)} (a `
+        + 'line, a sine, a ramp and HeaviSine; n = 100 and 500; Gaussian, skewed or heteroscedastic noise). λ is '
+        + 'treated as fixed, and the band contains f itself only where the smoothing bias is small compared with the '
+        + 'half-width.';
 }
 
 /**
