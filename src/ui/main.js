@@ -24,6 +24,7 @@ import {
 import { ladder } from '../core/ladder.js';
 import { anRegion, calibrateTau, checkFit } from '../core/regions.js';
 import { anBoxes } from '../core/an.js';
+import { checkNoise } from '../core/noisecheck.js';
 import { familyIntervals, familyLevels } from '../core/intervals.js';
 import { tauFromSample } from '../core/calibrate.js';
 import { constraintBoxes } from '../core/region.js';
@@ -298,7 +299,15 @@ function computeBand(st, data) {
     const start = performance.now();
     try {
         const region = boot ? bootstrapBand(data.x, data.y, opts) : bandRegion(data.x, data.y, opts);
-        return { region, ms: performance.now() - start };
+        let noise = null; // the check needs 3 distinct x (or replicates) for its reference σ̂
+        try {
+            noise = checkNoise(data.x, data.y, region.params.fitted, region.params.sigma);
+        }
+        catch (err) {
+            if (!(err instanceof RangeError))
+                throw err;
+        }
+        return { region, noise, ms: performance.now() - start };
     }
     catch (err) {
         if (err instanceof RangeError)
@@ -625,6 +634,58 @@ function appendRows(sel, rows) {
     }
 }
 
+/**
+ * The noise check's row (noisecheck.js): the band fit's σ̂ against the noise neighboring observations show, and the
+ * lag-1 autocorrelation of its residuals.
+ */
+function addNoiseRow(add, c) {
+    const [lo, hi] = c.ratioLimits;
+    const lag = c.lagLimits
+        ? `residuals' lag-1 r ${fmtShort(c.lag1)} (expected ${fmtShort(c.lagLimits[0])} to ${fmtShort(c.lagLimits[1])})`
+        : `lag-1 r not judged with fewer than 10 distinct x`;
+    const status = { ok: 'ok', spread: 'see note' }[c.verdict] ?? 'flagged';
+    add('σ̂ check', `${fmtShort(c.ratio)} (${status})`,
+        `σ̂ ÷ ${fmt(c.reference)} from neighboring observations, expected ${fmtShort(lo)} – ${fmtShort(hi)}; ${lag}`,
+        'Does the fit leave the noise the data show? The reference σ̂ comes from each observation\'s distance to the '
+        + 'line through its neighbors (pure error between replicates at a tied x), which does not depend on λ. A '
+        + 'ratio far below 1 means the fit follows the noise; above 1, it misses structure or the noise has heavy '
+        + 'tails or unequal variance, told apart by whether the residuals run in streaks along x. The expected '
+        + 'ranges hold 99.9% of fits to smooth curves with independent Gaussian noise. Serially correlated noise '
+        + 'that the λ choice has absorbed into the fit fools both alike and is not detected.');
+}
+
+/** The noise check's finding as a sentence, or null when there is nothing to say. */
+function noiseSentence(c) {
+    if (!Number.isFinite(c.ratio))
+        return 'The band\'s fit spends as many parameters as there are observations (ED ≥ n): it interpolates the '
+            + 'data, and the band is meaningless. Fewer segments or a given λ may help.';
+    const ratio = `its σ̂ is ${fmtShort(c.ratio)} times the ${fmt(c.reference)} neighboring observations show`;
+    switch (c.verdict) {
+    case 'follows':
+        return `The band's fit follows the noise: ${ratio} (expected ${fmtShort(c.ratioLimits[0])} or more), so the `
+            + 'band is too narrow. Fewer segments or a given λ may help.';
+    case 'runs':
+        return `The band's residuals run in streaks along x (lag-1 r ${fmtShort(c.lag1)}): the fit misses structure `
+            + 'the data show (more segments may help), or the noise is positively correlated. Either way the band '
+            + 'may not cover f.';
+    case 'between':
+        return `Observations at the same x agree more closely than the band's fit does (σ̂ ${fmt(c.reference)} within `
+            + `an x, ${fmt(c.sigma)} around the fit), and the means at each x alternate around it (lag-1 r `
+            + `${fmtShort(c.lag1)}): each x adds a deviation of its own, so the observations are not independent, `
+            + 'as the band\'s claim assumes.';
+    case 'alternates':
+        return `The band's residuals alternate around its fit (lag-1 r ${fmtShort(c.lag1)}, expected `
+            + `${fmtShort(c.lagLimits[0])} or more): the fit may follow part of the noise, or neighboring `
+            + 'observations are negatively correlated.';
+    case 'spread':
+        return `The band's σ̂ is ${fmtShort(c.ratio)} times the ${fmt(c.reference)} neighboring observations show, `
+            + 'without streaks: heavy tails or unequal variance, which the bootstrap band and the sandwich '
+            + 'covariance allow.';
+    default:
+        return null;
+    }
+}
+
 /** A short claim, shown, with the full statement behind an ⓘ. */
 function appendClaim(sel, short, full) {
     const p = sel.append('p').attr('class', 'claim').text(short);
@@ -708,6 +769,9 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
                     ? `: the fit is close to its limit, a polynomial of degree ${p.diff - 1}.`
                     : ': the optimum may lie further out; consider fewer segments or a given λ.'));
         }
+        const noiseNote = result.noise ? noiseSentence(result.noise) : null;
+        if (noiseNote)
+            sel.append('p').attr('class', result.noise.verdict === 'spread' ? null : 'warning').text(noiseNote);
         const rows = [];
         const add = (label, value, note, tip) => rows.push({ label, value, note, tip });
         addLadderRows(add, region, data.x);
@@ -726,6 +790,8 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
             + 'the number of coefficients (λ = 0).' });
         add('σ̂', fmt(p.sigma), `from the residuals, ν = n − ED = ${fmt(p.df)} degrees of freedom`,
             'Estimated standard deviation of the noise: √(RSS/ν), units of y.');
+        if (result.noise)
+            addNoiseRow(add, result.noise);
         if (p.covariance === 'bootstrap') {
             addBootstrapRows(add, region);
         }

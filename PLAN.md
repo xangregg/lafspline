@@ -156,6 +156,19 @@ upper end is 1.27 at B = 250, 1.11 at 1000 and 1.06 at 2000 against 1.06; the sk
 0.82. **Decided:** B = 2000 for n ≤ 1000 (up to about 0.6 s), 1000 above (up to about 1.5 s at n = 5000); the
 ratio's tip says its extremes are Monte Carlo estimates.
 
+**Noise check** (`noisecheck.js`, the "σ̂ check" readout of both bands). The band fit's σ̂ against σ̂ from
+neighboring observations (sigma.js GSJS: local linear pseudo-residuals, pure error at tied x), which does not depend
+on λ, and the lag-1 autocorrelation r₁ of the residuals' means at successive distinct x (judged from 10 distinct x).
+Limits from `tools/noise-check-null.mjs` (smooth curves, independent Gaussian noise, λ by GCV × 1 and × 1/4,
+n = 25–1000): |log ratio|·√n ≤ 4.0, −5.0 ≤ r₁·√m ≤ 3.0, about the 0.1% points. On the examples at their default
+segments: Tukey coal at 80 segments (GCV interpolates, ratio 0.01) reads "follows the noise"; Blocks, Bumps and
+Doppler at 40 segments, and HeaviSine at σ = 0.2, "runs" (r₁ 0.58–0.84); ozone "between" (pure error 7.8 against 14.4,
+r₁ −0.75: each year adds its own deviation); dog ages "spread" (ratio 1.59, r₁ 0.04); nostalgia "alternates"
+(r₁ −0.60, ratio 0.72); the others pass. Nile passes: GCV absorbs its serially correlated noise, which fools the
+differences alike. A simpler λ (a rule of thumb from σ̂ and a pilot polynomial) was considered instead of GCV and
+not taken: GCV takes 1–8 ms, the pilot fails on the shapes this app is for, and the claims' coverage was simulated
+with GCV.
+
 ### 1.3 Phase 2: the fit
 
 A second P-spline g = B̃β (the same or a denser basis), with β minimizing
