@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import loadHighs from 'highs';
 import {
     fitIterated, buildQP, qpResult, phase2Objective, checkRegion, ambitionLambdas, regionSpec, leavingAmbition,
-    maxAmbition, LEAVE_TOL, fitSparse, sparseLambdas, sparseMaxAmbition, fitShaped, shapedLambdas,
+    maxAmbition, LEAVE_TOL, fitSparse, sparseLambdas, sparseMaxAmbition, fitShaped, shapedLambdas, fitPower,
+    powerLambdas,
 } from '../src/core/fit.js';
 import { bandRegion } from '../src/core/band.js';
 import { solveModel } from '../src/core/lp-solve.js';
@@ -413,6 +414,52 @@ test('extremum and inflection costs leave a forced shape alone, and remove what 
     assert.equal(fit.extremes, 0);
     assert.ok(fit.inflections >= plain.inflections - 1, `${fit.inflections} vs ${plain.inflections}`);
     assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
+});
+
+test('power penalty at q = 2 is the squared differences: the same fits and the same a*', () => {
+    const region = makeRegion('sine', 0.3);
+    const G = region.center.length;
+    const nseg = region.params.nseg;
+    const G_TOL = 1e-8; // |Δg|/h: the same banded system, solved once more with weights exactly 1
+    for (const a of [1e-6, 1e-4, 1e-2]) {
+        const quad = fitIterated(regionSpec(region, { ambition: a }));
+        const pow = fitPower({ ...regionSpec(region, { ambition: a }), q: 2, ...powerLambdas({ ambition: a, q: 2, G,
+            nseg }) });
+        const worst = quad.g.reduce((m, g, j) => Math.max(m, Math.abs(g - pow.g[j]) / region.half[j]), 0);
+        assert.ok(worst < G_TOL, `a = ${a}: ${worst}`);
+    }
+    const spec = regionSpec(region, { ambition: 0 });
+    const quadStar = leavingAmbition(spec);
+    const powStar = leavingAmbition({ ...spec, q: 2 }, { power: true });
+    // both searches bisect to 0.02 decades over the same top (powerMaxAmbition is maxAmbition at q = 2)
+    assert.ok(Math.abs(Math.log10(powStar.ambition / quadStar.ambition)) <= 0.02 + 1e-9,
+        `${powStar.ambition} vs ${quadStar.ambition}`);
+});
+
+test('power penalty: q ≤ 1 finds the bends of a piecewise-linear center; q > 1 spreads the turning', () => {
+    const spec = syntheticSpec(x => 3 * Math.abs(x - 0.3) - 5 * Math.max(0, x - 0.7), 0.05);
+    const X_TOL = 1 / 40; // a join is placed to about half a segment; q = 1 leaves two-difference joins
+    const ED_TOL = 1e-2; // the line's 2 plus one per bend, with the remaining differences held at the weight cap
+    for (const q of [1, 0.5, 0.25]) {
+        const { fit, capped } = leavingAmbition({ ...spec, q }, { power: true });
+        assert.equal(capped, false);
+        assert.equal(fit.settled, true, `q ${q}`);
+        assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `q ${q}: ${fit.maxRatio}`);
+        const [pieces] = fit.pieces.orders;
+        assert.equal(pieces.pieces, 3, `q ${q}`);
+        assert.deepEqual(pieces.joins.map(j => Math.abs(j.x - 0.3) < X_TOL || Math.abs(j.x - 0.7) < X_TOL),
+            [true, true], `q ${q}: ${pieces.joins.map(j => j.x).join(', ')}`);
+        assert.ok(Math.abs(fit.ed - 4) < ED_TOL, `q ${q}: ED ${fit.ed}`);
+    }
+    // measured: q = 1.5 has one join of 30 differences, ED 7.0
+    const { fit } = leavingAmbition({ ...spec, q: 1.5 }, { power: true });
+    assert.ok(fit.ed > 5, `ED ${fit.ed}`);
+});
+
+test('power penalty needs 0 < q ≤ 2', () => {
+    const spec = { ...syntheticSpec(x => x, 0.1), lambda2: 1 };
+    for (const q of [0, -1, 2.5, NaN])
+        assert.throws(() => fitPower({ ...spec, q }), RangeError);
 });
 
 test('a target moves the center pull inside the region, not its edges', () => {

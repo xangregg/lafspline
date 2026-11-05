@@ -7,7 +7,7 @@ import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import {
     MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
-    BEND_LENGTH_RANGE, SHAPE_COST_RANGE,
+    BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE,
 } from './urlstate.js';
 import { fmtExp } from './format.js';
 import { infoIcon, setInfo } from './info.js';
@@ -17,6 +17,7 @@ const USER = 'user';
 const AMBITION_STEP = 0.1; // decades
 const FLAT_STEP = 0.05;
 const BEND_LENGTH_STEP = 0.005; // fraction of the x range
+const POWER_STEP = 0.05; // the power penalty's q
 const LOG_LAMBDA_STEP = 0.1; // natural log units on the given-λ slider
 const UNDERSMOOTH_OPTIONS = [
     [1, 'none: λ as chosen'],
@@ -58,6 +59,7 @@ const PENALTY_OPTIONS = [
     ['quadratic', 'squared differences'],
     ['sparse', 'number of bends or steps'],
     ['shaped', 'number of bends, rounded'],
+    ['power', '|second differences|^q'],
 ];
 
 const TIPS = {
@@ -114,7 +116,11 @@ const TIPS = {
     penalty: 'Squared differences: the fit gets straighter (or flatter) everywhere, smoothly. Number of bends or '
         + 'steps: straight (or flat) pieces joined by short bends (or steps), by the adaptive ridge, which '
         + 'approximates the count. Rounded: straight pieces whose bends also pay for their sharpness, so a large '
-        + 'turn (the top of a wave) spreads into a rounded bend while a small one stays short.',
+        + 'turn (the top of a wave) spreads into a rounded bend while a small one stays short. |Second '
+        + 'differences|^q: their sizes to a power q between 0 and 2, toward straight.',
+    q: 'The power on the size of each second difference. 2: the squared differences. 1: ℓ₁ trend filtering, straight '
+        + 'pieces joined by kinks. Toward 0: the number of bends. A smaller q concentrates the turning into fewer, '
+        + 'sharper bends; a larger one spreads it out. Below 1 the fit is a local optimum.',
     bendLength: 'How round the bends of the rounded penalty are: a bend curves so that it leaves its tangent line by '
         + 'one half-width of the region (its median) over this fraction of the x range. 0 gives the sharp bends of '
         + 'the plain count. A bend\'s width grows with how far it turns, and the region limits it.',
@@ -366,6 +372,8 @@ export function createControls(container, state, onChange, examples = [], local 
     const bendLength = slider('bendLength', BEND_LENGTH_RANGE[0], BEND_LENGTH_RANGE[1], BEND_LENGTH_STEP,
         v => v.toFixed(3));
     const bendLengthField = field('bend length', bendLength.row, TIPS.bendLength);
+    const power = slider('q', POWER_RANGE[0], POWER_RANGE[1], POWER_STEP, v => v.toFixed(2));
+    const powerField = field('power q', power.row, TIPS.q);
     const costAttrs = { min: SHAPE_COST_RANGE[0], max: SHAPE_COST_RANGE[1], step: 0.5 };
     const shapeCosts = el('div', { class: 'row' }, [
         field('per extremum', numberInput('extremumCost', costAttrs), TIPS.extremumCost),
@@ -406,6 +414,7 @@ export function createControls(container, state, onChange, examples = [], local 
         field('ambition (decades from a*)', el('div', {}, [ambition.row, ambitionEnds]), ambitionInfo),
         flatField,
         bendLengthField,
+        powerField,
         shapeCosts,
         advanced,
         heading('Display', TIPS.displayHead),
@@ -472,8 +481,9 @@ export function createControls(container, state, onChange, examples = [], local 
                 + (amb.clamped ? (amb.sparse ? ' (the top of the range).' : ' (the largest computed reliably).') : '.');
         }
         setInfo(ambitionInfo, TIPS.ambition + now);
-        // rounded bends are toward straight only
-        flatField.hidden = st.penalty === 'shaped';
+        // rounded bends and the power penalty are toward straight only
+        flatField.hidden = st.penalty === 'shaped' || st.penalty === 'power';
+        powerField.hidden = st.penalty !== 'power';
         bendLengthField.hidden = st.penalty !== 'shaped';
         shapeCosts.hidden = st.penalty !== 'shaped';
     }

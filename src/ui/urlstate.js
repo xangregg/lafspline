@@ -19,8 +19,9 @@ export const AMBITION_RANGE = [-8, 4]; // decades of a/a* (fit.js leavingAmbitio
 export const LOG_KAPPA_RANGE = [1, 8]; // log₁₀ κ
 export const LOG_EPSILON_RANGE = [-6, 0]; // log₁₀ ε
 export const UNDERSMOOTH_VALUES = [1, 1 / 4, 1 / 16, 1 / 64];
-export const PENALTIES = ['quadratic', 'sparse', 'shaped']; // ambition penalty: squared differences, their count, or
-// the count of bends with rounding (fit.js fitShaped)
+export const PENALTIES = ['quadratic', 'sparse', 'shaped', 'power']; // ambition penalty: squared differences, their
+// count, the count of bends with rounding (fit.js fitShaped), or Σ|second differences|^q (fit.js fitPower)
+export const POWER_RANGE = [0.1, 2]; // q of the power penalty
 export const BEND_LENGTH_RANGE = [0, 0.25]; // shaped bends' length L, fraction of the x range
 export const SHAPE_COST_RANGE = [0, 20]; // shaped bends' extremum and inflection costs, in plain bends
 export const FAMILIES = ['blocks', 'quarter', 'every', 'all']; // Aₙ intervals, as the earlier project's
@@ -112,6 +113,7 @@ const FIELDS = {
     bendLength: num(...BEND_LENGTH_RANGE),
     extremumCost: num(...SHAPE_COST_RANGE),
     inflectionCost: num(...SHAPE_COST_RANGE),
+    q: num(...POWER_RANGE),
     logKappa: num(...LOG_KAPPA_RANGE),
     logEpsilon: num(...LOG_EPSILON_RANGE),
     showData: bool,

@@ -19,6 +19,7 @@ import { bootstrapBand } from '../core/bootstrap.js';
 import { defaultSegments } from '../core/pspline.js';
 import {
     regionSpec, leavingAmbition, fitIterated, fitSparse, sparseLambdas, fitShaped, shapedLambdas, splineValues,
+    fitPower, powerLambdas,
     LEAVE_TOL, SHAPE_DEFAULTS,
 } from '../core/fit.js';
 import { ladder } from '../core/ladder.js';
@@ -93,7 +94,8 @@ const state = {
     nseg: null, // null = auto (pspline.defaultSegments)
     diff: 2, // penalty order
     penalty: 'shaped', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number) |
-    // 'shaped' (the number of bends, rounded)
+    // 'shaped' (the number of bends, rounded) | 'power' (Σ|second differences|^q)
+    q: 1, // power penalty's exponent: 2 is 'quadratic', 1 is ℓ₁ trend filtering, toward 0 the count
     ambition: -4, // decades from a*, the largest ambition before the fit leaves the region
     flat: 0, // share of the ambition toward flat (D₁) rather than straight (D₂)
     bendLength: SHAPE_DEFAULTS.length, // rounded bends: fraction of the x range (fit.js fitShaped)
@@ -328,15 +330,22 @@ function computeBand(st, data) {
 }
 
 function starKey(st, data) {
-    const shape = st.penalty === 'shaped' ? [st.bendLength, st.extremumCost, st.inflectionCost] : [st.flat];
+    let shape = [st.flat];
+    if (st.penalty === 'shaped')
+        shape = [st.bendLength, st.extremumCost, st.inflectionCost];
+    else if (st.penalty === 'power')
+        shape = [st.q];
     return [regionKey(st, data), st.penalty, ...shape, st.logKappa, st.logEpsilon].join('|');
 }
 
 function phase2Options(st) {
     const shaped = st.penalty === 'shaped';
-    return { flat: shaped ? 0 : st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon,
+    const power = st.penalty === 'power';
+    // rounded bends and the power penalty are toward straight only
+    return { flat: shaped || power ? 0 : st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon,
         shape: shaped ? { length: st.bendLength, extremum: st.extremumCost, inflection: st.inflectionCost }
-            : undefined };
+            : undefined,
+        q: power ? st.q : undefined };
 }
 
 /** The positions in the (sorted, distinct) check grid of the distinct data x; the grid contains every data x. */
@@ -361,12 +370,15 @@ function computeFit(st, region, star) {
     const opts = phase2Options(st);
     const shaped = st.penalty === 'shaped';
     const sparse = st.penalty === 'sparse' || shaped;
+    const power = st.penalty === 'power';
     const wanted = star.ambition * 10 ** st.ambition;
     const a = Math.min(wanted, star.top);
-    const spec = { ...regionSpec(region, { ...opts, ambition: a }), shape: opts.shape };
+    const spec = { ...regionSpec(region, { ...opts, ambition: a }), shape: opts.shape, q: opts.q };
     const G = region.center.length;
     let fit;
-    if (shaped)
+    if (power)
+        fit = fitPower({ ...spec, ...powerLambdas({ ambition: a, q: opts.q, G, nseg: spec.nseg }) });
+    else if (shaped)
         fit = fitShaped({ ...spec, ...shapedLambdas({ ambition: a, G }) });
     else if (sparse)
         fit = fitSparse({ ...spec, ...sparseLambdas({ ambition: a, flat: opts.flat, G }) });
@@ -391,7 +403,8 @@ function computeFit(st, region, star) {
         if (r > 1 + LEAVE_TOL)
             leaving++;
     }
-    return { ...fit, a, sparse, shaped, clamped: wanted > star.top, argMax, leaving, leavingAtData: atData, opts };
+    return { ...fit, a, sparse, shaped, power, q: opts.q, clamped: wanted > star.top, argMax, leaving,
+        leavingAtData: atData, opts };
 }
 
 /**
@@ -453,6 +466,10 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         sel.append('p').attr('class', 'warning').text(`The iteration stopped after ${fit.iterations} solves without `
             + 'settling which points are outside: the fit is not the exact minimizer.');
     }
+    if (fit.power && !fit.settled) {
+        sel.append('p').attr('class', 'warning').text(`The reweighting was still lowering the objective after `
+            + `${fit.reweights} reweightings: the fit shown is where it stopped, not the minimizer.`);
+    }
     if (fit.sparse && !fit.settled) {
         sel.append('p').attr('class', 'warning').text(`The bends and steps were still changing after `
             + `${fit.reweights} reweightings; the count shown is where the reweighting stopped.`);
@@ -478,20 +495,35 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     add('ambition a', fmtExp(fit.a), ambitionNote);
     const counted = st.flat === 0 ? 'bends' : st.flat === 1 ? 'steps' : 'bends and steps';
     let penaltyName = 'squared differences';
-    if (fit.shaped)
+    if (fit.power)
+        penaltyName = `|second differences|^q, q = ${fit.q}`;
+    else if (fit.shaped)
         penaltyName = 'count of bends, rounded';
     else if (fit.sparse)
         penaltyName = `count of ${counted}`;
-    add('penalty', penaltyName, fit.sparse
+    let penaltyNote = fit.sparse
         ? 'adaptive ridge (Frommlet & Nuel 2016), an approximation of the count: a local optimum, not proven fewest'
             + (fit.shaped ? '. Each bend also pays for the square of its second differences, which spreads a large '
                 + 'turn over a wider, rounder bend' : '')
-        : 'straighter (or flatter) everywhere; no piece is exactly straight');
+        : 'straighter (or flatter) everywhere; no piece is exactly straight';
+    if (fit.power) {
+        penaltyNote = 'a·∫|g\'\'|^q: q = 2 is the squared differences, q = 1 ℓ₁ trend filtering (straight pieces '
+            + 'and kinks), toward 0 the count of bends; smaller q concentrates the turning into fewer bends. By '
+            + 'majorize-minimize (iteratively reweighted squared differences): ' + (fit.q >= 1
+            ? 'for q ≥ 1 the objective is convex and this is its minimizer'
+            : 'for q < 1 the objective is not convex, and this is a local minimum from the fit without ambition');
+    }
+    add('penalty', penaltyName, penaltyNote);
     if (fit.sparse)
         addPieceRows(add, fit.pieces, region);
+    if (fit.power) {
+        addPieceRows(add, fit.pieces, region, 'Pieces where the fit is straight to within 0.1% of the region\'s '
+            + 'median half-width across the x range (second differences of its coefficients below that), and the '
+            + 'bends between them. Only for q ≤ 1 are pieces exactly straight; above, every difference is nonzero.');
+    }
     if (fit.shaped)
         addShapeRows(add, fit, st);
-    const flatShare = fit.shaped ? 0 : st.flat;
+    const flatShare = fit.shaped || fit.power ? 0 : st.flat;
     add('toward', flatShare === 0 ? 'straight' : flatShare === 1 ? 'flat' : `${Math.round(100 * (1 - flatShare))}% `
         + `straight, ${Math.round(100 * flatShare)}% flat`, 'second (straight) and first (flat) differences of the '
         + 'coefficients');
@@ -509,7 +541,11 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     add('basis', `${region.params.nseg} segments`, an
         ? `cubic, equal segments over the data's x range${region.nsegCapped ? `; capped at ${AN_MAX_SEGMENTS}` : ''}`
         : 'cubic, on the band\'s knots');
-    if (fit.sparse) {
+    if (fit.power) {
+        add('solver', `${fit.iterations} solves`, `majorize-minimize: ${fit.reweights} reweighting`
+            + `${fit.reweights === 1 ? '' : 's'}; ${fit.settled ? 'the objective settled' : 'not settled'}`);
+    }
+    else if (fit.sparse) {
         add('solver', `${fit.iterations} solves`, `adaptive ridge: ${fit.reweights} reweighting`
             + `${fit.reweights === 1 ? '' : 's'}; ${fit.settled ? 'the joins settled' : 'the joins had not settled'}; `
             + `${fit.pruned} dropped by backward `
@@ -550,7 +586,7 @@ function addShapeRows(add, fit, st) {
  * Rows for a sparse fit's pieces: straight pieces and bends (second differences), flat pieces and steps (first).
  * A join's x is its middle coefficient's peak, good to about half a segment.
  */
-function addPieceRows(add, pieces, region) {
+function addPieceRows(add, pieces, region, tip) {
     const step = (region.params.xr - region.params.xl) / region.params.nseg;
     const digits = Math.max(0, -Math.floor(Math.log10(step / 2)));
     const plural = (k, word) => `${fmtInt(k)} ${word}${k === 1 ? '' : 's'}`;
@@ -567,7 +603,7 @@ function addPieceRows(add, pieces, region) {
             : 'Pieces where the fit is exactly flat (first differences of its coefficients are zero), and the '
                 + 'steps between them.';
         add(order === 2 ? 'straight' : 'flat', `${plural(k, piece)}, ${plural(joins.length, join)}${ends}`, where,
-            what);
+            tip ?? what);
     }
 }
 
@@ -1058,8 +1094,9 @@ async function startup() {
             let star = starCache.get(sk);
             if (!star) {
                 const opts = phase2Options(state);
-                star = leavingAmbition({ ...regionSpec(region, { ...opts, ambition: 0 }), shape: opts.shape },
-                    { sparse: state.penalty === 'sparse', shaped: state.penalty === 'shaped' });
+                star = leavingAmbition({ ...regionSpec(region, { ...opts, ambition: 0 }), shape: opts.shape,
+                    q: opts.q }, { sparse: state.penalty === 'sparse', shaped: state.penalty === 'shaped',
+                    power: state.penalty === 'power' });
                 remember(starCache, sk, star);
             }
             const fit = computeFit(state, region, star);

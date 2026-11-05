@@ -286,6 +286,28 @@ shares it. Defaults: extremum 2, inflection 1.
 - The leveling-off discount (cheaper per difference when one side of a bend is level) acts only in the
   reweighting, where it never changed a fit; it stays in fit.js, neutral, and is not in the UI.
 
+### 1.4c Power penalty (a fourth ambition penalty, prototype)
+
+λ₂·Σ|D₂β|^q with 0 < q ≤ 2, toward straight (fit.js fitPower): the bridge penalty on the second differences.
+q = 2 is the squared differences, q = 1 is ℓ₁ trend filtering (Kim, Koh, Boyd & Gorinevsky 2009; Tibshirani 2014),
+and q → 0 approaches the count. Seen as the distribution of the turning along x, smaller q concentrates it into
+fewer bends (lower Rényi entropy); the count is order 0, the squares order 2. It is the established family that the
+rounded bends approximate by hand.
+
+- Scaling λ₂ = a·G·nseg^(2q−1) makes the penalty a·∫|g''|^q, so q = 2 is the quadratic penalty exactly: the same
+  fits (to 1e-8 of h) and the same a* on sine, Cleveland, Nile and ozone. For q < 1 the integral favors ever sharper
+  bends and the discrete penalty keeps a dependence on nseg, which a* absorbs.
+- Majorize-minimize (Hunter & Li 2005): weights (q/2)(t² + δ²)^((q−2)/2), one fitIterated each, from the fit
+  without ambition. Convex for q ≥ 1 (the minimizer); a local minimum below. q = 1 needs 160–550 reweightings
+  (100 left the fit 0.1 h from its limit), so a* takes 0.1–0.5 s; q ≤ 0.5 needs 10–40.
+- The top of the range (powerMaxAmbition) is maxAmbition's rule, the ambition at which the free fit's sharpest
+  bend's weight reaches the cap; a first heuristic from the line's region cost was 30 times too low on Nile.
+- On a piecewise-linear center (bends at 0.3, 0.7, h = 0.05), q = 1, 0.5 and 0.25 at a* all give exactly three
+  straight pieces, ED 4; q = 1.5 one long join of 30 differences, ED 7; q = 2 ED 8.
+- Bends in the readouts are second differences of at least 1e-3 h across the range (POWER_BEND); for q > 1 every
+  difference is nonzero and the pieces are only nearly straight.
+- Open: no extremum or inflection costs, and no flat share; whether it replaces the rounded bends.
+
 ### 1.5 Reporting (display honesty)
 
 - Every phase-2 fit is re-checked against the region on the check grid and at the data x: largest ratio
