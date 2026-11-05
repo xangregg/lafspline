@@ -136,7 +136,7 @@ against 1.24–1.30 exact). `refit: 'exact'` remains for comparison (`tools/sim-
 Re-measured with it, the replicate study (B) gives about the same: at B = 2000, edges within a median 0.08–0.11 of
 the half-width and the ratio's extremes ±0.02–0.07 from seed to seed.
 
-**App defaults (after the rounded bends):** the bootstrap band, λ × 1/4, rounded bends at 3 decades below a*. The
+**App defaults (after the rounded bends):** the bootstrap band, λ × 1/4, rounded bends at 4 decades below a*. The
 core defaults (band.js DEFAULT_UNDERSMOOTH 1/16) are unchanged; the claims name the undersmoothing their
 simulations used. Coverage at λ × 1/4 (200 replications; line, sine, ramp, HeaviSine; n = 100, 500): the bootstrap
 band contained E f̂ in 84–98% (Gaussian 86–96.5%, skewed 84–97%, heteroscedastic 90.5–98%) and f in 79–95.5% on the

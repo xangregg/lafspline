@@ -89,7 +89,7 @@ const state = {
     diff: 2, // penalty order
     penalty: 'shaped', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number) |
     // 'shaped' (the number of bends, rounded)
-    ambition: -3, // decades from a*, the largest ambition before the fit leaves the region
+    ambition: -4, // decades from a*, the largest ambition before the fit leaves the region
     flat: 0, // share of the ambition toward flat (D₁) rather than straight (D₂)
     bendLength: SHAPE_DEFAULTS.length, // rounded bends: fraction of the x range (fit.js fitShaped)
     extremumCost: SHAPE_DEFAULTS.extremum, // rounded bends: extra cost of an extremum, in plain bends
