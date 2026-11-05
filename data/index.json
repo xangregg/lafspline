@@ -33,6 +33,17 @@
     "note": "hump"
   },
   {
+    "id": "cleveland-curve",
+    "file": "cleveland-curve.csv",
+    "label": "Cleveland curve, three pieces",
+    "source": "artificial example from W. S. Cleveland, Visualizing Data (Hobart Press, 1993); this draw by tools/make-cleveland-curve.mjs, seed 1993",
+    "x": "x",
+    "y": "y",
+    "n": 150,
+    "m": 150,
+    "note": "three smooth pieces of 50 points each, f = 5 − √(1 − z), 5 + sin(2πz), 5 + z²/2 with z from 0 to 1 in each; y = f + N(0, 0.2²); column f is the noise-free curve; the first piece ends in a vertical tangent"
+  },
+  {
     "id": "dog-ages",
     "file": "dog-ages.csv",
     "label": "Dog vs Human ages",
