@@ -59,10 +59,15 @@ const USER = 'user';
 const EXAMPLE_PREFIX = 'example:';
 const EXAMPLES_INDEX = 'data/index.json';
 // Data sets kept on this machine only: localdata/ is ignored by git except its README, so it exists in every clone.
-// A static site cannot list a directory, but a local server that lists directories (npm run serve) can; the app
-// asks only when served from this machine, so the published site never requests it.
+// A static site cannot list a directory. Python's server (npm run serve) can, so there the listing is used and a new
+// file appears on reload; other servers (WebStorm's built-in one answers 404) get localdata/index.json, written by
+// npm run data:index. The README's response names the server, so neither way requests something that is not there.
+// The app asks only when served from this machine, so the published site never requests any of it.
 const LOCAL_PREFIX = 'local:';
 const LOCAL_DIR = 'localdata/';
+const LOCAL_INDEX = 'index.json'; // in LOCAL_DIR: a JSON array of CSV file names
+const LOCAL_PROBE = 'README.md'; // in LOCAL_DIR, committed, so it is always there to ask
+const LISTING_SERVER = /^SimpleHTTP\//; // the Server header of Python's http.server, which lists directories
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
 const state = {
@@ -840,26 +845,43 @@ async function loadExamples() {
     }
 }
 
+/** Names of the CSV files in localdata/: from the server's directory listing, or from localdata/index.json. */
+async function localFileNames() {
+    const probe = await fetch(LOCAL_DIR + LOCAL_PROBE, { method: 'HEAD', cache: 'no-store' });
+    if (LISTING_SERVER.test(probe.headers.get('server') ?? '')) {
+        const response = await fetch(LOCAL_DIR, { cache: 'no-store' });
+        if (!response.ok)
+            throw new Error(`${LOCAL_DIR} could not be listed (HTTP ${response.status})`);
+        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+        return [...page.querySelectorAll('a[href]')]
+            .map(a => decodeURIComponent(a.getAttribute('href').split(/[?#]/)[0]))
+            .filter(name => name.endsWith('.csv'));
+    }
+    const response = await fetch(LOCAL_DIR + LOCAL_INDEX, { cache: 'no-store' });
+    if (!response.ok) {
+        throw new Error(`this server does not list directories and there is no ${LOCAL_DIR}${LOCAL_INDEX} `
+            + `(HTTP ${response.status}); run npm run data:index`);
+    }
+    const names = await response.json();
+    if (!Array.isArray(names) || !names.every(name => typeof name === 'string'))
+        throw new Error(`${LOCAL_DIR}${LOCAL_INDEX} is not an array of file names; run npm run data:index`);
+    return names.filter(name => name.endsWith('.csv'));
+}
+
 /**
- * The CSV files in localdata/, when the page is served from this machine by a server that lists directories: index
- * entries like data/index.json's, with each file's text (so it is not fetched twice). A file without '# label:' or
- * '# source:' lines gets its name and path; one that cannot be read as a data set is left out with a warning.
+ * The CSV files in localdata/, when the page is served from this machine: index entries like data/index.json's,
+ * with each file's text (so it is not fetched twice). A file without '# label:' or '# source:' lines gets its name
+ * and path; one that cannot be read as a data set is left out with a warning.
  */
 async function loadLocalExamples() {
     if (!LOCAL_HOSTS.has(location.hostname))
         return [];
     let names;
     try {
-        const response = await fetch(LOCAL_DIR);
-        if (!response.ok)
-            throw new Error(`HTTP ${response.status}`);
-        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
-        names = [...page.querySelectorAll('a[href]')]
-            .map(a => decodeURIComponent(a.getAttribute('href').split(/[?#]/)[0]))
-            .filter(name => name.endsWith('.csv'));
+        names = await localFileNames();
     }
     catch (err) {
-        console.warn(`No local data sets: ${LOCAL_DIR} could not be listed (${err.message ?? err})`);
+        console.warn(`No local data sets: ${err.message ?? err}`);
         return [];
     }
     const entries = await Promise.all([...new Set(names)].sort().map(async name => {

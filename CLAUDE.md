@@ -51,7 +51,8 @@ package.json            "type": "module", scripts below
   open http://localhost:8002/
 - Refresh vendored HiGHS: `npm run vendor:highs`.
 - Example data sets: after adding a CSV to `data/`, `npm run data:index` (the test suite fails if
-  `data/index.json` is stale).
+  `data/index.json` is stale). It also writes `localdata/index.json`, which servers that don't list directories
+  (WebStorm's built-in one) need to show local data sets.
 - Page check (server must be running): `npm run check:page -- http://localhost:8002/ --until '<js expr>'
   --eval '<js expr>' --screenshot out.png`. Exits 1 on any console error, exception, or failed load.
 
