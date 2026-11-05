@@ -96,7 +96,13 @@ const state = {
     inflectionCost: SHAPE_DEFAULTS.inflection, // and of an inflection
     logKappa: 4, // log₁₀ κ
     logEpsilon: -2, // log₁₀ ε
+    showData: true, // chart layers (the readouts are unchanged): the data points,
+    showCenter: true, // the band's P-spline fit (phase 1),
+    showBand: true, // the band,
+    showFit: true, // and the phase-2 fit
 };
+// Settings that change only what the chart draws: a change to them redraws without refitting.
+const DISPLAY_KEYS = new Set(['showData', 'showCenter', 'showBand', 'showFit', 'boxes']);
 const DEFAULTS = structuredClone(state);
 
 let tableCache = { text: null, table: null };
@@ -912,7 +918,10 @@ async function startup() {
     const controlsEl = document.getElementById('controls');
     const onChange = patch => {
         Object.assign(state, patch);
-        update();
+        if (current && Object.keys(patch).every(key => DISPLAY_KEYS.has(key)))
+            draw();
+        else
+            update();
         scheduleHash();
     };
     let controls = createControls(controlsEl, state, onChange, exampleList, localList);
@@ -941,6 +950,15 @@ async function startup() {
                 primary: true });
         }
         const boxes = an && phase2 ? anBoxSpec(result, phase2, data) : null;
+        const hidden = new Set();
+        if (!state.showData)
+            hidden.add('data');
+        if (!state.showCenter)
+            hidden.add('center');
+        if (!state.showBand)
+            hidden.add('band');
+        if (!state.showFit)
+            hidden.add('fit');
         chart.setBoxes(null);
         chart.render({
             x: data.x,
@@ -951,6 +969,7 @@ async function startup() {
             edges: data.edges,
             band: region && !an ? { lb: region.lower, ub: region.upper, label: region.label, x: region.grid } : null,
             boxesLabel: boxes ? boxes.label : null,
+            hidden,
         });
         chart.setBoxes(boxes);
     }

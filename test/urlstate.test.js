@@ -9,7 +9,7 @@ const DEFAULTS = {
     xCol: null, yCol: null, region: 'band', family: 'blocks', calibrate: true, tau: 3, boxes: 'tightest',
     alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
     nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, bendLength: 0.05, extremumCost: 2,
-    inflectionCost: 1, logKappa: 4, logEpsilon: -2,
+    inflectionCost: 1, logKappa: 4, logEpsilon: -2, showData: true, showCenter: true, showBand: true, showFit: true,
 };
 
 test('defaults give an empty hash and an empty hash gives the defaults', async () => {
@@ -32,6 +32,13 @@ test('changed settings round-trip and only they are written', async () => {
     const back = await hashToState(hash, DEFAULTS);
     assert.deepEqual(back.state, st);
     assert.deepEqual(back.rejected, []);
+});
+
+test('display toggles round-trip', async () => {
+    const st = { ...DEFAULTS, showCenter: false, showBand: false };
+    const { hash } = await stateToHash(st, DEFAULTS);
+    assert.equal(hash, '#showCenter=0&showBand=0');
+    assert.deepEqual((await hashToState(hash, DEFAULTS)).state, st);
 });
 
 test('Aₙ settings round-trip', async () => {

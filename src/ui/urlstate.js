@@ -114,6 +114,10 @@ const FIELDS = {
     inflectionCost: num(...SHAPE_COST_RANGE),
     logKappa: num(...LOG_KAPPA_RANGE),
     logEpsilon: num(...LOG_EPSILON_RANGE),
+    showData: bool,
+    showCenter: bool,
+    showBand: bool,
+    showFit: bool,
 };
 const USER_ONLY = new Set(['xCol', 'yCol']);
 const SIMULATED_ONLY = new Set(['n', 'sigma', 'seed', 'showTruth']);

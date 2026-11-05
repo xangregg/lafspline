@@ -132,6 +132,12 @@ const TIPS = {
         + 'harder.',
     epsilon: 'Weight on the squared distance from the region\'s center: a slight pull inside the region, which also '
         + 'makes the fit unique.',
+    displayHead: 'What the chart draws. A hidden layer still sets the axes, keeps its values in the tooltip and its '
+        + 'readouts; nothing is refitted.',
+    showData: 'The observations.',
+    showCenter: 'The P-spline the band is built around (for the P-spline band, its center).',
+    showBand: 'The phase-1 confidence band the fit must stay inside.',
+    showFit: 'The least ambitious fit inside the region (phase 2).',
 };
 
 function el(tag, attrs = {}, children = []) {
@@ -300,12 +306,10 @@ export function createControls(container, state, onChange, examples = [], local 
     calibrate.addEventListener('change', () => onChange({ calibrate: calibrate.checked }));
     const tauInput = numberInput('tau', { min: TAU_RANGE[0], max: TAU_RANGE[1], step: 0.1 });
     const tauField = field('τ', tauInput, TIPS.tau);
-    const boxes = select('boxes', BOX_OPTIONS);
     const anBox = el('div', { class: 'group' }, [
         field('intervals', family, TIPS.family),
         check(calibrate, 'calibrate τ for coverage α', TIPS.calibrate),
         tauField,
-        field('boxes on the chart', boxes, TIPS.boxes),
     ]);
 
     // --- region: band
@@ -378,6 +382,16 @@ export function createControls(container, state, onChange, examples = [], local 
             field('log₁₀ ε', logEpsilon, TIPS.epsilon)]),
     ]);
 
+    // --- display: chart layers only (main.js redraws without refitting)
+    const toggle = (key, labelText) => {
+        const input = el('input', { type: 'checkbox', checked: state[key] });
+        input.addEventListener('change', () => onChange({ [key]: input.checked }));
+        return check(input, labelText, TIPS[key]);
+    };
+    const centerToggle = toggle('showCenter', 'phase-1 fit');
+    const bandToggle = toggle('showBand', 'confidence band');
+    const boxesField = field('Aₙ boxes', select('boxes', BOX_OPTIONS), TIPS.boxes);
+
     container.append(
         el('h2', { text: 'Data' }),
         field('source', source, TIPS.source),
@@ -396,6 +410,12 @@ export function createControls(container, state, onChange, examples = [], local 
         bendLengthField,
         shapeCosts,
         advanced,
+        heading('Display', TIPS.displayHead),
+        toggle('showData', 'data points'),
+        centerToggle,
+        bandToggle,
+        boxesField,
+        toggle('showFit', 'phase-2 fit'),
     );
 
     let lastColumns = null;
@@ -426,6 +446,10 @@ export function createControls(container, state, onChange, examples = [], local 
         const an = st.region === 'An';
         anBox.hidden = !an;
         bandBox.hidden = an;
+        // Aₙ has no band or phase-1 fit to draw, only its boxes
+        centerToggle.hidden = an;
+        bandToggle.hidden = an;
+        boxesField.hidden = !an;
         tauField.hidden = !an || st.calibrate;
         alphaField.hidden = an && !st.calibrate;
         covarianceField.hidden = st.region !== 'band';

@@ -48,6 +48,8 @@ function tickFormat(scale, count) {
  * @property {string|null} [boxesLabel]  legend text for the Aₙ boxes layer (null: no legend item)
  * @property {{points: Array<{x: number, y: number}>, label: string, plural: string}} [markers]  features of the
  *     primary fit (kinks, inflections) marked with circles at (x, y), named in the legend and tooltip
+ * @property {Set<string>} [hidden]  layers not drawn: 'data', 'band', or a fit's key. They leave the legend but still
+ *     set the scales (so toggling one does not move the others) and keep their rows in the tooltip.
  */
 
 /**
@@ -171,6 +173,7 @@ export function createMainChart(container) {
         const colors = themeColors();
         const { x, y, f, edges } = m;
         const n = x.length;
+        const hidden = m.hidden ?? new Set();
         sx = xScale(edges, width);
         let lo = d3.min(y);
         let hi = d3.max(y);
@@ -208,7 +211,7 @@ export function createMainChart(container) {
         ctx.fillStyle = colors.muted;
         ctx.globalAlpha = POINT_ALPHA;
         const r = n > 2000 ? 1.5 : n > 500 ? 2 : 2.5; // px; smaller points when dense
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < (hidden.has('data') ? 0 : n); i++) {
             ctx.beginPath();
             ctx.arc(sx(x[i]), sy(y[i]), r, 0, 2 * Math.PI);
             ctx.fill();
@@ -220,7 +223,7 @@ export function createMainChart(container) {
         // Band: infinite bounds are drawn to just past the plot edge (the tooltip shows ±∞). Where
         // lb > ub the band is empty: the assumption is inconsistent with the data there.
         gBand.selectAll('*').remove();
-        if (m.band) {
+        if (m.band && !hidden.has('band')) {
             const [y0, y1] = sy.range(); // bottom, top in px
             const clampPx = v => Math.max(y1 - 10, Math.min(y0 + 10, sy(v)));
             const px = v => (v === Infinity ? y1 - 10 : v === -Infinity ? y0 + 10 : clampPx(v));
@@ -304,6 +307,8 @@ export function createMainChart(container) {
             series.push({ key: 'truth', label: 'true f', d: line(f), color: colors['series-2'], width: 1.5 });
         const gapPaths = [];
         for (const fit of m.fits) {
+            if (hidden.has(fit.key))
+                continue;
             const color = cssColor(fit.colorVar);
             let d;
             if (fit.x) {
@@ -388,10 +393,11 @@ export function createMainChart(container) {
             })
             .attr('fill', colors.ink);
 
-        const items = [{ label: 'data', color: colors.muted, dot: true }, ...series];
-        if (m.band)
+        const items = [...(hidden.has('data') ? [] : [{ label: 'data', color: colors.muted, dot: true }]), ...series];
+        const bandShown = m.band && !hidden.has('band');
+        if (bandShown)
             items.push({ label: m.band.label, color: colors['band'], box: true });
-        if (m.band && m.exact)
+        if (bandShown && m.exact)
             items.push({ label: m.exact.label, color: colors.ink, glyph: '┄' });
         if (gapPaths.some(g => !g.isBreak) && anyGap)
             items.push({ label: 'gap in x: step fit undefined between the data', color: colors['ink-2'], glyph: '┈' });
