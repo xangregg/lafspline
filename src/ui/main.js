@@ -75,7 +75,7 @@ const state = {
     n: SIGNALS.ramp.n,
     sigma: SIGNALS.ramp.sigma,
     seed: 1,
-    showTruth: true,
+    showTruth: true, // chart layer: the true f of simulated data (its check in the readouts is always shown)
     userText: '',
     xCol: null, // column index, −1 = row number, null = auto (first column if there are ≥ 2)
     yCol: null, // column index, null = auto (second column if there are ≥ 2, else the only one)
@@ -107,7 +107,7 @@ const state = {
     showFit: true, // and the phase-2 fit
 };
 // Settings that change only what the chart draws: a change to them redraws without refitting.
-const DISPLAY_KEYS = new Set(['showData', 'showCenter', 'showBand', 'showFit', 'boxes']);
+const DISPLAY_KEYS = new Set(['showTruth', 'showData', 'showCenter', 'showBand', 'showFit', 'boxes']);
 const DEFAULTS = structuredClone(state);
 
 let tableCache = { text: null, table: null };
@@ -958,7 +958,6 @@ async function startup() {
         const { data, result, phase2 } = current;
         const region = result.region;
         const an = region?.kind === 'An';
-        const truth = data.fAt && state.showTruth;
         const fits = [];
         if (region && !an) {
             // a bootstrap band need not be symmetric: draw the P-spline it is built around, not its midpoint
@@ -973,6 +972,8 @@ async function startup() {
         }
         const boxes = an && phase2 ? anBoxSpec(result, phase2, data) : null;
         const hidden = new Set();
+        if (!state.showTruth)
+            hidden.add('truth');
         if (!state.showData)
             hidden.add('data');
         if (!state.showCenter)
@@ -985,7 +986,7 @@ async function startup() {
         chart.render({
             x: data.x,
             y: data.y,
-            f: truth ? data.x.map(data.fAt) : null,
+            f: data.fAt ? data.x.map(data.fAt) : null,
             fits,
             extremes: [],
             edges: data.edges,
@@ -1085,7 +1086,7 @@ async function startup() {
                 clamped: phase2.fit.clamped, sparse: phase2.fit.sparse } : null,
         });
         draw();
-        renderReadouts(readouts, data, result, state.showTruth ? truthCheck : null, phase2, state);
+        renderReadouts(readouts, data, result, truthCheck, phase2, state);
         const note = linkNote ? ` ${linkNote}` : '';
         if (result.error) {
             status.classed('error', true).text(`${data.label}: no ${an || state.region === 'An' ? 'Aₙ' : 'band'} `

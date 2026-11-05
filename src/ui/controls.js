@@ -66,7 +66,6 @@ const TIPS = {
     n: 'Number of observations, at x = i/n.',
     sigma: 'Standard deviation of the Gaussian noise added to the signal.',
     seed: 'Seed of the simulated noise: the same seed gives the same data.',
-    truth: 'Draw the signal the data were simulated from, and check whether the region contains it.',
     xCol: 'The column for x; (row number) uses the order of the rows.',
     yCol: 'The column for y.',
     regionHead: 'Phase 1: a confidence region for f, from the data alone. The fit (phase 2) must stay inside it.',
@@ -134,6 +133,7 @@ const TIPS = {
         + 'makes the fit unique.',
     displayHead: 'What the chart draws. A hidden layer still sets the axes, keeps its values in the tooltip and its '
         + 'readouts; nothing is refitted.',
+    showTruth: 'The signal the data were simulated from.',
     showData: 'The observations.',
     showCenter: 'The P-spline the band is built around (for the P-spline band, its center).',
     showBand: 'The phase-1 confidence band the fit must stay inside.',
@@ -262,12 +262,9 @@ export function createControls(container, state, onChange, examples = [], local 
         seedInput.value = String(seed);
         onChange({ seed });
     });
-    const truth = el('input', { type: 'checkbox', checked: state.showTruth });
-    truth.addEventListener('change', () => onChange({ showTruth: truth.checked }));
     const simBox = el('div', { class: 'group' }, [
         el('div', { class: 'row' }, [field('n', nInput, TIPS.n), field('noise σ', sigmaInput, TIPS.sigma)]),
         el('div', { class: 'row' }, [field('seed', seedInput, TIPS.seed), newSeed]),
-        check(truth, 'show true f', TIPS.truth),
     ]);
 
     const text = el('textarea', {
@@ -388,6 +385,7 @@ export function createControls(container, state, onChange, examples = [], local 
         input.addEventListener('change', () => onChange({ [key]: input.checked }));
         return check(input, labelText, TIPS[key]);
     };
+    const truthToggle = toggle('showTruth', 'true f');
     const centerToggle = toggle('showCenter', 'phase-1 fit');
     const bandToggle = toggle('showBand', 'confidence band');
     const boxesField = field('Aₙ boxes', select('boxes', BOX_OPTIONS), TIPS.boxes);
@@ -412,6 +410,7 @@ export function createControls(container, state, onChange, examples = [], local 
         advanced,
         heading('Display', TIPS.displayHead),
         toggle('showData', 'data points'),
+        truthToggle,
         centerToggle,
         bandToggle,
         boxesField,
@@ -422,6 +421,7 @@ export function createControls(container, state, onChange, examples = [], local 
     function sync(st, { columns = [], nsegAuto = null, lambdaChosen = null, lambdaUsed: used = null,
         ambition: amb = null }) {
         simBox.hidden = !SIGNALS[st.source];
+        truthToggle.hidden = !SIGNALS[st.source];
         userBox.hidden = st.source !== USER;
         const key = columns.join('\u0000');
         if (key !== lastColumns) {

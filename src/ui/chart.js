@@ -48,8 +48,8 @@ function tickFormat(scale, count) {
  * @property {string|null} [boxesLabel]  legend text for the Aₙ boxes layer (null: no legend item)
  * @property {{points: Array<{x: number, y: number}>, label: string, plural: string}} [markers]  features of the
  *     primary fit (kinks, inflections) marked with circles at (x, y), named in the legend and tooltip
- * @property {Set<string>} [hidden]  layers not drawn: 'data', 'band', or a fit's key. They leave the legend but still
- *     set the scales (so toggling one does not move the others) and keep their rows in the tooltip.
+ * @property {Set<string>} [hidden]  layers not drawn: 'data', 'truth' (f), 'band', or a fit's key. They leave the
+ *     legend but still set the scales (so toggling one does not move the others) and keep their rows in the tooltip.
  */
 
 /**
@@ -303,7 +303,7 @@ export function createMainChart(container) {
             return { d, dots };
         };
         const series = [];
-        if (f)
+        if (f && !hidden.has('truth'))
             series.push({ key: 'truth', label: 'true f', d: line(f), color: colors['series-2'], width: 1.5 });
         const gapPaths = [];
         for (const fit of m.fits) {
