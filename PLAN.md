@@ -488,6 +488,16 @@ the default fit, toward straight, is a line.
    of (or as well as) the ambition multiplier. GCV can be bimodal (a noisy line: a shallow local minimum at
    ED ≈ 6 and the global one at the line, ED → 2), so the grid stays ahead of any local refinement; and it
    undersmooths serially correlated data (Nile: ED ≈ 15).
+   *Possible future enhancement: λ from a timescale.* GCV follows any real, recurring feature: on the monthly
+   Montana traffic deaths it follows the seasons (log λ −6.2, −7.6 after the default undersmoothing), and a
+   long-term fit needed a given λ (log λ 0.8, with ambition −3.8). Whether a feature is noise depends on the reader's
+   interest, so it would be an input: a λ choice "features longer than T" (T in x units or as a share of the
+   range), with λ set by bisection so that a sine of period T keeps half its amplitude. It depends on x only, so it
+   means the same on every data set. On the monthly x the half-amplitude period is 0.9 years at log λ −7.6, 1.35 at
+   −2, 2.4 at 0.8 (a yearly cycle keeps 0.9%) and 4 at 3. A variant: GCV with that λ as a floor, so it chooses
+   unless it would follow features shorter than T. Either way the band covers f smoothed at that scale, as the
+   claim already says, and the readout gives T and the λ it implies. Not done for now: a given λ does the same,
+   if less readably.
 8. **Local σ:** a band from a constant-σ smoother is too wide where the noise is small and too narrow where it is
    large (the earlier project's dog-ages example). A variance model (P-spline on log squared residuals) would give a
    heteroscedastic band.
