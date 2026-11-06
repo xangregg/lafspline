@@ -102,8 +102,8 @@ const state = {
     penalty: 'shaped', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number) |
     // 'shaped' (the number of bends, rounded) | 'power' (Σ|second differences|^q)
     q: 1, // power penalty's exponent: 2 is 'quadratic', 1 is ℓ₁ trend filtering, toward 0 the count
-    ambition: -4, // decades from a*, the largest ambition before the fit leaves the region
-    flat: 0, // share of the ambition toward flat (D₁) rather than straight (D₂)
+    ambition: -3.4, // decades from a*, the largest ambition before the fit leaves the region
+    flat: 0.15, // share of the ambition toward flat (D₁) rather than straight (D₂)
     bendLength: SHAPE_DEFAULTS.length, // rounded bends: fraction of the x range (fit.js fitShaped)
     extremumCost: SHAPE_DEFAULTS.extremum, // rounded bends: extra cost of an extremum, in plain bends
     inflectionCost: SHAPE_DEFAULTS.inflection, // and of an inflection
