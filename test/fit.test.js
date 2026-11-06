@@ -460,25 +460,47 @@ test('a flat share entirely toward flat: rounded bends are the count of steps (S
     }
 });
 
-test('a flat share between 0 and 1: steps are counted, their corners are rounded bends (Step at 50%)', () => {
-    // The default costs (extremes and inflections) run the shape search with both orders. Measured at a*: two
-    // steps, each with its two corners (four bends, two inflections), flat between them, ED 3.0.
+test('a flat share between 0 and 1: a step\'s corners are not rounded, and Step fits as the count does (50%)', () => {
+    // Regression: with a step's corners rounded, and the search started only from its own reweighting, the steps
+    // came out two differences wide and short, the levels 0.13 off (0.03–0.05 for the count), at −4 and at a*.
+    // Now the start from the count's support wins, its corners pay no rounding, and the fit is the count's: two
+    // steps one difference wide, each with its two corners, one bend of two differences.
+    const G_TOL = 1e-9; // |Δg|/h, the same pinned refit
     const region = bootRegion('step', 0.25, 500);
     const G = region.grid.length;
     const flat = 0.5;
     const star = leavingAmbition({ ...regionSpec(region, { ambition: 0, flat }), flat }, { shaped: true });
-    assert.equal(star.capped, false);
-    const fit = fitShaped({ ...regionSpec(region, { ambition: star.ambition, flat }), flat,
-        ...shapedLambdas({ ambition: star.ambition, flat, G }) });
-    assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
-    const steps = fit.pieces.orders.find(o => o.order === 1);
-    assert.equal(steps.joins.length, 2);
-    assert.equal(fit.bends.length, 4);
-    assert.equal(fit.inflections, 2);
     // the top of the range is where one free difference, the cheaper of a step (θ) and a bend (1 − θ), costs more
     // than the constant's region terms: with θ = ½ the same as fitSparse's (to rounding, relative)
     const sparseTop = sparseMaxAmbition({ ...regionSpec(region, { ambition: 0, flat }), flat });
     assert.ok(Math.abs(star.top / sparseTop - 1) < 1e-12, `${star.top} vs ${sparseTop}`);
+    for (const decades of [-4, 0]) {
+        const a = Math.min(star.ambition * 10 ** decades, star.top);
+        const spec = { ...regionSpec(region, { ambition: a, flat }), flat };
+        const fit = fitShaped({ ...spec, ...shapedLambdas({ ambition: a, flat, G }) });
+        const count = fitSparse({ ...spec, ...sparseLambdas({ ambition: a, flat, G }) });
+        assert.equal(fit.countStart, true, `${decades}`);
+        assert.ok(fit.g.every((g, j) => Math.abs(g - count.g[j]) / region.half[j] < G_TOL), `${decades}`);
+        assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${decades}: ${fit.maxRatio}`);
+        assert.deepEqual(fit.pieces.orders.find(o => o.order === 1).joins.map(j => j.to - j.from + 1), [1, 1]);
+        assert.deepEqual(fit.bends.map(b => b.to - b.from + 1), [2, 2], `${decades}`);
+        assert.equal(fit.inflections, 2);
+    }
+});
+
+test('a small flat share keeps a sine\'s bends rounded: only a step\'s corners skip rounding', () => {
+    // a sine's slopes are long runs of free first differences, not steps, so its bends round as at 0% (measured
+    // widths 6, 6, 8, 6 at −4 at both, n = 500, B = 500), and the count's start does not win
+    const region = bootRegion('sine', 0.2, 500);
+    const G = region.grid.length;
+    const flat = 0.1;
+    const star = leavingAmbition({ ...regionSpec(region, { ambition: 0, flat }), flat }, { shaped: true });
+    const a = star.ambition * 1e-4;
+    const fit = fitShaped({ ...regionSpec(region, { ambition: a, flat }), flat,
+        ...shapedLambdas({ ambition: a, flat, G }) });
+    assert.equal(fit.countStart, false);
+    assert.ok(fit.bends.length >= 4 && fit.bends.every(b => b.to - b.from + 1 >= 4),
+        fit.bends.map(b => b.to - b.from + 1).join(','));
 });
 
 test('rounded bends need an ambition penalty and valid costs', () => {

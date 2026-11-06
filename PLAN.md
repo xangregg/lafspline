@@ -363,8 +363,25 @@ other. Step (n = 500, B = 500), largest distance from the level in each span's m
 
 At 50% and a* the second drop is 0.36 instead of 0.5, each step two differences wide. A small share leaves smooth
 fits alone: at 10% the sine's bends are unchanged (6, 6, 8, 6 differences at −4) and HeaviSine's fit differs little.
-Not tried: exempting a step's corners from rounding. With θ > 0 every sloped stretch is a run of free first
-differences, so a step can be told from a ramp only by the length of its run.
+**A step's corners are not rounded** (since the table above). With θ > 0 every sloped stretch is a run of free
+first differences, so a step is told from a slope by its length: a run no longer than the bend length (L·nseg
+differences, 2 by default) is a step, and the bends touching it pay no rounding cost. That alone changed nothing: all
+variants (rounding ×1, ×0.25, ×0.1, ×0, steps up to 0.05 or 0.1) settled on the same steps two differences wide,
+whose region terms were twice the count's (5.1 against 2.5 at a = 10⁻³, where the ambition hardly counts). The
+reweighting's rounding term spreads each step before the steps are known, and backward elimination only drops joins.
+So the search also starts from the plain count's support and keeps the lower objective. Step, same measure:
+
+| θ | corners ×1 + count start, −4 / a* | ×0.25 + count start, −4 / a* | ×0 (exempt) + count start |
+|---|---|---|---|
+| 25% | the count's / 0.111, 0.120, 0.071 | 0.037, 0.052, 0.004 (ED 4.6) / as ×1 | the count's, −4 and a* |
+| 50% | the count's / as above | 0.031, 0.053, 0.004 (ED 3.9) / as ×1 | the count's (test) |
+| 75% | the count's / as above | the count's / as ×1 | the count's |
+
+Reduced rounding does not stop a* from shortening the steps; only exemption does, and then a* is the count's (the
+top of the range: the fit never leaves the region). Elsewhere, at 10% and 50%: the sine and ramp are unchanged
+(their slopes are long runs); the box at 50% gets the count's flat tails (rms from the box 0.117 → 0.089 at −4);
+HeaviSine at −4 takes the count's start (its objective is lower), up to 0.25 h from before, ED 29 instead of 24–27,
+the same distance from f; a* unchanged. The second start costs one plain count and one refit, 30–100% more time.
 
 ### 1.4c Power penalty (a fourth ambition penalty, prototype)
 

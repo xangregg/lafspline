@@ -170,8 +170,8 @@ const TIPS = {
         + 'half-width. 0 is the simplest fit inside; below it the fit follows more detail, above it the fit '
         + 'leaves the region.',
     flat: 'Share of the ambition on first differences (toward flat) rather than second (toward straight). With '
-        + 'rounded bends, the steps are counted plainly and only the bends are rounded, a step\'s two corners among '
-        + 'them.',
+        + 'rounded bends, the steps are counted plainly and their corners are not rounded; the bends of longer '
+        + 'slopes are.',
     kappa: 'Weight on the squared distance outside the region, per squared half-width: larger makes the region '
         + 'harder.',
     epsilon: 'Weight on the squared distance from the region\'s center: a slight pull inside the region, which also '

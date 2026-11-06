@@ -851,7 +851,8 @@ function countModel(orders) {
  * difference that must not have the opposite sign, 0 where free. As in Bollaerts, Eilers & Van Mechelen (2006),
  * a difference found on the wrong side gets the pinning weight, and stays in that active set; the reweighting adds
  * to the set as it goes, and the refit repeats until no new difference violates its sign. Without signs nothing
- * changes. The result's objective is the L0 objective of the final refit.
+ * changes. The result's objective is the L0 objective of the final refit. opts.startSupport skips the reweighting
+ * and refits that support (fitShaped's second start, from the plain count's support).
  */
 function adaptiveRidge(spec, opts, orders, model) {
     const start = performance.now();
@@ -894,12 +895,18 @@ function adaptiveRidge(spec, opts, orders, model) {
     let support = supportOf(fit.beta);
     let stable = 0;
     let reweights = 0;
+    if (opts.startSupport) {
+        // a given support (fitShaped's start from the plain count's) skips the reweighting
+        support = opts.startSupport.map(m => Uint8Array.from(m));
+        stable = SUPPORT_STABLE;
+    }
     while (orders.length > 0 && stable < SUPPORT_STABLE && reweights < maxReweights) {
         reweights++;
         const weights = {};
         const scaled = fit.beta.map(v => v / s);
         orders.forEach(([d], i) => {
-            weights[`w${d}`] = model.weights(i, differences(scaled, d), deltas[i], caps[i], scaled, reweights);
+            weights[`w${d}`] = model.weights(i, differences(scaled, d), deltas[i], caps[i], scaled, reweights,
+                support);
         });
         const grew = signs ? violate(scaled, active) : false;
         fit = fitIterated({ ...base, ...(signs ? constrain(weights, active) : weights) }, { side: fit.side });
@@ -922,7 +929,7 @@ function adaptiveRidge(spec, opts, orders, model) {
                 const prev = f.beta.map(v => v / s);
                 const pins = {};
                 orders.forEach(([d], i) => {
-                    pins[`w${d}`] = model.pins(i, m[i], caps[i], prev);
+                    pins[`w${d}`] = model.pins(i, m[i], caps[i], prev, m);
                 });
                 f = fitIterated({ ...base, ...(signs ? constrain(pins, active) : pins) }, { side: f.side });
                 iterations += f.iterations;
@@ -1014,10 +1021,12 @@ function signViolations(scaled, signs, active, nseg) {
  * less than C and are unchanged.
  *
  * A share toward flat (λ₁ > 0, shapedLambdas' θ) adds fitSparse's count of steps: λ₁ per free first difference,
- * whatever its size, with the pieces between flat. A step's two corners are bends like any other, and pay their
- * shape and rounding costs at λ₂ = a·(1 − θ)·G. The rounding cost grows with the square of a corner's turn, so
- * between 0 and 1 the fit makes its steps as short as the region allows (Step, PLAN §1.4b). θ = 1 has no bends, and
- * is fitSparse with D₁.
+ * whatever its size, with the pieces between flat. A step's two corners are bends and pay their shape costs at
+ * λ₂ = a·(1 − θ)·G, but not the rounding cost: a step (a run of free first differences no longer than the bend
+ * length) is a jump at the scale of the bends, so rounding its corners would only shorten it (the levels moved up to
+ * 0.15 toward each other on Step, PLAN §1.4b). Longer runs are slopes, and their bends round. The search also starts
+ * from the plain count's support and keeps the lower objective (countStart). θ = 1 has no bends, and is fitSparse
+ * with D₁.
  *
  * The search is fitSparse's (reweighting, pinned refit, backward elimination), with weights
  * w_r = c_r/(t_r² + δ²) + q·e^(−R/C), where c_r spreads its bend's cost over the bend's differences and R is its
@@ -1042,8 +1051,8 @@ function signViolations(scaled, signs, active, nseg) {
  *     shapePasses: accepted removals at most (MAX_SHAPE_PASSES; 0 skips the shape search); screenCache: the
  *     screen's results by candidate, to share between fits of the same spec at other ambitions
  * @returns {ReturnType<typeof fitSparse> & {bends: Bend[], extremes: number, inflections: number,
- *     shapeTried: number, shapeAccepted: number}}  shapeTried: candidates searched (past the screen); shapeAccepted:
- *     kept
+ *     shapeTried: number, shapeAccepted: number, countStart: boolean}}  shapeTried: candidates searched (past the
+ *     screen); shapeAccepted: kept; countStart: the start from the plain count's support won (a share toward flat)
  */
 export function fitShaped(spec, opts = {}) {
     const lambda1 = spec.lambda1 ?? 0;
@@ -1065,42 +1074,58 @@ export function fitShaped(spec, opts = {}) {
     const limit = shape.roundingLimit * (range > 0 ? (range / s) ** 2 : 1);
     const limited = q > 0 && Number.isFinite(limit);
     const rounding = R => (limited ? limit * -Math.expm1(-R / limit) : R);
-    // the weight q·e^(−R_b/C) on each difference of a bend b with rounding cost R_b = q·Σt² (q when not limited)
-    const roundingWeights = (t, mask) => {
+    // A step's corners are not rounded: the bends touching a run of free first differences (the slope between flat
+    // pieces) no longer than the bend length. 1 per second difference that rounds, 0 for a step's corner. Second
+    // difference k is u[k + 1] − u[k], so it touches the run u[a..b] for k in [a − 1, b].
+    const stepMax = Math.max(1, Math.round(shape.length * spec.nseg));
+    const roundsAt = (bendMask, stepMask) => {
+        const f = new Uint8Array(bendMask.length).fill(1);
+        if (!stepMask)
+            return f;
+        const steps = supportRuns(stepMask).filter(st => st.to - st.from + 1 <= stepMax);
+        for (const run of supportRuns(bendMask)) {
+            if (steps.some(st => run.from <= st.to && run.to >= st.from - 1))
+                f.fill(0, run.from, run.to + 1);
+        }
+        return f;
+    };
+    const stepsOf = support => (stepAt >= 0 ? support[stepAt] : null);
+    // the weight q·e^(−R_b/C) on each difference of a bend b with rounding cost R_b = q·Σt² (q when not limited),
+    // 0 on a step's corners
+    const roundingWeights = (t, mask, stepMask) => {
         const out = new Float64Array(t.length).fill(q);
-        if (!limited)
-            return out;
+        const f = roundsAt(mask, stepMask);
         for (const { from, to } of supportRuns(mask)) {
             let R = 0;
             for (let r = from; r <= to; r++)
-                R += q * t[r] * t[r];
-            out.fill(q * Math.exp(-R / limit), from, to + 1);
+                R += f[r] * q * t[r] * t[r];
+            out.fill(f[from] * q * (limited ? Math.exp(-R / limit) : 1), from, to + 1);
         }
         return out;
     };
     // Steps (free first differences, the share toward flat) are counted as in fitSparse; the bends are shaped.
     const count = countModel([[1, lambda1]]);
     const model = {
-        weights: (i, t, delta, cap, scaled, reweights) => {
+        weights: (i, t, delta, cap, scaled, reweights, support) => {
             if (i === stepAt)
                 return count.weights(i, t, delta, cap);
             const c = reweights === 1 ? null : differenceCosts(bendShapes(scaled, t, delta, shape), t.length);
             const free = Uint8Array.from(t, v => (Math.abs(v) > delta ? 1 : 0));
-            const qr = reweights === 1 ? null : roundingWeights(t, free);
+            const qr = reweights === 1 ? null : roundingWeights(t, free, stepsOf(support));
             return t.map((v, r) => Math.min((c ? c[r] : 1) / (v * v + delta * delta) + (qr ? qr[r] : q), cap));
         },
-        pins: (i, m, cap, prev) => {
+        pins: (i, m, cap, prev, support) => {
             if (i === stepAt)
                 return count.pins(i, m, cap);
-            const qr = roundingWeights(differences(prev, 2), m);
+            const qr = roundingWeights(differences(prev, 2), m, stepsOf(support));
             return Float64Array.from(m, (v, r) => (v ? qr[r] : cap));
         },
         refitPasses: limited && bendAt >= 0 ? ROUNDING_PASSES : 1,
         settled: (prev, next, support) => {
             if (bendAt < 0)
                 return true;
-            const a = roundingWeights(differences(prev, 2), support[bendAt]);
-            const b = roundingWeights(differences(next, 2), support[bendAt]);
+            const a = roundingWeights(differences(prev, 2), support[bendAt], stepsOf(support));
+            const b = roundingWeights(differences(next, 2), support[bendAt], stepsOf(support));
             return a.every((v, r) => Math.abs(v - b[r]) <= ROUNDING_TOL * q);
         },
         cost: (scaled, support) => {
@@ -1108,11 +1133,12 @@ export function fitShaped(spec, opts = {}) {
             if (bendAt < 0)
                 return steps;
             const t = differences(scaled, 2);
+            const f = roundsAt(support[bendAt], stepsOf(support));
             let sum = 0;
             for (const b of bendShapes(scaled, t, null, shape, support[bendAt])) {
                 let R = 0;
                 for (let r = b.from; r <= b.to; r++)
-                    R += q * t[r] * t[r];
+                    R += f[r] * q * t[r] * t[r];
                 sum += b.cost + rounding(R);
             }
             return steps + lambda * sum;
@@ -1120,6 +1146,22 @@ export function fitShaped(spec, opts = {}) {
     };
     const search = signs => adaptiveRidge({ ...spec, lambda1, lambda2: lambda }, { ...opts, signs }, orders, model);
     let fit = search(null);
+    let countStart = false;
+    if (stepAt >= 0 && bendAt >= 0) {
+        // The reweighting's rounding term spreads each step over two or more differences before the steps are
+        // known, and backward elimination only drops joins, so it settles on wide steps the region fits worse
+        // (Step: twice the region terms). The plain count's support is a second start; the lower objective wins.
+        const plain = adaptiveRidge({ ...spec, lambda1, lambda2: lambda }, { ...opts, signs: null }, orders,
+            countModel(orders));
+        const alt = adaptiveRidge({ ...spec, lambda1, lambda2: lambda }, { ...opts, signs: null,
+            startSupport: plain.support }, orders, model);
+        if (alt.l0 < fit.l0) {
+            // its reweighting was the plain count's
+            fit = { ...alt, reweights: plain.reweights, settled: plain.settled,
+                iterations: plain.iterations + alt.iterations };
+            countStart = true;
+        }
+    }
     const bendsOf = f => (bendAt >= 0 ? f.support[bendAt] : noBends());
     let signs = null;
     let tried = 0;
@@ -1167,7 +1209,7 @@ export function fitShaped(spec, opts = {}) {
     for (const b of bends)
         b.x = spec.xl + ((b.from + b.to + 2) / 2 - (deg - 1) / 2) * step;
     return {
-        ...fit, bends, shapeTried: tried, shapeAccepted: accepted, ms: performance.now() - start,
+        ...fit, bends, shapeTried: tried, shapeAccepted: accepted, countStart, ms: performance.now() - start,
         extremes: bends.reduce((a, b) => a + (b.extremum ? 1 : 0), 0),
         inflections: bends.reduce((a, b) => a + b.inflections, 0),
     };

@@ -520,7 +520,8 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
             + `a wider, rounder bend; that cost levels off at ${SHAPE_DEFAULTS.roundingLimit} of the center's range `
             + 'squared, so a turn the region forces to be sharp (a spike narrower than the bend length) costs at most '
             + 'about that much' + (st.flat > 0 ? '. Steps (free first differences, the share toward flat) are '
-            + 'counted plainly; the corners on either side of a step are bends and are rounded like the others' : '');
+            + 'counted plainly, and the corners on either side of a step no wider than the bend length are not '
+            + 'rounded; longer slopes are, at their bends' : '');
     }
     let penaltyNote = fit.sparse
         ? 'adaptive ridge (Frommlet & Nuel 2016), an approximation of the count: a local optimum, not proven fewest'
@@ -572,7 +573,9 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         add('solver', `${fit.iterations} solves`, `adaptive ridge: ${fit.reweights} reweighting`
             + `${fit.reweights === 1 ? '' : 's'}; ${fit.settled ? 'the joins settled' : 'the joins had not settled'}; `
             + `${fit.pruned} dropped by backward `
-            + `elimination; the final fit is ${fit.converged ? 'the exact minimizer for its joins' : 'not converged'}`);
+            + `elimination; the final fit is ${fit.converged ? 'the exact minimizer for its joins' : 'not converged'}`
+            + (fit.countStart ? '; the reweighting was the plain count\'s: its joins, refit with rounded bends, '
+                + 'gave a lower objective than the rounded search\'s own' : ''));
     }
     else {
         const shortened = fit.damped ? `; ${fit.damped} step${fit.damped === 1 ? '' : 's'} shortened by the line `
