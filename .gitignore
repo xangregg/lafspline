@@ -1,6 +1,8 @@
 node_modules/
 .DS_Store
 .idea/
+# notes for this machine only (names a project that may stay private)
+CLAUDE.local.md
 # data sets kept on this machine (license not cleared for redistribution): everything in localdata/ but its README,
 # which keeps the directory in every clone and tells the app which server it is on (src/ui/main.js)
 localdata/*

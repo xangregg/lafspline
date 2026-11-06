@@ -5,13 +5,15 @@
 **lafspline** ("least ambitious fit", P-spline version): a browser app (served from GitHub Pages) for
 nonparametric regression in two phases. A P-spline fit gives a simultaneous confidence region; a second P-spline is
 then penalized severely for leaving the region, slightly for distance from its center, and for ambition (pressure
-toward flat and straight lines), with a user knob for long-term versus short-term patterns. It follows the earlier project
-(the earlier project: the region as a hard constraint, fewest kinks by MIP), which grew out of **tautfit** (../nicefit,
-https://github.com/xangregg/tautfit, a faithful Davies, Kovac & Meise implementation). lafspline is free to depart
+toward flat and straight lines), with a user knob for long-term versus short-term patterns. It follows an earlier,
+related project (the region as a hard constraint, fewest kinks by MIP; its name and location are in CLAUDE.local.md,
+which is not committed), which grew out of **tautfit** (../nicefit, https://github.com/xangregg/tautfit, a faithful
+Davies, Kovac & Meise implementation). lafspline is free to depart
 from both.
 
 The spec, decisions and milestones are in **PLAN.md**. Read it before starting a phase, and tick its checkboxes
-as work is completed. Code copied from the earlier project (some of it originally tautfit's) is listed in **VENDORED.md**.
+as work is completed. Code copied from the earlier project (some of it originally tautfit's) is listed in
+**VENDORED.md**.
 
 ## Hard rules
 
@@ -47,7 +49,7 @@ package.json            "type": "module", scripts below
 ## Commands
 
 - Tests: `npm test` (runs `node --test`). Node 20+.
-- Serve locally: `npm run serve` (python3 on port **8002**, so the earlier project can keep 8001 and tautfit 8000), then
+- Serve locally: `npm run serve` (python3 on port **8002**, leaving 8000 and 8001 to related projects), then
   open http://localhost:8002/
 - Refresh vendored HiGHS: `npm run vendor:highs`.
 - Example data sets: after adding a CSV to `data/`, `npm run data:index` (the test suite fails if
@@ -71,7 +73,8 @@ package.json            "type": "module", scripts below
 - **Display honesty:** every reported fit says which region it was checked against, whether it stays inside
   (largest ratio, violations), and what the region covers under which assumptions; approximate methods (iterated
   weights, adaptive ridge) say so, and solver results report their status.
-- Changes to copied modules are recorded in VENDORED.md (what and why), so they can be compared with the earlier project.
+- Changes to copied modules are recorded in VENDORED.md (what and why), so they can be compared with the earlier
+  project.
 
 ## Working style
 

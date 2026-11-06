@@ -1,8 +1,8 @@
-// Coverage simulation for the phase-1 band (PLAN.md phase 1), as the earlier project's tools/sim-band.mjs. For each signal, n
+// Coverage simulation for the phase-1 band (PLAN.md phase 1). For each signal, n
 // and configuration (covariance, undersmoothing factor on λ), R replications y = f + σε (seeded); on each, GCV picks
 // λ, the band uses undersmooth × λ (src/core/band.js), and is checked on its own grid (data x plus 4 points per
 // segment). Reported: the fraction of replications in which the band contains f on the whole grid, and at the data
-// x only (as the earlier project measured; f between two data points that straddle a jump is not identified by the data); the
+// x only (f between two data points that straddle a jump is not identified by the data); the
 // fraction in which it contains
 // the P-spline's mean E f̂ (f smoothed with the same λ: the sandwich band's own target); the mean half-width in
 // units of the true σ; the mean effective dimension. σ is estimated in every case, as the app does.

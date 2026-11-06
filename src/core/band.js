@@ -76,7 +76,7 @@ export function checkGrid(x, xl, xr, nseg, perSegment = GRID_PER_SEGMENT) {
 }
 
 /**
- * The α-quantile of a sorted sample, as the ⌈αB⌉-th order statistic (1-based), as in the earlier project.
+ * The α-quantile of a sorted sample, as the ⌈αB⌉-th order statistic (1-based).
  *
  * @param {Float64Array} sorted
  * @param {number} alpha  0 < α < 1

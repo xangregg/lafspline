@@ -1,4 +1,4 @@
-// Confidence regions as data (the earlier project PLAN.md §1.1). A region is a set of linear constraints on the fit g at the
+// Confidence regions as data. A region is a set of linear constraints on the fit g at the
 // observations, each over a range of observations:
 //     |Σ_{i=lo_k..hi_k} g_i − center_k| ≤ scale·width_k
 // plus what is needed to report and draw it: a label, a coverage claim, and how to draw it.
@@ -7,8 +7,8 @@
 // scale = c = σ·√(τ log n).
 //
 // region.js (from tautfit) has Aₙ's threshold, residual check and constraint boxes; this module builds on it.
-// Copied from the earlier project with its smoother band (bandRegion, which needs the earlier project's smoother.js) and LP framing
-// (standardRows) removed: lafspline's band is band.js, and phase 2 uses the constraints in box form (an.js).
+// Copied (see VENDORED.md) with its smoother band (bandRegion, which needs a smoother module not copied) and LP
+// framing (standardRows) removed: lafspline's band is band.js, and phase 2 uses the constraints in box form (an.js).
 
 import { familyIntervals, familyText } from './intervals.js';
 import { threshold } from './region.js';

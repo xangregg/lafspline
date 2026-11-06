@@ -145,7 +145,7 @@ function distinctCount(x) {
 
 /**
  * The data: observations, true f for simulated data, notes; {error} when there is nothing to fit, {pending, id}
- * while a bundled example is loading (id: its source, example:… or local:…). As the earlier project's deriveData.
+ * while a bundled example is loading (id: its source, example:… or local:…).
  */
 function deriveData(st, exampleTexts, examples) {
     let x;

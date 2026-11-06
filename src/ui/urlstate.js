@@ -6,7 +6,7 @@
 // caller says so. Reading validates every value against the same ranges the controls allow and drops
 // anything else, so a hand-edited or stale link can never put the app in an impossible state.
 // No DOM use: runs in Node for tests (CompressionStream is global in Node ≥ 18 and in browsers).
-// Copied from the earlier project with the field table rewritten for lafspline's state (see VENDORED.md).
+// Copied with the field table rewritten for lafspline's state (see VENDORED.md).
 
 import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
@@ -24,7 +24,7 @@ export const PENALTIES = ['quadratic', 'sparse', 'shaped', 'power']; // ambition
 export const POWER_RANGE = [0.1, 2]; // q of the power penalty
 export const BEND_LENGTH_RANGE = [0, 0.25]; // shaped bends' length L, fraction of the x range
 export const SHAPE_COST_RANGE = [0, 20]; // shaped bends' extremum and inflection costs, in plain bends
-export const FAMILIES = ['blocks', 'quarter', 'every', 'all']; // Aₙ intervals, as the earlier project's
+export const FAMILIES = ['blocks', 'quarter', 'every', 'all']; // Aₙ intervals
 export const BOX_VIEWS = ['tightest', 'all', 'off']; // Aₙ boxes drawn on the chart
 export const AN_MAX_SEGMENTS = 100; // phase-2 basis for Aₙ: its long intervals make the Newton system dense
 export const TAU_RANGE = [0.1, 20];

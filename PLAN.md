@@ -9,12 +9,12 @@ two phases:
 2. **Fit.** A second P-spline is penalized severely for leaving the region, lightly for distance from the
    region's center, and for ambition (pressure toward flat and straight lines).
 
-lafspline grew out of tautfit (../nicefit, a faithful Davies, Kovac & Meise implementation) and the earlier project
-(the earlier project: the region as a hard constraint, counted features minimized by a MIP). It keeps their lessons
+lafspline grew out of tautfit (a faithful Davies, Kovac & Meise implementation) and an earlier, related project
+(the region as a hard constraint, counted features minimized by a MIP). It keeps their lessons
 (regions as data, coverage by simulation, display honesty) but replaces the MIP with penalized least squares on a
 smooth basis. What changes:
 
-| | the earlier project | lafspline |
+| | earlier project | lafspline |
 |---|---|---|
 | basis | linear spline at the data x | B-splines on equally spaced knots (P-splines) |
 | region | hard constraint | penalty: severe outside, slight inside |
@@ -51,12 +51,13 @@ bands for penalized splines.
   Checking only at the knots would miss excursions between them, and the denser grid is cheap (G is a few
   hundred, and every grid row of B has only q + 1 nonzeros).
 - **Simultaneous band** on the grid: center c_j = (Bα̂)_j, half-width h_j = q_α·se_j. The critical value q_α comes
-  from Monte Carlo of max_j |(B_G z)_j| / se_j with z ~ N(0, V), the same machinery as the earlier project's smoother band.
+  from Monte Carlo of max_j |(B_G z)_j| / se_j with z ~ N(0, V), the same machinery as the earlier project's smoother
+  band.
 - **What it covers:** the frequentist band covers E f̂ (the smoother's mean), not f. Options: undersmoothing (λ
   divided by a factor; in the earlier project, half the GCV bandwidth raised coverage of f from 0–89% to 92–98%) and the
   Bayesian covariance. A coverage simulation on the signals decides the defaults.
-- **Regions as data,** as in the earlier project: center, lower and upper edges on the grid, label, coverage claim with its
-  assumptions, `check(g)` (ratios, violations), and how to draw it. Aₙ comes later as a second implementation
+- **Regions as data,** as in the earlier project: center, lower and upper edges on the grid, label, coverage claim
+  with its assumptions, `check(g)` (ratios, violations), and how to draw it. Aₙ comes later as a second implementation
   (phase 4).
 
 **Measured (phase 1, `npm run sim:band`):** 400 replications per row, α = 0.95, B = 1000, σ̂ from the residuals
@@ -212,11 +213,11 @@ Two ways to solve it:
 - **Iteration** (Bollaerts, Eilers & Van Mechelen): fix the indicator weights v_j = [g_j > u_j] and
   w_j = [g_j < l_j], solve the resulting penalized least squares (banded, size K̃), update the weights, and repeat
   until they stop changing (usually a few iterations). Pure JavaScript, no solver.
-- **Quadratic programming** (Eilers & Marx later handled some constraints this way instead of by iteration): the
-  same objective with slack variables, l − s ≤ g ≤ u + s and κ·Σs², or a hard region with s = 0. HiGHS (vendored in
-  the earlier project) solves convex QPs: highs-js accepts a Hessian in ModelData (active-set QP). Exact, no iteration count to
-  worry about, and the hard-region variant comes for free. In that variant, λ → ∞ gives the least rough function
-  inside the region, the QP analogue of tautfit's `regularize.js` (min TV in Aₙ by LP).
+- **Quadratic programming** (Eilers & Marx later handled some constraints this way instead of by iteration): the same
+  objective with slack variables, l − s ≤ g ≤ u + s and κ·Σs², or a hard region with s = 0. HiGHS (vendored in the
+  earlier project) solves convex QPs: highs-js accepts a Hessian in ModelData (active-set QP). Exact, no iteration
+  count to worry about, and the hard-region variant comes for free. In that variant, λ → ∞ gives the least rough
+  function inside the region, the QP analogue of tautfit's `regularize.js` (min TV in Aₙ by LP).
 
 Phase 0 compares the two on the same problems and picks the default.
 
@@ -244,12 +245,12 @@ wanted, is κ → ∞ in the iteration (violations shrink like 1/κ).
 
 ### 1.4 Sparse ambition (optional)
 
-Quadratic difference penalties make the fit straighter everywhere but give no exactly flat or straight pieces.
-The adaptive ridge reweights them each iteration, w_r = 1 / ((Dβ)_r² + δ²), which approximates counting the
-nonzero differences (an L0 penalty). On cubic B-splines with equal knots, coefficients linear in their index give
-a spline that is linear there, so a sparse D₂β gives straight pieces joined by short smooth bends: few kinks, with
-the earlier project's "smooth joins" built in. A sparse D₁β gives flat pieces with smooth transitions (few jumps or steps). It
-is an approximation, with no proof of optimality like the earlier project's MIP; report it as such.
+Quadratic difference penalties make the fit straighter everywhere but give no exactly flat or straight pieces. The
+adaptive ridge reweights them each iteration, w_r = 1 / ((Dβ)_r² + δ²), which approximates counting the nonzero
+differences (an L0 penalty). On cubic B-splines with equal knots, coefficients linear in their index give a spline
+that is linear there, so a sparse D₂β gives straight pieces joined by short smooth bends: few kinks, with the earlier
+project's "smooth joins" built in. A sparse D₁β gives flat pieces with smooth transitions (few jumps or steps). It is
+an approximation, with no proof of optimality like the earlier project's MIP; report it as such.
 
 **Done (phase 3)** (`fit.js` `fitSparse`, `sparseLambdas`, `sparseMaxAmbition`; `leavingAmbition(spec, {sparse})`):
 - λ_d = a·θ_d·G with θ₁ = θ, θ₂ = 1 − θ, so S/G is the region functional plus a per free difference. A join's count
@@ -424,8 +425,8 @@ the default fit, toward straight, is a line.
 ## 3. Phases
 
 ### Phase 0 — Scaffold and risk checks
-- [x] Repository, LICENSE (0BSD), `.gitignore`, `.nojekyll`; copy the reusable modules from the earlier project (list below)
-      and record them in VENDORED.md; their tests pass; scaffold page loads without console errors.
+- [x] Repository, LICENSE (0BSD), `.gitignore`, `.nojekyll`; copy the reusable modules from the earlier project (list
+      below) and record them in VENDORED.md; their tests pass; scaffold page loads without console errors.
 - [x] P-spline core (`src/core/pspline.js`): B-spline basis (equally spaced knots, any degree), difference
       matrices, banded penalized solve, hat-matrix diagonal and ED, GCV/AIC over log λ, σ̂, Bayesian and sandwich
       covariance. Tests: partition of unity, polynomial reproduction (λ → ∞ gives the degree-(d − 1) least-squares
@@ -436,15 +437,16 @@ the default fit, toward straight, is a line.
 ### Phase 1 — The region
 - [x] Simultaneous band on the check grid (`src/core/band.js`), Monte Carlo critical value, undersmoothing;
       coverage simulation over signals × n × noise (as the earlier project's `tools/sim-band.mjs`).
-- [x] UI: data input, the phase-1 fit and band, readouts with the claim (from the earlier project's main.js and controls.js).
+- [x] UI: data input, the phase-1 fit and band, readouts with the claim (from the earlier project's main.js and
+      controls.js).
 
 ### Phase 2 — The second-phase fit
 - [x] Objective and solver (`src/core/fit.js`); re-check against the region. Tests: a fit stays inside when κ is
       large; ambition → ∞ gives the least-squares line (D₂) or constant (D₁) toward the center, when they fit;
       ambition → 0 gives the center c; iteration and QP agree.
 - [x] Knobs in the UI (ambition slider, flat/straight balance, advanced κ and ε); URL state.
-- [ ] Diagnostics on the examples, side by side with the earlier project's fits. (lafspline's side is done: every example
-      fits in milliseconds and stays within 1% of h at a*. The earlier project's side is still to do.)
+- [ ] Diagnostics on the examples, side by side with the earlier project's fits. (lafspline's side is done: every
+      example fits in milliseconds and stays within 1% of h at a*. The earlier project's side is still to do.)
 
 ### Phase 3 — Sparse ambition and the ladder report
 - [x] Adaptive-ridge option for D₁ and D₂; count the resulting flat and straight pieces and bends (§1.4).

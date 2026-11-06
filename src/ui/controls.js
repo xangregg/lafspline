@@ -1,7 +1,8 @@
 // Control panel: data source (examples, simulated signals, pasted or dropped CSV), the phase-1 region's settings and
 // the phase-2 fit's knobs, in the order they act. Explanations sit behind ⓘ icons (info.js) to keep the panel
-// compact; text that depends on the data (the λ GCV chose, a*) is updated in them by sync. Patterned on the earlier project's
-// controls.js (el, field, debounce are the same helpers). Emits partial state patches.
+// compact; text that depends on the data (the λ GCV chose, a*) is updated in them by sync. Patterned on the controls
+// of the project the copied modules came from (VENDORED.md; el, field, debounce are the same helpers). Emits partial
+// state patches.
 
 import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';

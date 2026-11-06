@@ -1,11 +1,11 @@
-# Code copied from the earlier project
+# Copied code
 
-Source: the earlier project at commit **0f5d4bb** (2026-11-02). Some of these files came to the earlier project from
-tautfit (https://github.com/xangregg/tautfit, local ../nicefit); the earlier project's VENDORED.md records their history and
-its own changes to them. Copied, not shared: record any change here, with the reason, so the projects can be
-compared later.
+Source: an earlier, related project (the region as a hard constraint, fewest kinks by MIP) at its commit **0f5d4bb**
+(2026-11-02). Some of these files came to it from tautfit (https://github.com/xangregg/tautfit); its own VENDORED.md
+records their history and its changes to them. Copied, not shared: record any change here, with the reason, so the
+projects can be compared later.
 
-## src/core (pure; each has its the earlier project test in test/)
+## src/core (pure; each has its test from the earlier project in test/)
 
 | file | what it gives lafspline |
 |---|---|
@@ -35,27 +35,28 @@ lafspline's own.
 `lp.js`: trimmed (see below).
 `urlstate.js` (+ test): copied in phase 2 with the field table rewritten (see below).
 `main.js` and `controls.js` are lafspline's own, patterned on the earlier project's (the data source, paste/drop and
-example loading code, and the URL hash and Copy link wiring, are the earlier project's). `format.js` and `info.js` (the ⓘ explanations) are lafspline's own.
+example loading code, and the URL hash and Copy link wiring, are the earlier project's). `format.js` and `info.js`
+(the ⓘ explanations) are lafspline's own.
 Not copied: `residual.js` (Aₙ's residual view). Phase 4 draws the boxes of the tightest level on the main chart
 instead.
 
 ## Other
 
-`src/lp-worker.js` (trimmed), `vendor/highs/` (highs-js 1.15.4, MIT; SHA-256 of highs.wasm f13134e3…cd, the
-same build as the earlier project's), `tools/check-page.mjs`, `tools/data-index.mjs`, `data/` (CSVs, `index.json`,
-README), `styles.css` (the earlier project's, including its section at the end; unused rules are harmless; lafspline's own
+`src/lp-worker.js` (trimmed), `vendor/highs/` (highs-js 1.15.4, MIT; SHA-256 of highs.wasm f13134e3…cd, the same build
+as the earlier project's), `tools/check-page.mjs`, `tools/data-index.mjs`, `data/` (CSVs, `index.json`, README),
+`styles.css` (the earlier project's, including its section at the end; unused rules are harmless; lafspline's own
 rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 
 ## Changes since copying
 
-- `src/lp-worker.js`: trimmed to the plain LP request (`{id, lp, options}`) and a new generic `model` task
-  (`{id, task: 'model', model, options}` → `solveModel`, for QPs given as ModelData with a Hessian). The earlier project's
-  tasks (regularize, exact bounds, MIP, kinks, ladder, smooth joins, band region, calibration) are dropped
-  because their modules were not copied.
+- `src/lp-worker.js`: trimmed to the plain LP request (`{id, lp, options}`) and a new generic `model` task (`{id,
+  task: 'model', model, options}` → `solveModel`, for QPs given as ModelData with a Hessian). The earlier project's
+  tasks (regularize, exact bounds, MIP, kinks, ladder, smooth joins, band region, calibration) are dropped because
+  their modules were not copied.
 - `src/ui/lp.js`: the matching trim; `solveModelInWorker(model, options)` added; `solveLP` and `cancelAll`
   unchanged.
-- `test/lp.test.js`: rewritten, since the earlier project's used `smokeLP` from `lp-build.js` (not copied): the same smoke
-  LP inline, the infeasibility test unchanged, and a new test of `solveModel` on the smoke LP as ModelData.
+- `test/lp.test.js`: rewritten, since the earlier project's used `smokeLP` from `lp-build.js` (not copied): the same
+  smoke LP inline, the infeasibility test unchanged, and a new test of `solveModel` on the smoke LP as ModelData.
 - `src/core/lp-solve.js`: `solveModel(highs, model, options, infoNames)` takes an optional list of HiGHS info
   items (e.g. `qp_iteration_count`) and returns them as `info`; an item the run did not produce is NaN. Additive.
   `src/lp-worker.js` and `src/ui/lp.js` (`solveModelInWorker`) pass it through.
@@ -67,15 +68,14 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/chart.js`: axis tick labels have no thousands separator when every value is below 10,000 in magnitude
   (years read 1880, not 1,880); larger values keep d3's default grouping. The earlier project still shows 1,880.
 - `src/ui/urlstate.js`: the field table is lafspline's state (band settings, ambition, flat share, κ, ε); the
-  constraint codec (`encodeConstraints`, `decodeConstraints`, which import the earlier project's `constraints.js`) and the
-  old-link rule for τ are dropped; `MAX_N` is 5,000 and a signal starts at its own n up to that (the earlier project caps it
-  at 200 for the MIP); `nseg` may be `auto` (null); `penalty` (phase 3: `quadratic` or `sparse`); `region`,
-  `family`, `calibrate` and `tau` as the earlier project's, and `boxes` (phase 4: which Aₙ boxes are drawn); `region` also
-  takes `boot` (the bootstrap band), with `bootWeights` for its weights. `penalty` also takes `shaped` (rounded
-  bends), with `bendLength`, `extremumCost` and `inflectionCost`. `source` also takes `local:<id>`, a data set in
-  `localdata/` (main.js lists them when the app runs from this machine). The hash and data packing code is
-  unchanged.
-  `test/urlstate.test.js` is the earlier project's with the lafspline fields.
+  constraint codec (`encodeConstraints`, `decodeConstraints`, which import the earlier project's `constraints.js`) and
+  the old-link rule for τ are dropped; `MAX_N` is 5,000 and a signal starts at its own n up to that (the earlier
+  project caps it at 200 for the MIP); `nseg` may be `auto` (null); `penalty` (phase 3: `quadratic` or `sparse`);
+  `region`, `family`, `calibrate` and `tau` as the earlier project's, and `boxes` (phase 4: which Aₙ boxes are drawn);
+  `region` also takes `boot` (the bootstrap band), with `bootWeights` for its weights. `penalty` also takes `shaped`
+  (rounded bends), with `bendLength`, `extremumCost` and `inflectionCost`. `source` also takes `local:<id>`, a data
+  set in `localdata/` (main.js lists them when the app runs from this machine). The hash and data packing code is
+  unchanged. `test/urlstate.test.js` is the earlier project's with the lafspline fields.
 - `styles.css`: slider and Advanced-panel rules appended.
 - `src/core/regions.js`: trimmed to Aₙ. The earlier project's smoother band (`bandRegion`, `bandClaim`, which need its
   `smoother.js`) and LP framing (`standardRows`, for its `lp-build.js`) are removed, since lafspline's band is

@@ -645,7 +645,7 @@ footer a {
 }
 
 
-/* --- the earlier project additions */
+/* --- readouts and claims */
 .claim {
     margin: 0 0 0.75rem;
     color: var(--ink-2);
@@ -697,7 +697,7 @@ footer a {
     color: var(--muted);
 }
 
-/* the earlier project readouts can be long (ranges, lists, a data set's source URL): let them wrap instead of widening the
+/* readouts can be long (ranges, lists, a data set's source URL): let them wrap instead of widening the
    column and the page */
 #readouts {
     overflow-wrap: anywhere;
