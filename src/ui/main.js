@@ -26,6 +26,7 @@ import { ladder } from '../core/ladder.js';
 import { anRegion, calibrateTau, checkFit } from '../core/regions.js';
 import { anBoxes } from '../core/an.js';
 import { checkNoise } from '../core/noisecheck.js';
+import { lambdaSourceName } from '../core/thumb.js';
 import { familyIntervals, familyLevels } from '../core/intervals.js';
 import { tauFromSample } from '../core/calibrate.js';
 import { constraintBoxes } from '../core/region.js';
@@ -88,7 +89,7 @@ const state = {
     alpha: 0.95, // coverage: the band's, and Aₙ's when calibrated
     covariance: 'bayes', // 'bayes' | 'sandwich'
     bootWeights: 'matched', // bootstrap band: 'matched' (like resampled counts) | 'dirichlet' (Bayesian bootstrap)
-    lambdaMode: 'gcv', // 'gcv' | 'aic' | 'given'
+    lambdaMode: 'gcv', // 'gcv' | 'aic' | 'silverman' | 'rot' (rules of thumb, core/thumb.js) | 'given'
     logLambda: 0, // natural log, when lambdaMode is 'given'
     undersmooth: 1 / 4, // multiplier on the chosen λ
     nseg: null, // null = auto (pspline.defaultSegments)
@@ -568,6 +569,24 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     appendRows(sel, rows);
 }
 
+/**
+ * The rule of thumb behind λ: its kernel width, its inputs, and the effective dimension λ was matched to.
+ * Matched before undersmoothing, so the band's ED differs from the rule's by the undersmoothing.
+ */
+function addRuleRow(add, p) {
+    const r = p.rule;
+    const inputs = p.lambdaSource === 'silverman'
+        ? `0.9·min(sd, IQR/1.34)·n^(−1/5) with sd = ${fmt(r.sd)}, IQR = ${fmt(r.iqr)} of x, n = ${fmtInt(r.n)}`
+        : `from a pilot quartic: its residual σ̃ = ${fmt(r.sigma)} and root-mean-square curvature `
+            + `${fmt(r.curvature)} (units of y per x²)`;
+    add('rule width', Number.isFinite(r.h) ? `h = ${fmt(r.h)}` : 'h = ∞', `${inputs}. A Gaussian local linear `
+        + `smoother of this width has ED ${fmt(r.ed)} on these x; λ is the one whose P-spline has that ED`
+        + (p.undersmooth === 1 ? '' : ', before undersmoothing'),
+    'A rule of thumb gives the width of a kernel smoother without searching over λ. The P-spline λ is the one with '
+        + 'the same effective dimension (trace of the hat matrix), the usual way to compare smoothers of different '
+        + 'kinds.');
+}
+
 /** Rows for rounded bends: the bend length, the widest bend, and the extremes and inflections the bends make. */
 function addShapeRows(add, fit, st) {
     const widest = fit.bends.reduce((a, b) => Math.max(a, b.to - b.from + 1), 0);
@@ -816,10 +835,16 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
                     + `|f − c|/h = ${fmt(truthCheck.maxRatio)}, at x = ${fmt(region.grid[truthCheck.argMax])}).`);
         }
         appendClaim(sel, shortClaim(result), region.claim);
-        if (p.atEdge) {
+        if (p.atEdge && p.rule) {
+            const below = Math.log(p.lambdaChosen) > 0;
+            sel.append('p').attr('class', 'warning').text(`${lambdaSourceName(p.lambdaSource)} asks for ED `
+                + `${fmt(p.rule.ed)}, ${below ? `no more than the penalty's polynomial of degree ${p.diff - 1}`
+                    : 'more than the P-spline reaches on these x'}; λ is the ${below ? 'largest' : 'smallest'} searched.`);
+        }
+        else if (p.atEdge) {
             const end = Math.log(p.lambdaChosen) > 0 ? 'largest' : 'smallest';
-            sel.append('p').attr('class', 'warning').text(`${p.lambdaSource.toUpperCase()} chose the ${end} λ searched`
-                + (end === 'largest'
+            sel.append('p').attr('class', 'warning').text(`${lambdaSourceName(p.lambdaSource)} chose the ${end} λ `
+                + 'searched' + (end === 'largest'
                     ? `: the fit is close to its limit, a polynomial of degree ${p.diff - 1}.`
                     : ': the optimum may lie further out; consider fewer segments or a given λ.'));
         }
@@ -833,12 +858,15 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
         if (p.lambdaSource === 'given')
             lambdaNote = 'given';
         else if (p.undersmooth === 1)
-            lambdaNote = `chosen by ${p.lambdaSource.toUpperCase()}`;
+            lambdaNote = `chosen by ${lambdaSourceName(p.lambdaSource)}`;
         else
-            lambdaNote = `${p.lambdaSource.toUpperCase()} chose ${fmt(p.lambdaChosen)}; × ${fmt(p.undersmooth)} undersmoothing`;
+            lambdaNote = `${lambdaSourceName(p.lambdaSource)} chose ${fmt(p.lambdaChosen)}; × ${fmt(p.undersmooth)} `
+                + 'undersmoothing';
         add('λ', `${fmt(p.lambda)} (log ${p.lambda > 0 ? Math.log(p.lambda).toFixed(2) : '−∞'})`, lambdaNote,
             'The smoothing parameter of the band\'s P-spline: the weight on the squared differences of its '
             + 'coefficients. Larger is smoother, with a narrower band; log is natural.');
+        if (p.rule)
+            addRuleRow(add, p);
         rows.push({ label: 'ED', value: fmt(p.ed), tip: 'Effective dimension, the trace of the P-spline\'s hat '
             + 'matrix: the number of parameters its fit spends, between the penalty order (λ → ∞, a polynomial) and '
             + 'the number of coefficients (λ = 0).' });

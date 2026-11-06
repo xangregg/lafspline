@@ -5,6 +5,7 @@
 
 import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
+import { lambdaSourceName } from '../core/thumb.js';
 import {
     MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
     BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE,
@@ -28,6 +29,8 @@ const UNDERSMOOTH_OPTIONS = [
 const LAMBDA_OPTIONS = [
     ['gcv', 'chosen by GCV'],
     ['aic', 'chosen by AIC'],
+    ['silverman', 'Silverman\'s rule (x spread)'],
+    ['rot', 'Fan & Gijbels\' rule of thumb'],
     ['given', 'given (slider)'],
 ];
 const COVARIANCE_OPTIONS = [
@@ -115,7 +118,14 @@ const TIPS = {
         + 'coefficients. A larger λ gives a smoother fit and a narrower band.\n'
         + '- **GCV**: chosen by generalized cross-validation.\n'
         + '- **AIC**: chosen by Akaike\'s information criterion.\n'
-        + '- **Given**: set with the slider.',
+        + '- **Silverman\'s rule**: the normal-reference kernel width 0.9·min(sd, IQR/1.34)·n^(−1/5) of x, from the '
+        + 'spread of x and n alone; it knows nothing of y.\n'
+        + '- **Fan & Gijbels\' rule of thumb**: the kernel width that would be best for local linear regression if '
+        + 'f were the quartic fitted to the data, from that quartic\'s residual σ and curvature.\n'
+        + '- **Given**: set with the slider.\n'
+        + 'The rules give a kernel width, and λ is the one whose P-spline has the same effective dimension as a '
+        + 'Gaussian local linear smoother of that width. They are here for comparison: the bands\' coverage was '
+        + 'simulated with GCV.',
     logLambda: `Natural log of λ, over the range GCV searches (${LOG_LAMBDA_RANGE[0]} to ${LOG_LAMBDA_RANGE[1]}).`,
     undersmooth: 'Multiplies the chosen λ. A smaller λ follows bends more closely, so the band covers them too, at '
         + 'the cost of a wider band; with 1/4 or 1/16 the P-spline band contained smooth test signals in 94–98.5% of '
@@ -471,7 +481,7 @@ export function createControls(container, state, onChange, examples = [], local 
         logLambdaField.hidden = !given;
         undersmoothField.hidden = given;
         const chosen = lambdaChosen !== null
-            ? `\n${st.lambdaMode.toUpperCase()} chose λ = ${fmtExp(lambdaChosen)} (log λ = `
+            ? `\n${lambdaSourceName(st.lambdaMode)} chose λ = ${fmtExp(lambdaChosen)} (log λ = `
                 + `${Math.log(lambdaChosen).toFixed(2)}) for these data.`
             : '';
         setInfo(lambdaInfo, TIPS.lambda + chosen);

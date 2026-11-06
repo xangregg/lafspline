@@ -169,6 +169,32 @@ differences alike. A simpler λ (a rule of thumb from σ̂ and a pilot polynomia
 not taken: GCV takes 1–8 ms, the pilot fails on the shapes this app is for, and the claims' coverage was simulated
 with GCV.
 
+**Rules of thumb for λ** (`thumb.js`, for comparison only; the λ menu's "Silverman's rule" and "Fan & Gijbels' rule
+of thumb"). Each gives a Gaussian kernel width h: Silverman's normal reference 0.9·min(sd, IQR/1.34)·n^(−1/5) of x
+(1986, eq. 3.31), which ignores y; Fan & Gijbels' (1996, §4.2; Ruppert, Sheather & Wand 1995) local linear AMISE
+width with σ̃² and m̃'' from a pilot quartic. λ is then the one whose P-spline has the same effective dimension as the
+local linear smoother of width h on these x (its hat trace, computed exactly), by bisection on log λ; the
+undersmoothing factor applies as for GCV. The band claims say their coverage was simulated with λ by GCV. ED before
+undersmoothing on the examples (default segments; * the target is out of reach):
+
+| example | n | GCV | AIC | Silverman | Fan & Gijbels |
+|---|---|---|---|---|---|
+| ozone (annual) | 46 | 5.2 | 5.4 | 4.6 | 7.9 |
+| neuroimage | 28 | 3.1 | 3.1 | 4.0 | 4.7 |
+| chess recall | 50 | 3.6 | 3.7 | 5.0 | 5.4 |
+| Cleveland curve | 150 | 17.5 | 18.2 | 5.5 | 7.7 |
+| dog ages | 94 | 3.8 | 31.7 | 5.5 | 5.8 |
+| fibers (5 distinct x) | 45 | 4.8 | 4.8 | 3.8 | 5.0* |
+| Nile | 100 | 18.9 | 31.2 | 5.2 | 7.8 |
+| ozone | 1197 | 26.6 | 26.6 | 7.6 | 13.7 |
+| nostalgia | 106 | 11.1 | 11.4 | 5.3 | 11.8 |
+| Tukey coal | 49 | 18.4 | 26.9 | 4.7 | 8.6 |
+| xkcd | 31 | 2.7 | 7.1 | 4.2 | 6.6 |
+
+Silverman's always lands at ED 4–8 whatever y does. Fan & Gijbels' follows more detail than GCV on the small sets
+(ozone annual, neuroimage, chess, xkcd) and much less on the ones with structure a quartic cannot follow
+(Cleveland, Nile, ozone, coal).
+
 ### 1.3 Phase 2: the fit
 
 A second P-spline g = B̃β (the same or a denser basis), with β minimizing

@@ -18,6 +18,7 @@
 import { selectLambda, fitPSpline, bsplineBasis, evaluate, standardErrors, DEFAULT_DEGREE, DEFAULT_DIFF }
     from './pspline.js';
 import { createRng } from './rng.js';
+import { ruleLambda, lambdaSourceName, RULES } from './thumb.js';
 
 export const DEFAULT_ALPHA = 0.95;
 const DEFAULT_B = 1000; // Monte Carlo draws for the critical value
@@ -45,8 +46,8 @@ const ORDER_NAMES = { 1: 'first', 2: 'second', 3: 'third', 4: 'fourth' };
  * @property {Float64Array} lower    c − h
  * @property {Float64Array} upper    c + h
  * @property {object} params         inputs and intermediate values: n, alpha, B, seed, covariance, criterion,
- *     lambdaSource ('gcv'|'aic'|'given'), lambdaChosen, atEdge, undersmooth, lambda, ed, sigma, df, q, xl, xr,
- *     nseg, deg, diff, coefficients, fitted (at the data x), sample (sorted Monte Carlo statistic)
+ *     lambdaSource ('gcv'|'aic'|'given' or a rule of thumb.js), rule (the rule's width and trace, or null),
+ *     lambdaChosen, atEdge, undersmooth, lambda, ed, sigma, df, q, xl, xr, nseg, deg, diff, coefficients, fitted (at the data x), sample (sorted Monte Carlo statistic)
  */
 
 /**
@@ -185,7 +186,7 @@ function round(v) {
 }
 
 function bandClaim(p) {
-    const criterion = p.lambdaSource.toUpperCase();
+    const criterion = lambdaSourceName(p.lambdaSource);
     let lambdaHow = `λ chosen by ${criterion}`;
     if (p.lambdaSource === 'given')
         lambdaHow = 'λ given';
@@ -210,15 +211,16 @@ function bandClaim(p) {
 }
 
 /**
- * The phase-1 P-spline fit of a band: λ given, or chosen by GCV or AIC and multiplied by the undersmoothing
- * factor. Shared with the bootstrap band (bootstrap.js), so both regions sit on the same fit.
+ * The phase-1 P-spline fit of a band: λ given, or chosen by GCV, AIC or a rule of thumb (thumb.js) and multiplied
+ * by the undersmoothing factor. Shared with the bootstrap band (bootstrap.js), so both regions sit on the same fit.
  *
  * @param {ArrayLike<number>} x
  * @param {ArrayLike<number>} y
  * @param {object} [opts]  as bandRegion: lambda, criterion, undersmooth, nseg, deg, diff, w
- * @returns {{fit: import('./pspline.js').PSplineFit, lambdaSource: 'gcv'|'aic'|'given', lambdaChosen: number,
- *     atEdge: boolean, undersmooth: number, deg: number, diff: number}}  lambdaChosen: the criterion's λ before
- *     undersmoothing (NaN when given); atEdge: it is at an end of the λ search
+ * @returns {{fit: import('./pspline.js').PSplineFit, lambdaSource: string, lambdaChosen: number,
+ *     atEdge: boolean, undersmooth: number, deg: number, diff: number, rule: object|null}}  lambdaSource: 'gcv',
+ *     'aic', 'given' or a rule; lambdaChosen: the criterion's λ before undersmoothing (NaN when given); atEdge: it
+ *     is at an end of the λ search; rule: ruleLambda's rule (null unless a rule chose λ)
  */
 export function bandFit(x, y, opts = {}) {
     const deg = opts.deg ?? DEFAULT_DEGREE;
@@ -226,15 +228,18 @@ export function bandFit(x, y, opts = {}) {
     const basisOpts = { w: opts.w, nseg: opts.nseg, deg, diff };
     if (opts.lambda !== undefined) {
         const fit = fitPSpline(x, y, { ...basisOpts, lambda: opts.lambda });
-        return { fit, lambdaSource: 'given', lambdaChosen: NaN, atEdge: false, undersmooth: 1, deg, diff };
+        return { fit, lambdaSource: 'given', lambdaChosen: NaN, atEdge: false, undersmooth: 1, deg, diff, rule: null };
     }
     const criterion = opts.criterion ?? 'gcv';
-    const choice = selectLambda(x, y, { ...basisOpts, criterion });
+    const choice = RULES.includes(criterion)
+        ? ruleLambda(x, y, { ...basisOpts, rule: criterion })
+        : selectLambda(x, y, { ...basisOpts, criterion });
     const undersmooth = opts.undersmooth ?? DEFAULT_UNDERSMOOTH;
     const fit = undersmooth === 1
         ? choice.fit
         : fitPSpline(x, y, { ...basisOpts, lambda: choice.lambda * undersmooth });
-    return { fit, lambdaSource: criterion, lambdaChosen: choice.lambda, atEdge: choice.atEdge, undersmooth, deg, diff };
+    return { fit, lambdaSource: criterion, lambdaChosen: choice.lambda, atEdge: choice.atEdge, undersmooth, deg, diff,
+        rule: choice.rule ?? null };
 }
 
 /**
@@ -246,7 +251,8 @@ export function bandFit(x, y, opts = {}) {
  * @param {number} [opts.alpha]        coverage level (0.95)
  * @param {'bayes'|'sandwich'} [opts.covariance]
  * @param {number} [opts.lambda]       given λ (no selection, no undersmoothing)
- * @param {'gcv'|'aic'} [opts.criterion]  λ criterion when λ is not given (GCV)
+ * @param {string} [opts.criterion]  λ criterion when λ is not given: 'gcv' (default), 'aic', or a rule of thumb
+ *     ('silverman', 'rot'; thumb.js)
  * @param {number} [opts.undersmooth]  multiplier on the chosen λ (1)
  * @param {number} [opts.nseg]         segments (default from the number of distinct x)
  * @param {number} [opts.deg]          B-spline degree (3)
@@ -262,7 +268,7 @@ export function bandRegion(x, y, opts = {}) {
     const covariance = opts.covariance ?? 'bayes';
     const B = opts.B ?? DEFAULT_B;
     const seed = opts.seed ?? DEFAULT_SEED;
-    const { fit, lambdaSource, lambdaChosen, atEdge, undersmooth, deg, diff } = bandFit(x, y, opts);
+    const { fit, lambdaSource, lambdaChosen, atEdge, undersmooth, deg, diff, rule } = bandFit(x, y, opts);
     const { basis } = fit.system;
     const grid = checkGrid(fit.system.x, basis.xl, basis.xr, basis.nseg, opts.gridPerSegment);
     const gridBasis = bsplineBasis(grid, basis.xl, basis.xr, basis.nseg, basis.deg);
@@ -279,7 +285,7 @@ export function bandRegion(x, y, opts = {}) {
     const half = se.map(v => q * v);
     const params = {
         n: fit.system.n, alpha, B, seed, covariance, criterion: opts.criterion ?? 'gcv', lambdaSource, lambdaChosen,
-        atEdge, undersmooth, lambda: fit.lambda, ed: fit.ed, sigma: fit.sigma, df, q,
+        rule, atEdge, undersmooth, lambda: fit.lambda, ed: fit.ed, sigma: fit.sigma, df, q,
         xl: basis.xl, xr: basis.xr, nseg: basis.nseg, deg, diff,
         coefficients: fit.alpha, fitted: fit.fitted, sample,
     };

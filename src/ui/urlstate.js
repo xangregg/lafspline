@@ -90,7 +90,7 @@ const FIELDS = {
     alpha: num(0.5, 0.999),
     covariance: enumOf(['bayes', 'sandwich']),
     bootWeights: enumOf(WEIGHTS),
-    lambdaMode: enumOf(['gcv', 'aic', 'given']),
+    lambdaMode: enumOf(['gcv', 'aic', 'silverman', 'rot', 'given']),
     logLambda: num(...LOG_LAMBDA_RANGE),
     // written as the divisor (16 for λ × 1/16): a slash would be percent-encoded in the link
     undersmooth: {

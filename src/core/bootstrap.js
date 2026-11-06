@@ -41,6 +41,7 @@ import {
     standardErrors,
 } from './pspline.js';
 import { createRng } from './rng.js';
+import { lambdaSourceName } from './thumb.js';
 
 const DEFAULT_B = 1000; // bootstrap replicates
 const DEFAULT_SEED = 1;
@@ -315,18 +316,19 @@ function mean(a) {
 
 // Simulated coverage of E f̂ by undersmoothing factor (tools/sim-band.mjs, 200 replications per row; PLAN §1.2)
 const SIMULATED = [
-    [1 / 4, 'with λ × 1/4 it contained E f̂ in 84–98% of samples, least often for a ramp with skewed noise at n = 100 '
-        + 'and for lines'],
-    [1 / 16, 'with λ × 1/16 it contained E f̂ in 86–98% of samples, least often for a line with skewed noise'],
+    [1 / 4, 'with λ by GCV × 1/4 it contained E f̂ in 84–98% of samples, least often for a ramp with skewed noise at '
+        + 'n = 100 and for lines'],
+    [1 / 16, 'with λ by GCV × 1/16 it contained E f̂ in 86–98% of samples, least often for a line with skewed noise'],
 ];
 
 function simulated(undersmooth) {
     const hit = SIMULATED.find(([u]) => Math.abs(u - undersmooth) < 1e-12);
-    return hit ? hit[1] : 'with λ × 1/4 and 1/16 (not this undersmoothing) it contained E f̂ in 84–98% of samples';
+    return hit ? hit[1] : 'with λ by GCV × 1/4 and 1/16 (not this undersmoothing) it contained E f̂ in 84–98% of '
+        + 'samples';
 }
 
 function bootstrapClaim(p) {
-    let lambdaHow = `λ chosen by ${p.lambdaSource.toUpperCase()}`;
+    let lambdaHow = `λ chosen by ${lambdaSourceName(p.lambdaSource)}`;
     if (p.lambdaSource === 'given')
         lambdaHow = 'λ given';
     else if (p.undersmooth !== 1)
@@ -379,7 +381,7 @@ export function bootstrapBand(x, y, opts = {}) {
     const window = opts.window ?? DEFAULT_WINDOW;
     if (!WEIGHTS.includes(weights))
         throw new RangeError(`bootstrapBand: unknown weights ${weights}`);
-    const { fit, lambdaSource, lambdaChosen, atEdge, undersmooth, deg, diff } = bandFit(x, y, opts);
+    const { fit, lambdaSource, lambdaChosen, atEdge, undersmooth, deg, diff, rule } = bandFit(x, y, opts);
     const { basis } = fit.system;
     const grid = checkGrid(fit.system.x, basis.xl, basis.xr, basis.nseg, opts.gridPerSegment);
     const gb = bsplineBasis(grid, basis.xl, basis.xr, basis.nseg, basis.deg);
@@ -454,7 +456,7 @@ export function bootstrapBand(x, y, opts = {}) {
     const params = {
         n: fit.system.n, alpha, B: Bused, seed, covariance: 'bootstrap', weights, window, refit,
         tailLevel: table.levels[level], qBelow, qAbove, q: (mean(qBelow) + mean(qAbove)) / 2,
-        criterion: opts.criterion ?? 'gcv', lambdaSource, lambdaChosen, atEdge, undersmooth, lambda: fit.lambda,
+        criterion: opts.criterion ?? 'gcv', lambdaSource, lambdaChosen, rule, atEdge, undersmooth, lambda: fit.lambda,
         ed: fit.ed, sigma: fit.sigma, df: fit.system.n - fit.ed, xl: basis.xl, xr: basis.xr, nseg: basis.nseg,
         deg, diff, coefficients: fit.alpha, fitted: fit.fitted, fit: fhat, se, up, down,
     };
