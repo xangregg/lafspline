@@ -7,6 +7,7 @@ import {
     powerLambdas,
 } from '../src/core/fit.js';
 import { bandRegion } from '../src/core/band.js';
+import { bootstrapBand } from '../src/core/bootstrap.js';
 import { solveModel } from '../src/core/lp-solve.js';
 import { selectLambda, evaluate, standardErrors, bsplineBasis } from '../src/core/pspline.js';
 import { simulate } from '../src/core/signals.js';
@@ -368,6 +369,56 @@ test('a bend length spreads the sharp tops of a sine into wider, gentler bends',
     assert.equal(fit.extremes, 4);
 });
 
+/** The app's default region (bootstrap band, λ by GCV × 1/4) for a signal, with fewer replicates. */
+function bootRegion(signal, sigma, n) {
+    const { x, y } = simulate(signal, n, sigma, 1);
+    return bootstrapBand(x, y, { weights: 'matched', seed: 1, B: 500, undersmooth: 0.25 });
+}
+
+/** The rounded-bends fit at a*·10^decades for a shape. */
+function shapedAt(region, shape, decades) {
+    const star = leavingAmbition({ ...regionSpec(region, { ambition: 0 }), shape }, { shaped: true });
+    const a = Math.min(star.ambition * 10 ** decades, star.top);
+    return fitShaped({ ...regionSpec(region, { ambition: a }), shape,
+        ...shapedLambdas({ ambition: a, G: region.grid.length }) });
+}
+
+test('the rounding limit keeps the narrow box\'s tails flat: a forced sharp turn no longer sets a*', () => {
+    // Regression: unlimited, the box's spike (narrower than the bend length) was the costliest turn, so it set a*;
+    // at the default −4 decades the fit then followed the band's wiggles (9 bends, tails up to 0.108), and at a*
+    // it tilted the straight tails to shrink the turn (0.269). Limited: one join for the box, tails within 0.041,
+    // at both (measured, n = 500, B = 500).
+    const TAILS = 0.06; // largest |g| more than 0.1 from the box, units of y (the box is 1 high, σ = 0.25)
+    const region = bootRegion('box', 0.25, 500);
+    const tails = g => g.reduce((m, v, j) => (Math.abs(region.grid[j] - 0.5) > 0.1 ? Math.max(m, Math.abs(v)) : m), 0);
+    for (const decades of [-4, 0]) {
+        const fit = shapedAt(region, undefined, decades);
+        assert.ok(tails(fit.g) < TAILS, `${decades}: ${tails(fit.g)}`);
+        assert.equal(fit.bends.length, 1, `${decades}`);
+        assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${decades}: ${fit.maxRatio}`);
+        const unlimited = shapedAt(region, { roundingLimit: Infinity }, decades);
+        assert.ok(tails(unlimited.g) > 0.1, `${decades} unlimited: ${tails(unlimited.g)}`);
+    }
+});
+
+test('the rounding limit leaves the turns rounding is for unchanged: a sine\'s rounded tops', () => {
+    // A sine's tops cost about a quarter of the limit (0.04–0.05 of the center's range squared, against 0.2), so
+    // e^(−R/C) barely lowers their weights: at the same ambition the fits agree to 0.0035 h (measured).
+    const G_TOL = 0.01; // |Δg|/h
+    const region = bootRegion('sine', 0.2, 500);
+    const G = region.grid.length;
+    const star = leavingAmbition({ ...regionSpec(region, { ambition: 0 }), shape: { roundingLimit: Infinity } },
+        { shaped: true });
+    const at = shape => fitShaped({ ...regionSpec(region, { ambition: star.ambition }), shape,
+        ...shapedLambdas({ ambition: star.ambition, G }) });
+    const limited = at(undefined);
+    const unlimited = at({ roundingLimit: Infinity });
+    const worst = limited.g.reduce((m, g, j) => Math.max(m, Math.abs(g - unlimited.g[j]) / region.half[j]), 0);
+    assert.ok(worst < G_TOL, `${worst}`);
+    assert.deepEqual(limited.bends.map(b => b.to - b.from + 1), unlimited.bends.map(b => b.to - b.from + 1));
+    assert.ok(Math.max(...limited.bends.map(b => b.to - b.from + 1)) >= 4);
+});
+
 test('rounded bends report extremes and inflections; a bend that levels off is not an extremum', () => {
     const cases = [
         // slopes −3, 3, −2: a minimum and a maximum, and one change of bending direction between them
@@ -387,7 +438,7 @@ test('rounded bends report extremes and inflections; a bend that levels off is n
 test('rounded bends need a straight penalty and valid costs', () => {
     const spec = syntheticSpec(x => x, 0.1);
     assert.throws(() => fitShaped({ ...spec, lambda2: 0 }), RangeError);
-    for (const shape of [{ toFlat: 0 }, { toFlat: 1.5 }, { extremum: -1 }, { length: -0.1 }])
+    for (const shape of [{ toFlat: 0 }, { toFlat: 1.5 }, { extremum: -1 }, { length: -0.1 }, { roundingLimit: 0 }])
         assert.throws(() => fitShaped({ ...spec, lambda2: 1, shape }), RangeError, JSON.stringify(shape));
 });
 

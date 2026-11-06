@@ -67,6 +67,12 @@ const MAX_POWER_REWEIGHTS = 1000;
 // power penalty: a bend θ (second difference of β') changes the fit by about θ·nseg across [xl, xr]; it counts as a
 // bend in the readouts when that is at least this (units of median h)
 const POWER_BEND = 1e-3;
+// Shaped bends' rounding cost R = q·Σt² per bend levels off (fitShaped, shape.roundingLimit): C·(1 − e^(−R/C)) is R
+// for the turns rounding is for and at most C for a turn the region forces to be sharp (a spike narrower than the bend
+// length), which otherwise set a* alone and tilted the straight pieces beside it (PLAN §1.4b). It is concave in R, so
+// majorize-minimize gives each of the bend's differences the weight q·e^(−R/C).
+const ROUNDING_PASSES = 20; // a support's pinned refit with rounding limited: majorize-minimize passes, at most
+const ROUNDING_TOL = 1e-6; // and they stop when no difference's weight moves by more than this times q
 // Shaped bends (fitShaped): defaults of the costs, in units of one plain bend's cost λ per free second difference.
 // toFlat is neutral: it acts only through the reweighting, where it never changed a fit (PLAN §1.4b). Extremes and
 // inflections act through the shape search.
@@ -75,6 +81,10 @@ export const SHAPE_DEFAULTS = Object.freeze({
     extremum: 2, // added once per bend whose sides slope in opposite directions (a local maximum or minimum)
     inflection: 1, // added once per change of the bending direction (sign of the second differences)
     length: 0.05, // fraction of the x range over which a bend leaves its tangent by one median half-width
+    // the most a bend's rounding costs, in plain bends times (range of the center / median half-width)², that is,
+    // with R measured in the center's range (Infinity: not limited). Between the sine's tops (0.04–0.05) and the
+    // narrow box's forced spike (0.3 and up, PLAN §1.4b).
+    roundingLimit: 0.2,
 });
 
 /**
@@ -897,22 +907,30 @@ function adaptiveRidge(spec, opts, orders, model) {
     let pruned = 0;
     let objective = NaN;
     if (orders.length > 0) {
-        // The pinned refit for a support, and its L0 objective: region terms plus the model's ambition cost.
-        const refit = (m, side) => {
-            const pins = {};
-            orders.forEach(([d], i) => {
-                pins[`w${d}`] = model.pins(i, m[i], caps[i]);
-            });
-            let f = fitIterated({ ...base, ...(signs ? constrain(pins, active) : pins) }, { side });
-            iterations += f.iterations;
-            for (let k = 0; signs && k < MAX_SIGN_REFITS && violate(f.beta.map(v => v / s), active); k++) {
-                f = fitIterated({ ...base, ...constrain(pins, active) }, { side: f.side });
+        // The pinned refit for a support, and its L0 objective: region terms plus the model's ambition cost. A model
+        // whose free differences' weights depend on the fit (fitShaped with attenuated rounding) asks for
+        // refitPasses majorize-minimize passes, each from the previous pass's coefficients; 1 otherwise.
+        const refit = (m, from) => {
+            let f = from;
+            for (let pass = 0; pass < (model.refitPasses ?? 1); pass++) {
+                const prev = f.beta.map(v => v / s);
+                const pins = {};
+                orders.forEach(([d], i) => {
+                    pins[`w${d}`] = model.pins(i, m[i], caps[i], prev);
+                });
+                f = fitIterated({ ...base, ...(signs ? constrain(pins, active) : pins) }, { side: f.side });
                 iterations += f.iterations;
+                for (let k = 0; signs && k < MAX_SIGN_REFITS && violate(f.beta.map(v => v / s), active); k++) {
+                    f = fitIterated({ ...base, ...constrain(pins, active) }, { side: f.side });
+                    iterations += f.iterations;
+                }
+                if (model.settled?.(prev, f.beta.map(v => v / s), m))
+                    break;
             }
             const l0 = regionObjective(spec, s, f.g) + model.cost(f.beta.map(v => v / s), m);
             return { fit: f, l0 };
         };
-        let best = refit(support, fit.side);
+        let best = refit(support, fit);
         // Backward elimination: the reweighting can settle on a support with a join the region does not need
         // (a ramp: four straight pieces where three fit). Drop each join in turn and keep the drop when it lowers
         // the L0 objective; repeat while a pass drops one, at most prunePasses times.
@@ -922,7 +940,7 @@ function adaptiveRidge(spec, opts, orders, model) {
                 for (const run of supportRuns(support[i])) {
                     const trial = support.map(m => Uint8Array.from(m));
                     trial[i].fill(0, run.from, run.to + 1);
-                    const t = refit(trial, best.fit.side);
+                    const t = refit(trial, best.fit);
                     if (t.l0 < best.l0) {
                         best = t;
                         support = trial;
@@ -972,7 +990,7 @@ function signViolations(scaled, signs, active, nseg) {
  * median half-width), costs λ times
  *
  *     m·(toFlat + (1 − toFlat)·ρ)  +  extremum·[slopes on its two sides of opposite sign]  +  inflection·(changes
- *     of the sign of t at its differences, counted from the previous bend)  +  q·Σ t²
+ *     of the sign of t at its differences, counted from the previous bend)  +  C·(1 − e^(−R/C)),  R = q·Σ t²
  *
  * with m its differences and ρ = min/max of |slope| on its two sides: a bend that levels off (or starts from
  * level) costs toFlat per difference, one between equally steep pieces 1. The bend is judged as a whole, by the
@@ -983,9 +1001,16 @@ function signViolations(scaled, signs, active, nseg) {
  * length L of the x range (shape.length), whatever the segments. An extremum on a level piece (rise, flat, fall)
  * counts at the bend that completes it.
  *
+ * The rounding cost R levels off at C (shape.roundingLimit times (range of the center / median half-width)², so
+ * that it means the same at every n): a turn the region forces to be sharp, such as a spike narrower than L, costs
+ * at most about C instead of growing without bound. Unlimited, such a turn alone set a*, and the fit tilted the
+ * straight pieces beside it to shrink the turn (the narrow box, PLAN §1.4b). The turns rounding is for cost far
+ * less than C and are unchanged.
+ *
  * The search is fitSparse's (reweighting, pinned refit, backward elimination), with weights
- * w_r = c_r/(t_r² + δ²) + q, where c_r spreads its bend's cost over the bend's differences (shapes from the
- * previous fit; the first reweighting uses c = 1), and the pinned refit leaves free differences under q.
+ * w_r = c_r/(t_r² + δ²) + q·e^(−R/C), where c_r spreads its bend's cost over the bend's differences and R is its
+ * rounding cost (shapes from the previous fit; the first reweighting uses c = 1 and q), and the pinned refit leaves
+ * free differences under q·e^(−R/C), majorize-minimize passes until those weights settle (ROUNDING_PASSES).
  * Backward elimination compares supports by the exact cost above at their refits. With toFlat = 1 and the other
  * costs 0 this is fitSparse with D₂ (test).
  *
@@ -998,7 +1023,8 @@ function signViolations(scaled, signs, active, nseg) {
  *
  * @param {Phase2Spec & {shape?: {toFlat?: number, extremum?: number, inflection?: number, length?: number}}} spec
  *     lambda2 > 0: cost of one free second difference of a plain bend (shapedLambdas); lambda1, w1, w2 ignored;
- *     shape: the costs (SHAPE_DEFAULTS), toFlat in (0, 1], extremum and inflection ≥ 0, length ≥ 0
+ *     shape: the costs (SHAPE_DEFAULTS), toFlat in (0, 1], extremum and inflection ≥ 0, length ≥ 0, roundingLimit
+ *     > 0 (Infinity: not limited)
  * @param {{maxReweights?: number, prunePasses?: number, shapePasses?: number, screenCache?: Map}} [opts]
  *     shapePasses: accepted removals at most (MAX_SHAPE_PASSES; 0 skips the shape search); screenCache: the
  *     screen's results by candidate, to share between fits of the same spec at other ambitions
@@ -1013,25 +1039,56 @@ export function fitShaped(spec, opts = {}) {
     const shape = shapeOptions(spec.shape);
     const q = (shape.length * spec.nseg) ** 4 / 4;
     const lambda = spec.lambda2;
+    const { s, nb } = prepare(spec);
+    // The limit is given in units of the center's range: R is in median half-widths s, which shrink as n grows (the
+    // same rounded turn costs about n times as much), so a limit in plain bends would mean something else at every
+    // n and for every band width. (range/s)² converts it.
+    const range = Math.max(...spec.c) - Math.min(...spec.c);
+    const limit = shape.roundingLimit * (range > 0 ? (range / s) ** 2 : 1);
+    const limited = q > 0 && Number.isFinite(limit);
+    const rounding = R => (limited ? limit * -Math.expm1(-R / limit) : R);
+    // the weight q·e^(−R_b/C) on each difference of a bend b with rounding cost R_b = q·Σt² (q when not limited)
+    const roundingWeights = (t, mask) => {
+        const out = new Float64Array(t.length).fill(q);
+        if (!limited)
+            return out;
+        for (const { from, to } of supportRuns(mask)) {
+            let R = 0;
+            for (let r = from; r <= to; r++)
+                R += q * t[r] * t[r];
+            out.fill(q * Math.exp(-R / limit), from, to + 1);
+        }
+        return out;
+    };
     const model = {
         weights: (i, t, delta, cap, scaled, reweights) => {
             const c = reweights === 1 ? null : differenceCosts(bendShapes(scaled, t, delta, shape), t.length);
-            return t.map((v, r) => Math.min((c ? c[r] : 1) / (v * v + delta * delta) + q, cap));
+            const free = Uint8Array.from(t, v => (Math.abs(v) > delta ? 1 : 0));
+            const qr = reweights === 1 ? null : roundingWeights(t, free);
+            return t.map((v, r) => Math.min((c ? c[r] : 1) / (v * v + delta * delta) + (qr ? qr[r] : q), cap));
         },
-        pins: (i, m, cap) => Float64Array.from(m, v => (v ? q : cap)),
+        pins: (i, m, cap, prev) => {
+            const qr = roundingWeights(differences(prev, 2), m);
+            return Float64Array.from(m, (v, r) => (v ? qr[r] : cap));
+        },
+        refitPasses: limited ? ROUNDING_PASSES : 1,
+        settled: (prev, next, support) => {
+            const a = roundingWeights(differences(prev, 2), support[0]);
+            const b = roundingWeights(differences(next, 2), support[0]);
+            return a.every((v, r) => Math.abs(v - b[r]) <= ROUNDING_TOL * q);
+        },
         cost: (scaled, support) => {
             const t = differences(scaled, 2);
             let sum = 0;
-            for (const b of bendShapes(scaled, t, null, shape, support[0]))
-                sum += b.cost;
-            for (let r = 0; r < t.length; r++) {
-                if (support[0][r])
-                    sum += q * t[r] * t[r];
+            for (const b of bendShapes(scaled, t, null, shape, support[0])) {
+                let R = 0;
+                for (let r = b.from; r <= b.to; r++)
+                    R += q * t[r] * t[r];
+                sum += b.cost + rounding(R);
             }
             return lambda * sum;
         },
     };
-    const { s, nb } = prepare(spec);
     const search = signs => adaptiveRidge({ ...spec, lambda1: 0 }, { ...opts, signs }, [[2, lambda]], model);
     let fit = search(null);
     let signs = null;
@@ -1184,8 +1241,10 @@ function signSegments(sign) {
 
 function shapeOptions(shape = {}) {
     const o = { ...SHAPE_DEFAULTS, ...shape };
-    if (!(o.toFlat > 0 && o.toFlat <= 1) || !(o.extremum >= 0) || !(o.inflection >= 0) || !(o.length >= 0))
-        throw new RangeError('fitShaped: toFlat in (0, 1], extremum, inflection and length ≥ 0 required');
+    if (!(o.toFlat > 0 && o.toFlat <= 1) || !(o.extremum >= 0) || !(o.inflection >= 0) || !(o.length >= 0)
+        || !(o.roundingLimit > 0))
+        throw new RangeError('fitShaped: toFlat in (0, 1], extremum, inflection and length ≥ 0, roundingLimit > 0 '
+            + 'required');
     return o;
 }
 

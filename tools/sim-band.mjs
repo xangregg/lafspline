@@ -18,7 +18,7 @@
 
 import { bandRegion, checkBand, CHECK_TOL } from '../src/core/band.js';
 import { fitPSpline, evaluate } from '../src/core/pspline.js';
-import { simulate, signalFunction, SIGNALS } from '../src/core/signals.js';
+import { simulate, signalFunction, SIGNALS, TEST_SIGNALS } from '../src/core/signals.js';
 import { bootstrapBand } from '../src/core/bootstrap.js';
 import { createRng } from '../src/core/rng.js';
 
@@ -101,7 +101,7 @@ function main() {
         + `noise ${opts.noise}`);
     console.log('signal | n | config | ∋ f | ∋ f at data x | ∋ E f̂ | half-width/σ | ED');
     for (const name of opts.signals) {
-        const sigma = SIGNALS[name].sigma;
+        const sigma = (SIGNALS[name] ?? TEST_SIGNALS[name]).sigma;
         for (const n of opts.sizes) {
             const fAt = signalFunction(name, n);
             for (const config of opts.configs) {

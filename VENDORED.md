@@ -65,6 +65,9 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   and the tooltip looks their values up at the hovered data x. Without `x`, unchanged.
 - `src/core/signals.js`: `signalFunction(name, n)`, a signal as a function of t with the rescaling
   `signalValues` applies for n (true f on the check grid). Additive; `test/signals.test.js` has a test for it.
+  Blocks, Bumps and Doppler move from `SIGNALS` (the app's menu) to `TEST_SIGNALS`, which `simulate`,
+  `signalValues` and `signalFunction` still accept, for the tests and tools that use them; a `step` signal (three
+  equal flat spans at 0, 1 and ½) is added.
 - `src/ui/chart.js`: axis tick labels have no thousands separator when every value is below 10,000 in magnitude
   (years read 1880, not 1,880); larger values keep d3's default grouping. The earlier project still shows 1,880.
 - `src/ui/urlstate.js`: the field table is lafspline's state (band settings, ambition, flat share, κ, ε); the

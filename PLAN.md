@@ -313,6 +313,41 @@ shares it. Defaults: extremum 2, inflection 1.
 - The leveling-off discount (cheaper per difference when one side of a bend is level) acts only in the
   reweighting, where it never changed a fit; it stays in fit.js, neutral, and is not in the UI.
 
+**Rounding limit** (default 0.2). On the narrow box (n = 500 and 2000) the default fit's tails were far from flat:
+at −4 decades the fit followed the band's wiggles (9 bends, |g| up to 0.11 more than 0.1 from the box; the band's
+λ is nearly 0, ED 40 of 43, since GCV chases the box), and at a* it tilted its straight tails (|g| up to 0.25). The
+cause was the rounding term: the box's spike is narrower than the bend length, so the region forces it sharp and
+its q·Σt² grew without bound. It alone set a* (4.8e-3 against 11 for the plain count at n = 500), so −4 decades
+meant almost no ambition, and at a* the fit shrank the turn by tilting the tails. Plain counting (L = 0) kept the
+tails within 0.045 at both.
+
+Now each bend's rounding cost R = q·Σt² levels off: C·(1 − e^(−R/C)), majorize-minimize weights q·e^(−R/C) in the
+reweighting and in the pinned refit (passes until they settle). R is in median half-widths, which shrink as n grows:
+the sine's tops cost 14–16 plain bends at n = 500 and 43–51 at n = 2000, and 0.04–0.05 of the center's range squared
+at both. So C is given in range units, C = 0.2·(range/s)² plain bends. Measured (bootstrap band, GCV × 1/4):
+
+| | −4 decades | a* |
+|---|---|---|
+| narrow box n = 500, tails | 0.108 → 0.042 (1 join) | 0.251 → 0.045 |
+| narrow box n = 2000, tails | 0.116 → 0.041 | 0.139 → 0.092 |
+| sine, ramp, Cleveland | unchanged bends | unchanged bends (Cleveland moves ≤ 0.12 h) |
+
+The other examples move by less than 0.02 h, except at −4 where the low-ambition fit is one long bend whose rounding
+acted as a smoothness penalty: ozone (one bend of 25 differences) relaxes from the band's edge to its center (1.0 h),
+Nile moves 0.27 h. Compared, on the box, sine, Cleveland, ramp and HeaviSine:
+- **Limit in plain bends** (half-width units): no single value worked, since the box's R (37–2700) and the sine's
+  (14–51) both move with n. 1–2 fixed the box but collapsed the sine's and Cleveland's bends to single differences;
+  32–64 kept them but fixed the box only at n = 2000.
+- **Curves:** a hard cap and exp behave alike (exp changed Cleveland and HeaviSine less); √ and log grow without
+  bound, so the forced turn still set a*, and helped least.
+- **Per difference** instead of per bend: 0.2 fixed the box at −4 only; 0.1 fixed it at a* too but collapsed
+  Cleveland's bends.
+
+The limit does not help **Step** (three flat spans, 0, 1, ½): rounded bends are toward straight, so at a* the
+spans tilt to the band's edges either way (0.27–0.28 from their levels), and the limit lowers a* 5-fold, so at −4
+the fit follows the band's center. The plain count with a flat share of ½ or 1 fits it: two steps, ED 3, within
+0.039 of the levels at −4 and a*.
+
 ### 1.4c Power penalty (a fourth ambition penalty, prototype)
 
 λ₂·Σ|D₂β|^q with 0 < q ≤ 2, toward straight (fit.js fitPower): the bridge penalty on the second differences.

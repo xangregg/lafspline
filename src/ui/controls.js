@@ -158,7 +158,9 @@ const TIPS = {
         + 'and steps.',
     bendLength: 'How round the bends of the rounded penalty are: a bend curves so that it leaves its tangent line by '
         + 'one half-width of the region (its median) over this fraction of the x range. 0 gives the sharp bends of '
-        + 'the plain count. A bend\'s width grows with how far it turns, and the region limits it.',
+        + 'the plain count. A bend\'s width grows with how far it turns, and the region limits it. Rounding\'s cost '
+        + 'levels off for a turn the region forces to be sharp, such as a spike narrower than this length, so such a '
+        + 'turn does not dominate the fit.',
     extremumCost: 'Extra cost of each local maximum or minimum, in plain bends. The fit tries stretches forced '
         + 'monotone and keeps one when the whole cost falls, so a fit that can rise and level off inside the region '
         + 'does so instead of peaking and falling back. 0: extremes cost nothing extra.',

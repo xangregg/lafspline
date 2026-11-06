@@ -80,8 +80,13 @@ test('choosing a signal brings its own σ and n', async () => {
     const { state } = await hashToState('#source=exp5', DEFAULTS);
     assert.equal(state.n, Math.min(SIGNALS.exp5.n, MAX_N));
     assert.equal(state.sigma, SIGNALS.exp5.sigma);
-    assert.deepEqual(signalDefaults('blocks'), { n: Math.min(SIGNALS.blocks.n, MAX_N), sigma: SIGNALS.blocks.sigma });
+    assert.deepEqual(signalDefaults('heavisine'),
+        { n: Math.min(SIGNALS.heavisine.n, MAX_N), sigma: SIGNALS.heavisine.sigma });
     assert.equal(signalDefaults('user'), null);
+    // signals taken out of the menu (Blocks, Bumps, Doppler): an old link falls back to the default source
+    const old = await hashToState('#source=blocks', DEFAULTS);
+    assert.equal(old.state.source, DEFAULTS.source);
+    assert.deepEqual(old.rejected, ['source']);
 });
 
 test('invalid and unknown values are ignored and reported', async () => {

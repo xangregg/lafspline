@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SIGNALS, designPoints, signalValues, signalFunction, simulate } from '../src/core/signals.js';
+import { SIGNALS, TEST_SIGNALS, designPoints, signalValues, signalFunction, simulate } from '../src/core/signals.js';
 
 function sd(v) {
     const m = v.reduce((a, b) => a + b, 0) / v.length;
@@ -31,6 +31,24 @@ test('Blocks has the documented jump at t = 0.10 (raw scale)', () => {
     const f = signalValues('blocks', 1000, null);
     // 0-based index 98 is t = 0.099 (before), index 100 is t = 0.101 (after)
     assert.ok(Math.abs(f[100] - f[98] - 4) < 1e-12);
+});
+
+test('Step is three equal flat spans at 0, 1 and ½, edges belonging to the span they start', () => {
+    const f = signalValues('step', 600); // t = i/600: the edges 1/3 and 2/3 are design points (200, 400)
+    assert.equal(f[198], 0); // t = 199/600
+    assert.equal(f[199], 1); // t = 1/3
+    assert.equal(f[398], 1);
+    assert.equal(f[399], 0.5); // t = 2/3
+    assert.equal(f[599], 0.5);
+    assert.deepEqual([0, 1, 0.5].map(v => f.filter(u => u === v).length), [199, 200, 201]);
+});
+
+test('Blocks, Bumps and Doppler are not in the app\'s menu but still simulate (tests and tools)', () => {
+    for (const name of ['blocks', 'bumps', 'doppler']) {
+        assert.equal(SIGNALS[name], undefined);
+        assert.ok(TEST_SIGNALS[name]);
+        assert.equal(simulate(name, 64, 1, 1).y.length, 64);
+    }
 });
 
 test('simulate is deterministic in the seed and noise has the requested sd (tol 5%)', () => {

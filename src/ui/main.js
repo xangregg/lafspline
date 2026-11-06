@@ -513,7 +513,10 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     let penaltyNote = fit.sparse
         ? 'adaptive ridge (Frommlet & Nuel 2016), an approximation of the count: a local optimum, not proven fewest'
             + (fit.shaped ? '. Each bend also pays for the square of its second differences, which spreads a large '
-                + 'turn over a wider, rounder bend' : '')
+                + `turn over a wider, rounder bend; that cost levels off at ${SHAPE_DEFAULTS.roundingLimit} of the `
+                + 'center\'s range squared, so a '
+                + 'turn the region forces to be sharp (a spike narrower than the bend length) costs at most about that '
+                + 'much' : '')
         : 'straighter (or flatter) everywhere; no piece is exactly straight';
     if (fit.power) {
         const integral = st.flat === 0 ? 'a·∫|g\'\'|^q' : st.flat === 1 ? 'a·∫|g\'|^q'
