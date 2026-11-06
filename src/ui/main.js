@@ -334,15 +334,15 @@ function starKey(st, data) {
     if (st.penalty === 'shaped')
         shape = [st.bendLength, st.extremumCost, st.inflectionCost];
     else if (st.penalty === 'power')
-        shape = [st.q];
+        shape = [st.q, st.flat];
     return [regionKey(st, data), st.penalty, ...shape, st.logKappa, st.logEpsilon].join('|');
 }
 
 function phase2Options(st) {
     const shaped = st.penalty === 'shaped';
     const power = st.penalty === 'power';
-    // rounded bends and the power penalty are toward straight only
-    return { flat: shaped || power ? 0 : st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon,
+    // rounded bends are toward straight only
+    return { flat: shaped ? 0 : st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon,
         shape: shaped ? { length: st.bendLength, extremum: st.extremumCost, inflection: st.inflectionCost }
             : undefined,
         q: power ? st.q : undefined };
@@ -377,7 +377,8 @@ function computeFit(st, region, star) {
     const G = region.center.length;
     let fit;
     if (power)
-        fit = fitPower({ ...spec, ...powerLambdas({ ambition: a, q: opts.q, G, nseg: spec.nseg }) });
+        fit = fitPower({ ...spec, ...powerLambdas({ ambition: a, q: opts.q, flat: opts.flat, G,
+            nseg: spec.nseg }) });
     else if (shaped)
         fit = fitShaped({ ...spec, ...shapedLambdas({ ambition: a, G }) });
     else if (sparse)
@@ -495,8 +496,10 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     add('ambition a', fmtExp(fit.a), ambitionNote);
     const counted = st.flat === 0 ? 'bends' : st.flat === 1 ? 'steps' : 'bends and steps';
     let penaltyName = 'squared differences';
-    if (fit.power)
+    if (fit.power && st.flat === 0)
         penaltyName = `|second differences|^q, q = ${fit.q}`;
+    else if (fit.power)
+        penaltyName = `|${st.flat === 1 ? 'first' : 'first and second'} differences|^q, q = ${fit.q}`;
     else if (fit.shaped)
         penaltyName = 'count of bends, rounded';
     else if (fit.sparse)
@@ -507,8 +510,11 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
                 + 'turn over a wider, rounder bend' : '')
         : 'straighter (or flatter) everywhere; no piece is exactly straight';
     if (fit.power) {
-        penaltyNote = 'a·∫|g\'\'|^q: q = 2 is the squared differences, q = 1 ℓ₁ trend filtering (straight pieces '
-            + 'and kinks), toward 0 the count of bends; smaller q concentrates the turning into fewer bends. By '
+        const integral = st.flat === 0 ? 'a·∫|g\'\'|^q' : st.flat === 1 ? 'a·∫|g\'|^q'
+            : 'a·(θ·∫|g\'|^q + (1 − θ)·∫|g\'\'|^q)';
+        penaltyNote = `${integral}: q = 2 is the squared differences, q = 1 ℓ₁ trend filtering (straight pieces `
+            + 'and kinks; flat pieces and steps on first differences), toward 0 the count of bends (or steps); '
+            + 'smaller q concentrates the turning into fewer bends. By '
             + 'majorize-minimize (iteratively reweighted squared differences): ' + (fit.q >= 1
             ? 'for q ≥ 1 the objective is convex and this is its minimizer'
             : 'for q < 1 the objective is not convex, and this is a local minimum from the fit without ambition');
@@ -517,13 +523,14 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     if (fit.sparse)
         addPieceRows(add, fit.pieces, region);
     if (fit.power) {
-        addPieceRows(add, fit.pieces, region, 'Pieces where the fit is straight to within 0.1% of the region\'s '
-            + 'median half-width across the x range (second differences of its coefficients below that), and the '
-            + 'bends between them. Only for q ≤ 1 are pieces exactly straight; above, every difference is nonzero.');
+        addPieceRows(add, fit.pieces, region, 'Pieces where the fit is straight (or flat) to within 0.1% of the '
+            + 'region\'s median half-width across the x range (second, or first, differences of its coefficients '
+            + 'below that), and the bends (or steps) between them. Only for q ≤ 1 are pieces exactly straight (or '
+            + 'flat); above, every difference is nonzero.');
     }
     if (fit.shaped)
         addShapeRows(add, fit, st);
-    const flatShare = fit.shaped || fit.power ? 0 : st.flat;
+    const flatShare = fit.shaped ? 0 : st.flat;
     add('toward', flatShare === 0 ? 'straight' : flatShare === 1 ? 'flat' : `${Math.round(100 * (1 - flatShare))}% `
         + `straight, ${Math.round(100 * flatShare)}% flat`, 'second (straight) and first (flat) differences of the '
         + 'coefficients');

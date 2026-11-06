@@ -682,8 +682,8 @@ export function maxAmbition(spec) {
  * @param {Phase2Spec & {flat?: number}} spec  its λ₁, λ₂ and ambition are ignored
  * @param {{sparse?: boolean, shaped?: boolean, power?: boolean}} [opts]  sparse: the adaptive-ridge ambition
  *     (fitSparse, sparseLambdas, sparseMaxAmbition) instead of the quadratic one; shaped: shaped bends (fitShaped,
- *     shapedLambdas, shapedMaxAmbition; spec.shape holds the costs); power: Σ|D₂β'|^q (fitPower, powerLambdas,
- *     powerMaxAmbition; spec.q holds q)
+ *     shapedLambdas, shapedMaxAmbition; spec.shape holds the costs); power: Σ|D_dβ'|^q (fitPower, powerLambdas,
+ *     powerMaxAmbition; spec.q holds q, spec.flat the share on first differences)
  * @returns {{ambition: number, capped: boolean, unreachable: boolean, top: number, fit: object, fits: number,
  *     ms: number}}  fit: at a* (from fitIterated or fitSparse); unreachable: even the smallest ambition scanned
  *     leaves the region, so no a* exists and ambition and fit are that smallest one's; top: the cap (maxAmbition
@@ -700,7 +700,7 @@ export function leavingAmbition(spec, opts = {}) {
     const at = logA => {
         const ambition = 10 ** logA;
         if (power)
-            return fitPower({ ...spec, ...powerLambdas({ ambition, q: spec.q, G, nseg: spec.nseg }) });
+            return fitPower({ ...spec, ...powerLambdas({ ambition, q: spec.q, flat, G, nseg: spec.nseg }) });
         if (shaped)
             return fitShaped({ ...spec, ...shapedLambdas({ ambition, G }) }, { screenCache });
         return sparse
@@ -1325,35 +1325,43 @@ export function sparseLambdas({ ambition, flat = 0, G }) {
 }
 
 /**
- * λ₂ for the power penalty a·∫|g''|^q: a second difference of β' over nseg segments on [0, 1] approximates
- * g''/nseg², so Σ|D₂β'|^q ≈ nseg^(1−2q)·∫|g''|^q, and λ₂ = a·G·nseg^(2q−1) makes S/G the region functional plus
- * a·∫|g''|^q. At q = 2 this is ambitionLambdas' λ₂ (toward straight). For q < 1 the integral favors ever sharper
- * bends, so the discrete penalty's sharpest bend (one difference) leaves a dependence on nseg; a* absorbs it.
+ * λ₁ and λ₂ for the power penalty a·(θ·∫|g'|^q + (1 − θ)·∫|g''|^q): a d-th difference of β' over nseg segments on
+ * [0, 1] approximates g⁽ᵈ⁾/nseg^d, so Σ|D_dβ'|^q ≈ nseg^(1−dq)·∫|g⁽ᵈ⁾|^q, and λ_d = a·share·G·nseg^(dq−1) makes
+ * S/G the region functional plus that penalty. At q = 2 these are ambitionLambdas'. θ = 0 (the default) is the
+ * power penalty on second differences alone, toward straight. For q < 1 the integral favors ever sharper bends (or
+ * steps), so the discrete penalty's sharpest join (one difference) leaves a dependence on nseg; a* absorbs it.
  *
- * @param {{ambition: number, q: number, G: number, nseg: number}} opts
+ * @param {{ambition: number, q: number, flat?: number, G: number, nseg: number}} opts  flat θ ∈ [0, 1], the share
+ *     on first differences (toward flat)
  * @returns {{lambda1: number, lambda2: number}}
  */
-export function powerLambdas({ ambition, q, G, nseg }) {
-    return { lambda1: 0, lambda2: ambition * G * nseg ** (2 * q - 1) };
+export function powerLambdas({ ambition, q, flat = 0, G, nseg }) {
+    return {
+        lambda1: ambition * flat * G * nseg ** (q - 1),
+        lambda2: ambition * (1 - flat) * G * nseg ** (2 * q - 1),
+    };
 }
 
 /**
- * Power (bridge) ambition: λ₂·Σ|D₂β'|^q, 0 < q ≤ 2, toward straight. q = 2 is the squared differences; q = 1 is
- * ℓ₁ trend filtering (Kim, Koh, Boyd & Gorinevsky 2009; Tibshirani 2014), straight pieces with kinks; q → 0
- * approaches the count of bends. In terms of the turning's distribution along x, smaller q concentrates it into
- * fewer bends (lower entropy).
+ * Power (bridge) ambition: λ₂·Σ|D₂β'|^q, 0 < q ≤ 2, toward straight, plus optionally λ₁·Σ|D₁β'|^q toward flat
+ * (powerLambdas' share θ; λ₁ = 0 by default). q = 2 is the squared differences; q = 1 is ℓ₁ trend filtering (Kim,
+ * Koh, Boyd & Gorinevsky 2009; Tibshirani 2014), straight pieces with kinks, and on first differences the fused
+ * lasso's total variation, flat pieces with steps; q → 0 approaches the count of bends (or steps). In terms of the
+ * turning's distribution along x, smaller q concentrates it into fewer bends (lower entropy).
  *
  * Solved by majorize-minimize (Hunter & Li 2005, the local quadratic approximation of Fan & Li 2001): |t|^q is
  * concave in t² for q ≤ 2, so it lies below its tangent in t², (q/2)(t₀² + δ²)^((q−2)/2)·t² + const, and each step
- * is one fitIterated with those weights. S with |t|^q smoothed to (t² + δ²)^(q/2) never increases. For q ≥ 1 the
- * objective is convex and this approaches its minimizer; for q < 1 it is not, and the result is a local minimum
- * from the start, the fit without ambition (as fitSparse). Weights are capped as in fitSparse.
+ * is one fitIterated with those weights on each penalized order. S with |t|^q smoothed to (t² + δ²)^(q/2) never
+ * increases. For q ≥ 1 the objective is convex and this approaches its minimizer; for q < 1 it is not, and the
+ * result is a local minimum from the start, the fit without ambition (as fitSparse). Weights are capped as in
+ * fitSparse, per order.
  *
- * @param {Phase2Spec & {q: number}} spec  lambda2 from powerLambdas; lambda1, w1 and w2 are ignored
+ * @param {Phase2Spec & {q: number}} spec  lambda1, lambda2 from powerLambdas; w1 and w2 are ignored
  * @param {{maxReweights?: number}} [opts]
  * @returns {Phase2Fit & {ed: number, iterations: number, converged: boolean, side: Int8Array, reweights: number,
  *     settled: boolean, pieces: SparsePieces, support: Uint8Array[]}}  settled: S stopped falling (POWER_TOL)
- *     before maxReweights; pieces: bends of at least POWER_BEND, as fitSparse's joins
+ *     before maxReweights; pieces: bends (or steps) of at least POWER_BEND, as fitSparse's joins, for each
+ *     penalized order
  */
 export function fitPower(spec, opts = {}) {
     const start = performance.now();
@@ -1363,23 +1371,32 @@ export function fitPower(spec, opts = {}) {
     const maxReweights = opts.maxReweights ?? MAX_POWER_REWEIGHTS;
     const { s, nb } = prepare(spec);
     const G = spec.c.length;
-    const lambda = spec.lambda2;
-    const base = { ...spec, lambda1: 0, w1: undefined, w2: undefined };
-    let fit = fitIterated({ ...base, lambda2: 0 });
+    const orders = [[1, spec.lambda1 ?? 0], [2, spec.lambda2 ?? 0]].filter(([, lambda]) => lambda > 0);
+    const base = { ...spec, w1: undefined, w2: undefined };
+    let fit = fitIterated({ ...base, lambda1: 0, lambda2: 0 });
     let iterations = fit.iterations;
     let reweights = 0;
-    let settled = !(lambda > 0);
-    if (lambda > 0) {
-        const cap = MAX_PENALTY_RATIO * spec.epsilon * G / (nb * lambda);
-        const delta = sparseDelta(2, spec.nseg);
-        const smoothed = (beta, g) => regionObjective(spec, s, g) + lambda * differences(beta.map(v => v / s), 2)
-            .reduce((a, t) => a + (t * t + delta * delta) ** (q / 2), 0);
+    let settled = orders.length === 0;
+    const caps = orders.map(([, lambda]) => MAX_PENALTY_RATIO * spec.epsilon * G / (nb * lambda));
+    const deltas = orders.map(([d]) => sparseDelta(d, spec.nseg));
+    const penalty = (beta, size) => {
+        const scaled = beta.map(v => v / s);
+        return orders.reduce((sum, [d, lambda], i) => sum + lambda * differences(scaled, d)
+            .reduce((a, t) => a + size(t, deltas[i]), 0), 0);
+    };
+    if (orders.length) {
+        const smoothed = (beta, g) => regionObjective(spec, s, g) + penalty(beta, (t, delta) => (t * t + delta * delta)
+            ** (q / 2));
         let previous = smoothed(fit.beta, fit.g);
         while (reweights < maxReweights) {
             reweights++;
-            const t = differences(fit.beta.map(v => v / s), 2);
-            const w2 = t.map(v => Math.min((q / 2) * (v * v + delta * delta) ** ((q - 2) / 2), cap));
-            fit = fitIterated({ ...base, w2 }, { side: fit.side });
+            const scaled = fit.beta.map(v => v / s);
+            const weights = {};
+            orders.forEach(([d], i) => {
+                weights[`w${d}`] = differences(scaled, d)
+                    .map(v => Math.min((q / 2) * (v * v + deltas[i] * deltas[i]) ** ((q - 2) / 2), caps[i]));
+            });
+            fit = fitIterated({ ...base, ...weights }, { side: fit.side });
             iterations += fit.iterations;
             const current = smoothed(fit.beta, fit.g);
             const fell = previous - current;
@@ -1390,35 +1407,43 @@ export function fitPower(spec, opts = {}) {
             }
         }
     }
-    const t = differences(fit.beta.map(v => v / s), 2);
-    const support = [Uint8Array.from(t, v => (Math.abs(v) * spec.nseg >= POWER_BEND ? 1 : 0))];
-    const objective = regionObjective(spec, s, fit.g) + lambda * t.reduce((a, v) => a + Math.abs(v) ** q, 0);
+    const scaled = fit.beta.map(v => v / s);
+    // a d-th difference t changes the fit by about |t|·nseg^(d−1) across the range (units of median h)
+    const support = orders.map(([d]) => Uint8Array.from(differences(scaled, d),
+        v => (Math.abs(v) * spec.nseg ** (d - 1) >= POWER_BEND ? 1 : 0)));
+    const objective = regionObjective(spec, s, fit.g) + penalty(fit.beta, t => Math.abs(t) ** q);
     return {
         ...fit, objective, iterations, reweights, settled, support,
-        pieces: sparsePieces(support, [2], spec),
+        pieces: sparsePieces(support, orders.map(([d]) => d), spec),
         ms: performance.now() - start,
     };
 }
 
 /**
  * The top of the power ambition's range, as maxAmbition's (which it equals at q = 2): the ambition at which the
- * reweighted penalty on the sharpest bend of the fit without ambition, λ₂·(q/2)·|t_max|^(q−2), reaches the cap on
- * any difference's weight, MAX_PENALTY_RATIO times the center pull per coefficient. Smaller bends get larger weights
- * (q < 2), so above it every bend is held at the cap and the fit is as straight as the numbers allow.
+ * reweighted penalty on the sharpest d-th difference of the fit without ambition, λ_d·(q/2)·|t_max|^(q−2), reaches
+ * the cap on any difference's weight, MAX_PENALTY_RATIO times the center pull per coefficient, for the first
+ * penalized order to get there. Smaller differences get larger weights (q < 2), so above it every difference of
+ * that order is held at the cap and the fit is as straight (or flat) as the numbers allow.
  *
- * @param {Phase2Spec & {q: number}} spec  its λ₁, λ₂ are ignored
+ * @param {Phase2Spec & {q: number, flat?: number}} spec  its λ₁, λ₂ are ignored; flat as powerLambdas
  * @returns {number}
  */
 export function powerMaxAmbition(spec) {
     const q = spec.q;
+    const flat = spec.flat ?? 0;
     const nb = spec.nseg + (spec.deg ?? 3);
     const G = spec.c.length;
     const pin = MAX_PENALTY_RATIO * spec.epsilon * G / nb;
     const free = fitIterated({ ...spec, w1: undefined, w2: undefined, lambda1: 0, lambda2: 0 });
     const { s } = prepare(spec);
-    const sharpest = differences(free.beta.map(v => v / s), 2).reduce((a, v) => Math.max(a, Math.abs(v)), 0);
-    const weight = (q / 2) * Math.max(sharpest, sparseDelta(2, spec.nseg)) ** (q - 2);
-    return pin / (G * spec.nseg ** (2 * q - 1) * weight);
+    const scaled = free.beta.map(v => v / s);
+    const unit = powerLambdas({ ambition: 1, q, flat, G, nseg: spec.nseg });
+    const tops = [[1, unit.lambda1], [2, unit.lambda2]].filter(([, lambda]) => lambda > 0).map(([d, lambda]) => {
+        const sharpest = differences(scaled, d).reduce((a, v) => Math.max(a, Math.abs(v)), 0);
+        return pin / (lambda * (q / 2) * Math.max(sharpest, sparseDelta(d, spec.nseg)) ** (q - 2));
+    });
+    return Math.min(...tops);
 }
 
 /**

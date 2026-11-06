@@ -416,24 +416,26 @@ test('extremum and inflection costs leave a forced shape alone, and remove what 
     assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
 });
 
-test('power penalty at q = 2 is the squared differences: the same fits and the same a*', () => {
+test('power penalty at q = 2 is the squared differences: the same fits and the same a*, with or without flat', () => {
     const region = makeRegion('sine', 0.3);
     const G = region.center.length;
     const nseg = region.params.nseg;
     const G_TOL = 1e-8; // |Δg|/h: the same banded system, solved once more with weights exactly 1
-    for (const a of [1e-6, 1e-4, 1e-2]) {
-        const quad = fitIterated(regionSpec(region, { ambition: a }));
-        const pow = fitPower({ ...regionSpec(region, { ambition: a }), q: 2, ...powerLambdas({ ambition: a, q: 2, G,
-            nseg }) });
-        const worst = quad.g.reduce((m, g, j) => Math.max(m, Math.abs(g - pow.g[j]) / region.half[j]), 0);
-        assert.ok(worst < G_TOL, `a = ${a}: ${worst}`);
+    for (const flat of [0, 0.5]) {
+        for (const a of [1e-6, 1e-4, 1e-2]) {
+            const quad = fitIterated(regionSpec(region, { ambition: a, flat }));
+            const pow = fitPower({ ...regionSpec(region, { ambition: a, flat }), q: 2,
+                ...powerLambdas({ ambition: a, q: 2, flat, G, nseg }) });
+            const worst = quad.g.reduce((m, g, j) => Math.max(m, Math.abs(g - pow.g[j]) / region.half[j]), 0);
+            assert.ok(worst < G_TOL, `flat ${flat}, a = ${a}: ${worst}`);
+        }
+        const spec = regionSpec(region, { ambition: 0, flat });
+        const quadStar = leavingAmbition(spec);
+        const powStar = leavingAmbition({ ...spec, q: 2 }, { power: true });
+        // both searches bisect to 0.02 decades over the same top (powerMaxAmbition is maxAmbition at q = 2)
+        assert.ok(Math.abs(Math.log10(powStar.ambition / quadStar.ambition)) <= 0.02 + 1e-9,
+            `flat ${flat}: ${powStar.ambition} vs ${quadStar.ambition}`);
     }
-    const spec = regionSpec(region, { ambition: 0 });
-    const quadStar = leavingAmbition(spec);
-    const powStar = leavingAmbition({ ...spec, q: 2 }, { power: true });
-    // both searches bisect to 0.02 decades over the same top (powerMaxAmbition is maxAmbition at q = 2)
-    assert.ok(Math.abs(Math.log10(powStar.ambition / quadStar.ambition)) <= 0.02 + 1e-9,
-        `${powStar.ambition} vs ${quadStar.ambition}`);
 });
 
 test('power penalty: q ≤ 1 finds the bends of a piecewise-linear center; q > 1 spreads the turning', () => {
@@ -454,6 +456,26 @@ test('power penalty: q ≤ 1 finds the bends of a piecewise-linear center; q > 1
     // measured: q = 1.5 has one join of 30 differences, ED 7.0
     const { fit } = leavingAmbition({ ...spec, q: 1.5 }, { power: true });
     assert.ok(fit.ed > 5, `ED ${fit.ed}`);
+});
+
+test('power penalty toward flat: total variation (q = 1) levels both ends of a rise', () => {
+    // a smooth rise from 0 to 1 between x = 0.3 and 0.7, level outside
+    const spec = syntheticSpec(x => (x < 0.3 ? 0 : x > 0.7 ? 1 : 0.5 + 0.5 * Math.sin(Math.PI * (x - 0.5) / 0.4)),
+        0.05, { flat: 1 });
+    const ED_TOL = 0.1; // the constant's 1 plus about one for the rise (measured 2.06)
+    const { fit, capped } = leavingAmbition({ ...spec, q: 1 }, { power: true });
+    assert.equal(capped, false);
+    assert.equal(fit.settled, true);
+    assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
+    const [steps] = fit.pieces.orders;
+    assert.equal(steps.order, 1);
+    assert.equal(steps.pieces, 2);
+    assert.equal(steps.joins.length, 1);
+    assert.ok(Math.abs(steps.joins[0].x - 0.5) < 0.05, `${steps.joins[0].x}`);
+    assert.ok(Math.abs(fit.ed - 2) < ED_TOL, `ED ${fit.ed}`);
+    // without the share the same q has no flat pieces to report, only straight ones
+    const straight = leavingAmbition({ ...spec, flat: 0, q: 1 }, { power: true }).fit;
+    assert.deepEqual(straight.pieces.orders.map(o => o.order), [2]);
 });
 
 test('power penalty needs 0 < q ≤ 2', () => {

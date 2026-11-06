@@ -117,10 +117,12 @@ const TIPS = {
         + 'steps: straight (or flat) pieces joined by short bends (or steps), by the adaptive ridge, which '
         + 'approximates the count. Rounded: straight pieces whose bends also pay for their sharpness, so a large '
         + 'turn (the top of a wave) spreads into a rounded bend while a small one stays short. |Second '
-        + 'differences|^q: their sizes to a power q between 0 and 2, toward straight.',
+        + 'differences|^q: their sizes to a power q between 0 and 2, toward straight (and toward flat with the first '
+        + 'differences\' share).',
     q: 'The power on the size of each second difference. 2: the squared differences. 1: ℓ₁ trend filtering, straight '
         + 'pieces joined by kinks. Toward 0: the number of bends. A smaller q concentrates the turning into fewer, '
-        + 'sharper bends; a larger one spreads it out. Below 1 the fit is a local optimum.',
+        + 'sharper bends; a larger one spreads it out. Below 1 the fit is a local optimum. With a share toward flat, '
+        + 'the first differences get the same power: flat pieces and steps.',
     bendLength: 'How round the bends of the rounded penalty are: a bend curves so that it leaves its tangent line by '
         + 'one half-width of the region (its median) over this fraction of the x range. 0 gives the sharp bends of '
         + 'the plain count. A bend\'s width grows with how far it turns, and the region limits it.',
@@ -481,8 +483,8 @@ export function createControls(container, state, onChange, examples = [], local 
                 + (amb.clamped ? (amb.sparse ? ' (the top of the range).' : ' (the largest computed reliably).') : '.');
         }
         setInfo(ambitionInfo, TIPS.ambition + now);
-        // rounded bends and the power penalty are toward straight only
-        flatField.hidden = st.penalty === 'shaped' || st.penalty === 'power';
+        // rounded bends are toward straight only
+        flatField.hidden = st.penalty === 'shaped';
         powerField.hidden = st.penalty !== 'power';
         bendLengthField.hidden = st.penalty !== 'shaped';
         shapeCosts.hidden = st.penalty !== 'shaped';

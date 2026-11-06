@@ -306,7 +306,14 @@ rounded bends approximate by hand.
   straight pieces, ED 4; q = 1.5 one long join of 30 differences, ED 7; q = 2 ED 8.
 - Bends in the readouts are second differences of at least 1e-3 h across the range (POWER_BEND); for q > 1 every
   difference is nonzero and the pieces are only nearly straight.
-- Open: no extremum or inflection costs, and no flat share; whether it replaces the rounded bends.
+- Toward flat, optional: the "toward flat" share θ also applies, λ₁·Σ|D₁β|^q with the same q and
+  λ₁ = a·θ·G·nseg^(q−1) (the penalty a·(θ·∫|g'|^q + (1 − θ)·∫|g''|^q), ambitionLambdas' at q = 2). θ = 0, the
+  default, is the penalty above unchanged. q = 1 on first differences is total variation (the fused lasso):
+  on a smooth rise between two levels (0.3 to 0.7) at θ = 1 it gives two flat pieces and one rise, ED 2.06. At
+  θ = 0.5, q = 0.5 both ends stay level with straight pieces between; on the sine, θ = 1, q = 0.5 levels the peaks.
+  The top of the range is the smaller of the two orders' tops. q = 2 with θ = 0.5 matches the quadratic penalty's
+  fits and a*.
+- Open: no extremum or inflection costs; whether it replaces the rounded bends.
 
 ### 1.5 Reporting (display honesty)
 
