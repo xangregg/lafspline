@@ -37,6 +37,7 @@ import { fmtExp } from './format.js';
 import { createMainChart } from './chart.js';
 import { cellEdges } from './layout.js';
 import { onThemeChange } from './theme.js';
+import { toCsv, fitTables } from './export.js';
 
 const fmt = d3.format('.4~g');
 const fmtInt = d3.format(',');
@@ -57,6 +58,10 @@ const CENTER_COLOR = 'series-3';
 const FIT_COLOR = 'series-1';
 const HASH_DEBOUNCE = 400; // ms after the last change before the URL is updated
 const MESSAGE_MS = 4000; // toolbar message display time
+const IMAGE_SCALE = 2; // PNG and JPEG export: pixels per CSS pixel of the chart
+const JPEG_QUALITY = 0.92;
+const IMAGE_TYPES = { png: 'image/png', jpeg: 'image/jpeg' };
+const EXTENSIONS = { png: 'png', jpeg: 'jpg' };
 const USER = 'user';
 const EXAMPLE_PREFIX = 'example:';
 const EXAMPLES_INDEX = 'data/index.json';
@@ -977,6 +982,75 @@ async function loadLocalExamples() {
     return entries.filter(Boolean);
 }
 
+/**
+ * The export tables' layers on the region's grid, with the grid and each data x's place in it: for a band, the
+ * phase-1 fit, the band, its center when that is not the fit (the bootstrap band's midpoint, which the phase-2
+ * ratio is measured from) and the phase-2 fit with its ratio |g − c|/h; for Aₙ, the phase-2 fit on its drawing
+ * grid (Aₙ's region is a set of interval sums, not a curve).
+ */
+function exportLayers(result, phase2, data) {
+    const region = result.region;
+    if (region.kind === 'An') {
+        return { grid: phase2.curve.x, at: dataPositions(phase2.curve.x, data.x),
+            layers: [{ name: 'phase2_fit', values: phase2.curve.g }] };
+    }
+    const boot = region.params.covariance === 'bootstrap';
+    const g = phase2.fit.g;
+    const layers = [
+        { name: 'phase1_fit', values: boot ? region.params.fit : region.center },
+        { name: 'band_lower', values: region.lower },
+        { name: 'band_upper', values: region.upper },
+    ];
+    if (boot)
+        layers.push({ name: 'band_center', values: region.center });
+    layers.push({ name: 'phase2_fit', values: g },
+        { name: 'phase2_ratio', values: g.map((v, j) => Math.abs(v - region.center[j]) / region.half[j]) });
+    return { grid: region.grid, at: region.dataAt, layers };
+}
+
+/** Column names for x and y from the data: the file's or the pasted table's (row number for x = row). */
+function exportNames(st, data) {
+    if (st.source === USER)
+        return { x: st.xCol < 0 ? 'row' : data.columns[st.xCol], y: data.columns[st.yCol] };
+    return data.columns.length === 2 ? { x: data.columns[0], y: data.columns[1] } : {};
+}
+
+function exportBase(st) {
+    if (st.source === USER)
+        return 'lafspline-data';
+    return `lafspline-${st.source.replace(EXAMPLE_PREFIX, '').replace(LOCAL_PREFIX, '')}`;
+}
+
+function download(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** An SVG document drawn into a canvas at scale × its size, as a PNG or JPEG blob. */
+async function rasterize(svg, type, scale) {
+    const url = URL.createObjectURL(new Blob([svg.text], { type: 'image/svg+xml' }));
+    try {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(svg.width * scale);
+        canvas.height = Math.round(svg.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, type, JPEG_QUALITY));
+        if (!blob)
+            throw new Error('the browser could not encode the image');
+        return { blob, width: canvas.width, height: canvas.height };
+    }
+    finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
 function rejectedNote(rejected) {
     return rejected.length ? `Ignored invalid link setting(s): ${rejected.join(', ')}.` : null;
 }
@@ -1232,6 +1306,59 @@ async function startup() {
             say(`Copy the address bar to share this view${omitted}.`);
         }
     });
+
+    const exportMenu = document.getElementById('export-menu');
+    async function exportAs(kind) {
+        if (!current?.phase2) {
+            say('Nothing to export until there is a fit.');
+            return;
+        }
+        const { data, result, phase2 } = current;
+        const base = exportBase(state);
+        if (kind === 'observations' || kind === 'grid') {
+            const tables = fitTables({ x: data.x, y: data.y, fAt: data.fAt, names: exportNames(state, data),
+                ...exportLayers(result, phase2, data) });
+            const columns = tables[kind === 'grid' ? 'grid' : 'observations'];
+            const name = `${base}-${kind}.csv`;
+            download(new Blob([toCsv(columns)], { type: 'text/csv' }), name);
+            say(`Saved ${name} (${fmtInt(columns[0].values.length)} rows).`);
+            return;
+        }
+        const svg = chart.toSvg({ title: data.label });
+        if (kind === 'svg') {
+            download(new Blob([svg.text], { type: 'image/svg+xml' }), `${base}.svg`);
+            say(`Saved ${base}.svg.`);
+            return;
+        }
+        try {
+            const image = await rasterize(svg, IMAGE_TYPES[kind], IMAGE_SCALE);
+            const name = `${base}.${EXTENSIONS[kind]}`;
+            download(image.blob, name);
+            say(`Saved ${name} (${image.width} × ${image.height} px).`);
+        }
+        catch (err) {
+            say(`Could not make the image: ${err.message}`);
+        }
+    }
+    exportMenu.addEventListener('click', event => {
+        const item = event.target.closest('[data-export]');
+        if (!item)
+            return;
+        exportMenu.open = false;
+        exportAs(item.dataset.export);
+    });
+    document.addEventListener('click', event => {
+        if (exportMenu.open && !exportMenu.contains(event.target))
+            exportMenu.open = false;
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && exportMenu.open) {
+            exportMenu.open = false;
+            exportMenu.querySelector('summary').focus();
+        }
+    });
+    const about = document.getElementById('about');
+    document.getElementById('about-open').addEventListener('click', () => about.showModal());
 
     window.addEventListener('resize', draw);
     onThemeChange(draw);

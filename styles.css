@@ -131,6 +131,56 @@ button:disabled {
     cursor: default;
 }
 
+/* --- export menu: a <details> styled as a button with a drop-down list */
+.menu {
+    position: relative;
+}
+
+.menu summary {
+    list-style: none;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--axis);
+    border-radius: 6px;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+}
+
+.menu summary::-webkit-details-marker {
+    display: none;
+}
+
+.menu summary::after {
+    content: ' ▾';
+    color: var(--muted);
+}
+
+.menu summary:hover,
+.menu[open] summary {
+    background: var(--highlight);
+}
+
+.menu-items {
+    position: absolute;
+    right: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    min-width: max-content;
+    margin-top: 0.25rem;
+    padding: 0.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.menu-items button {
+    border: none;
+    text-align: left;
+    padding: 0.3rem 0.6rem;
+}
+
 /* --- about dialog */
 #about {
     max-width: min(44rem, calc(100vw - 2rem));

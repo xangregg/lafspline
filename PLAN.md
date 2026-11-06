@@ -454,7 +454,9 @@ the default fit, toward straight, is a line.
 - [x] Aₙ in penalty form (open question 6), with the earlier project's interval families and calibrated τ.
 
 ### Phase 5 — Polish and deploy
-- [ ] About panel, CSV export, GitHub Pages, live-site check.
+- [x] About panel; export of the data and fits (CSV at the observations and on the check grid) and of the chart
+      (SVG, PNG and JPEG at 2×, as drawn).
+- [ ] GitHub Pages, live-site check (waiting for the repository).
 
 ## 4. What to copy from the earlier project
 

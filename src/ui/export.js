@@ -1,4 +1,5 @@
-// CSV export of the data, the fits and the band, one row per observation (sorted by x, ties kept).
+// CSV export of the data, the fits and the band, one row per observation (sorted by x, ties kept), and (lafspline)
+// the same layers on the check grid.
 // Values are written at full precision (shortest round-trip form); infinite band edges as Inf/-Inf,
 // which R, pandas and JMP all read. No DOM use, so it is testable in Node.
 
@@ -72,4 +73,54 @@ export function exportColumns({ x, y, f, fits, band, exact, names = {} }) {
         cols.push({ name: 'exact_upper', values: exact.ub });
     }
     return cols;
+}
+
+/**
+ * Values on a grid that contains every data x, at the observations: at[k] is the grid index of the k-th distinct
+ * x, and observations that share an x share its value.
+ *
+ * @param {ArrayLike<number>} values  on the grid
+ * @param {ArrayLike<number>} at      grid index per distinct x, ascending
+ * @param {ArrayLike<number>} x       observations' x, sorted (ties allowed)
+ * @returns {Float64Array}
+ */
+export function atObservations(values, at, x) {
+    const out = new Float64Array(x.length);
+    let k = -1;
+    for (let i = 0; i < x.length; i++) {
+        if (i === 0 || x[i] !== x[i - 1])
+            k++;
+        out[i] = values[at[k]];
+    }
+    return out;
+}
+
+/**
+ * lafspline's two export tables: one row per observation (x, y, the true f for simulated data, and each layer
+ * where it is at that x) and one row per check-grid point (where the region and the fits are computed and
+ * checked, so it is the finer and more faithful curve).
+ *
+ * @param {object} p
+ * @param {ArrayLike<number>} p.x        sorted observations' x
+ * @param {ArrayLike<number>} p.y
+ * @param {((x: number) => number)|null} p.fAt  true regression function, or null
+ * @param {ArrayLike<number>} p.grid     sorted, contains every data x
+ * @param {ArrayLike<number>} p.at       grid index per distinct x
+ * @param {{name: string, values: ArrayLike<number>}[]} p.layers  on the grid
+ * @param {{x?: string, y?: string}} [p.names]  column names from the data
+ * @returns {{observations: ExportColumn[], grid: ExportColumn[]}}
+ */
+export function fitTables({ x, y, fAt, grid, at, layers, names = {} }) {
+    const xName = names.x ?? 'x';
+    const observations = [{ name: xName, values: x }, { name: names.y ?? 'y', values: y }];
+    const onGrid = [{ name: xName, values: grid }];
+    if (fAt) {
+        observations.push({ name: 'f_true', values: Float64Array.from(x, fAt) });
+        onGrid.push({ name: 'f_true', values: Float64Array.from(grid, fAt) });
+    }
+    for (const layer of layers) {
+        observations.push({ name: layer.name, values: atObservations(layer.values, at, x) });
+        onGrid.push(layer);
+    }
+    return { observations, grid: onGrid };
 }

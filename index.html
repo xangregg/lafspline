@@ -25,6 +25,17 @@
         <nav class="toolbar" aria-label="Page actions">
             <span id="toolbar-message" role="status"></span>
             <button type="button" id="copy-link" title="Copy a link to this view: data source, settings and, if small enough, your pasted data">Copy link</button>
+            <details class="menu" id="export-menu">
+                <summary>Export</summary>
+                <div class="menu-items">
+                    <button type="button" data-export="observations" title="One row per observation: x, y, the true f (simulated data), the phase-1 fit and band, and the phase-2 fit at that x">Data and fits at the observations (CSV)</button>
+                    <button type="button" data-export="grid" title="One row per check-grid point (the data x and 4 points per segment), where the region and the fit are computed and checked">Curves on the check grid (CSV)</button>
+                    <button type="button" data-export="svg" title="The chart as drawn, vector, with its legend">Chart as SVG</button>
+                    <button type="button" data-export="png" title="The chart as drawn, at twice the screen resolution">Chart as PNG</button>
+                    <button type="button" data-export="jpeg" title="The chart as drawn, at twice the screen resolution">Chart as JPEG</button>
+                </div>
+            </details>
+            <button type="button" id="about-open">About</button>
         </nav>
     </header>
     <main>
@@ -46,5 +57,62 @@
             and W. Q. Meeker (2020), <i>Amer. Statist.</i> 74(4):345–358.
         </p>
     </footer>
+    <dialog id="about" aria-labelledby="about-title">
+        <form method="dialog" class="about-close"><button type="submit" aria-label="Close">✕</button></form>
+        <h2 id="about-title">About lafspline</h2>
+        <p>
+            lafspline looks for the <em>least ambitious</em> curve the data allow: the simplest one, by a measure you
+            choose, that stays inside a confidence region for the regression function f. It works in two phases,
+            both with P-splines (B-splines on equally spaced knots with a penalty on the differences of their
+            coefficients).
+        </p>
+        <h3>Phase 1: the region</h3>
+        <ul>
+            <li><strong>Bootstrap band</strong> (the default): a simultaneous band around a P-spline fit, from refits
+                with random fractional weights on the observations, so it can be asymmetric and wider where the
+                noise is. It covers the smoothed f, f as the same penalty would smooth it.</li>
+            <li><strong>P-spline band</strong>: a simultaneous band from the P-spline's Bayesian covariance, with
+                its critical value by Monte Carlo. It covers f itself if f is smooth.</li>
+            <li><strong>Aₙ</strong> (Davies, Kovac &amp; Meise): bounds on the sums of the residuals over intervals
+                of the observations, with τ calibrated by Monte Carlo for the coverage. It assumes nothing about
+                the smoothness of f.</li>
+        </ul>
+        <p>
+            The bands' λ is chosen by GCV and then divided by 4 (undersmoothing), so that the band follows bends
+            closely enough to cover them; AIC, two rules of thumb and a given λ are there for comparison. Each region
+            states what it covers, with what probability and under which assumptions; the coverage figures are from
+            simulations, and the readouts say which apply.
+        </p>
+        <h3>Phase 2: the fit</h3>
+        <p>
+            A second P-spline is penalized severely for leaving the region, slightly for its distance from the
+            region's center, and for <em>ambition</em>: how far it is from a straight line (or a constant). The
+            ambition knob is in decades from a*, the largest ambition before the fit leaves the region, so 0 is the
+            simplest fit inside on any data, lower values follow more detail, and higher ones leave the region.
+            Ambition can be measured as the squared differences (smooth everywhere), the number of bends or steps
+            (straight or flat pieces), the number of bends with rounding and costs for extremes and inflections, or
+            the differences' sizes to a power q.
+        </p>
+        <p>
+            Every fit says which region it was checked against, whether it stays inside, and by how much it
+            leaves where it does. Approximate methods (iterated weights, the adaptive ridge, majorize-minimize)
+            say so, and report whether they converged. The readouts also say whether a constant or a straight line
+            would fit inside the region.
+        </p>
+        <h3>Using the page</h3>
+        <ul>
+            <li>Choose an example, a simulated signal, or paste or drop CSV data. Hover the chart for exact values,
+                and the ⓘ icons for what each setting and readout means.</li>
+            <li>The address bar holds the current settings, so reloading keeps them and <em>Copy link</em> shares
+                them. Pasted data is included when it compresses to a short enough link.</li>
+            <li><em>Export</em> saves the data and fits as CSV, at the observations or on the check grid, and the
+                chart as SVG, PNG or JPEG, as drawn (hidden layers are left out of the image, not the tables).</li>
+            <li>The example data sets are third-party measurements, included for demonstration with their sources
+                cited (shown with each data set). They are not covered by lafspline's license.</li>
+        </ul>
+        <p class="reference">
+            lafspline follows <a href="https://github.com/xangregg/tautfit">tautfit</a> and the earlier project. 0BSD license.
+        </p>
+    </dialog>
 </body>
 </html>

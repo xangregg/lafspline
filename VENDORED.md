@@ -29,7 +29,9 @@ lafspline's own.
 
 ## src/ui
 
-`chart.js`, `layout.js`, `theme.js`, `tooltip.js`, `export.js` (+ test): unchanged.
+`layout.js`, `theme.js`, `tooltip.js`: unchanged.
+`chart.js`: changed (see below).
+`export.js` (+ test): `toCsv` and `exportColumns` unchanged; `atObservations` and `fitTables` added (see below).
 `lp.js`: trimmed (see below).
 `urlstate.js` (+ test): copied in phase 2 with the field table rewritten (see below).
 `main.js` and `controls.js` are lafspline's own, patterned on the earlier project's (the data source, paste/drop and
@@ -79,3 +81,11 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   `smoother.js`) and LP framing (`standardRows`, for its `lp-build.js`) are removed, since lafspline's band is
   `band.js` and phase 2 takes the constraints in box form (`an.js`). `scaleStatistic` and `nullSample` lost their
   band branches. `test/regions.test.js` is the earlier project's without the band, LP and kink tests.
+- `src/ui/chart.js`: a `hidden` set in the model leaves layers undrawn ('data', 'truth', 'band', a fit's key) and
+  out of the legend, while they still set the scales and stay in the tooltip. The Aₙ box shapes are listed once
+  (`boxShapes`) and drawn on the canvas or exported. `toSvg({title})` returns the chart as drawn as a standalone SVG
+  document: title, legend (laid out as the page's, long labels wrapped), points and boxes as vector shapes, and the
+  SVG layers with their computed styles written in as SVG 1.1 attributes (rgba split into color and opacity).
+- `src/ui/export.js`: `atObservations` (grid values at the observations, ties sharing their x's value) and
+  `fitTables` (lafspline's per-observation and per-grid-point tables) added; `test/export.test.js` has tests for
+  both.

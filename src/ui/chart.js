@@ -20,6 +20,15 @@ const OVERLAY_WIDTH = 1.5; // px
 const GAP_FACTOR = 3;
 const LONE_TICK = 3; // px half-width of the tick for a single point stranded between gaps
 const KINK_RADIUS = 4; // px
+const SVG_NS = 'http://www.w3.org/2000/svg';
+// Image export (toSvg): the legend's layout, which the page leaves to CSS flexbox
+const LEGEND_KEY_GAP = 5; // px between a legend key and its label
+const LEGEND_ITEM_GAP = 14; // px between legend items
+const LEGEND_LINE = 1.45; // legend row height, in font sizes
+const TITLE_GAP = 6; // px below the title
+// computed styles copied onto the exported SVG's elements, so it needs no style sheet
+const PAINT_PROPS = ['fill', 'stroke'];
+const STYLE_PROPS = ['stroke-width', 'stroke-dasharray', 'opacity', 'font-size', 'font-family', 'font-weight'];
 const fmt = d3.format('.4~g');
 // Below this magnitude tick labels get no thousands separator, so years read 1880, not 1,880 (style guides
 // also leave four-digit numbers ungrouped). Larger values keep d3's default grouping.
@@ -77,7 +86,9 @@ function tickFormat(scale, count) {
 
 /**
  * @param {HTMLElement} container
- * @returns {{render: function(ChartModel): void, highlight: function({lo: number, hi: number}|null): void}}
+ * @returns {{render: function(ChartModel): void, highlight: function({lo: number, hi: number}|null): void,
+ *     setBoxes: function(BoxesSpec|null): void, toSvg: function({title?: string}=): ({text: string, width: number,
+ *     height: number}|null)}}
  */
 export function createMainChart(container) {
     container.classList.add('chart');
@@ -108,21 +119,18 @@ export function createMainChart(container) {
     let sy = null;
     let width = 0;
     let boxSpec = null;
+    let legendItems = [];
 
     // Each box spans its interval's cells horizontally and mean_I(y) ± c/√|I| vertically; the tick is
-    // the fit's mean over the interval. A tick outside its box is a violated constraint.
-    function drawBoxes() {
-        const ctx = sizeCanvas(boxCanvas, width, HEIGHT);
-        ctx.clearRect(0, 0, width, HEIGHT);
+    // the fit's mean over the interval. A tick outside its box is a violated constraint. The shapes are listed
+    // once and drawn on the canvas or written into an exported SVG.
+    function boxShapes() {
         if (!boxSpec || !model)
-            return;
+            return [];
         const colors = themeColors();
         const tickColor = cssColor(boxSpec.fitColorVar);
         const edges = model.edges;
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(MARGIN.left, MARGIN.top, width - MARGIN.left - MARGIN.right, HEIGHT - MARGIN.top - MARGIN.bottom);
-        ctx.clip();
+        const shapes = [];
         for (const { boxes, emphasize } of boxSpec.levels) {
             for (let k = 0; k < boxes.lo.length; k++) {
                 const x0 = sx(edges[boxes.lo[k]]);
@@ -131,23 +139,50 @@ export function createMainChart(container) {
                 const bottom = sy(boxes.yMean[k] - boxes.half[k]);
                 const violated = boxes.ratios[k] > boxSpec.limit;
                 const w = Math.max(1, x1 - x0);
-                ctx.globalAlpha = violated ? 0.18 : boxSpec.faint ? 0 : 0.07;
-                ctx.fillStyle = violated ? colors.violation : colors.ink;
-                ctx.fillRect(x0, top, w, bottom - top);
-                ctx.globalAlpha = violated ? 0.9 : boxSpec.faint ? 0.12 : 0.55;
-                ctx.strokeStyle = violated ? colors.violation : colors['ink-2'];
-                ctx.lineWidth = k === emphasize ? 2 : 1;
-                ctx.strokeRect(x0 + 0.5, top + 0.5, Math.max(0, w - 1), bottom - top);
-                if (!boxSpec.faint) {
-                    ctx.globalAlpha = 1;
-                    ctx.strokeStyle = violated ? colors.violation : tickColor;
-                    ctx.lineWidth = k === emphasize ? 3 : 2;
-                    const yv = sy(boxes.gMean[k]);
-                    ctx.beginPath();
-                    ctx.moveTo(x0, yv);
-                    ctx.lineTo(x0 + w, yv);
-                    ctx.stroke();
-                }
+                shapes.push({
+                    x: x0, y: top, w, h: bottom - top,
+                    fill: violated ? colors.violation : colors.ink,
+                    fillAlpha: violated ? 0.18 : boxSpec.faint ? 0 : 0.07,
+                    stroke: violated ? colors.violation : colors['ink-2'],
+                    strokeAlpha: violated ? 0.9 : boxSpec.faint ? 0.12 : 0.55,
+                    lineWidth: k === emphasize ? 2 : 1,
+                    tick: boxSpec.faint ? null : {
+                        y: sy(boxes.gMean[k]),
+                        color: violated ? colors.violation : tickColor,
+                        width: k === emphasize ? 3 : 2,
+                    },
+                });
+            }
+        }
+        return shapes;
+    }
+
+    function drawBoxes() {
+        const ctx = sizeCanvas(boxCanvas, width, HEIGHT);
+        ctx.clearRect(0, 0, width, HEIGHT);
+        const shapes = boxShapes();
+        if (!shapes.length)
+            return;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(MARGIN.left, MARGIN.top, width - MARGIN.left - MARGIN.right, HEIGHT - MARGIN.top - MARGIN.bottom);
+        ctx.clip();
+        for (const b of shapes) {
+            ctx.globalAlpha = b.fillAlpha;
+            ctx.fillStyle = b.fill;
+            ctx.fillRect(b.x, b.y, b.w, b.h);
+            ctx.globalAlpha = b.strokeAlpha;
+            ctx.strokeStyle = b.stroke;
+            ctx.lineWidth = b.lineWidth;
+            ctx.strokeRect(b.x + 0.5, b.y + 0.5, Math.max(0, b.w - 1), b.h);
+            if (b.tick) {
+                ctx.globalAlpha = 1;
+                ctx.strokeStyle = b.tick.color;
+                ctx.lineWidth = b.tick.width;
+                ctx.beginPath();
+                ctx.moveTo(b.x, b.tick.y);
+                ctx.lineTo(b.x + b.w, b.tick.y);
+                ctx.stroke();
             }
         }
         ctx.restore();
@@ -210,7 +245,7 @@ export function createMainChart(container) {
         ctx.clearRect(0, 0, width, HEIGHT);
         ctx.fillStyle = colors.muted;
         ctx.globalAlpha = POINT_ALPHA;
-        const r = n > 2000 ? 1.5 : n > 500 ? 2 : 2.5; // px; smaller points when dense
+        const r = pointRadius(n);
         for (let i = 0; i < (hidden.has('data') ? 0 : n); i++) {
             ctx.beginPath();
             ctx.arc(sx(x[i]), sy(y[i]), r, 0, 2 * Math.PI);
@@ -427,7 +462,111 @@ export function createMainChart(container) {
                 .style('background', d => (d.glyph ? 'none' : d.color))
                 .style('color', d => d.color))
             .call(s => s.select('.label').text(d => d.label));
+        legendItems = items;
         drawBoxes();
+    }
+
+    /**
+     * The chart as a standalone SVG document, as drawn now: a title, the legend, the points and Aₙ boxes (canvas
+     * layers on the page) as vector shapes, and the SVG layers with their computed styles written in, so it needs
+     * neither the page's style sheet nor its fonts' CSS. The crosshair and hover highlight are left out.
+     *
+     * @param {{title?: string}} [opts]
+     * @returns {{text: string, width: number, height: number}|null}  null before the first render
+     */
+    function toSvg(opts = {}) {
+        if (!model)
+            return null;
+        const colors = themeColors();
+        const legendStyle = getComputedStyle(legend.node());
+        const fontSize = parseFloat(legendStyle.fontSize);
+        const font = legendStyle.fontFamily;
+        const ctx = document.createElement('canvas').getContext('2d');
+        const textWidth = (text, weight = 'normal') => {
+            ctx.font = `${weight} ${fontSize}px ${font}`;
+            return ctx.measureText(text).width;
+        };
+        const out = svgEl('svg', { xmlns: SVG_NS, width, 'font-family': font, 'font-size': fontSize });
+        out.append(svgEl('rect', { width: '100%', height: '100%', fill: colors.surface }));
+        const lineHeight = fontSize * LEGEND_LINE;
+        let top = 0;
+        if (opts.title) {
+            out.append(svgText(opts.title, { x: 0, y: fontSize * 1.1, 'font-size': fontSize * 1.1,
+                'font-weight': 600, ...paint('fill', colors.ink) }));
+            top = fontSize * 1.1 * LEGEND_LINE + TITLE_GAP;
+        }
+        // legend rows, wrapped at the chart's width as the page's flexbox does; a label too long for a row of its
+        // own wraps at spaces onto further rows
+        let lx = 0;
+        let row = 0;
+        for (const item of legendItems) {
+            const keyWidth = item.glyph ? textWidth(item.glyph) : item.box ? 14 : item.dot ? 8 : 16;
+            const room = width - keyWidth - LEGEND_KEY_GAP;
+            const lines = wrapWords(item.label, room, textWidth);
+            const itemWidth = keyWidth + LEGEND_KEY_GAP + Math.max(...lines.map(l => textWidth(l)));
+            if (lx > 0 && (lx + itemWidth > width || lines.length > 1)) {
+                lx = 0;
+                row++;
+            }
+            const mid = top + row * lineHeight + lineHeight / 2;
+            const ink = paint('fill', item.color);
+            if (item.glyph)
+                out.append(svgText(item.glyph, { x: lx, y: mid, 'dominant-baseline': 'central', ...ink }));
+            else if (item.box)
+                out.append(svgEl('rect', { x: lx, y: mid - 5, width: 14, height: 10, rx: 2, ...ink }));
+            else if (item.dot)
+                out.append(svgEl('circle', { cx: lx + 4, cy: mid, r: 4, ...ink }));
+            else
+                out.append(svgEl('rect', { x: lx, y: mid - 1, width: 16, height: 2, rx: 1, ...ink }));
+            lines.forEach((line, k) => {
+                out.append(svgText(line, { x: lx + keyWidth + LEGEND_KEY_GAP, y: mid + k * lineHeight,
+                    'dominant-baseline': 'central', ...paint('fill', legendStyle.color) }));
+            });
+            row += lines.length - 1;
+            lx = lines.length > 1 ? width : lx + itemWidth + LEGEND_ITEM_GAP;
+        }
+        top += legendItems.length ? (row + 1) * lineHeight + parseFloat(legendStyle.marginBottom) : 0;
+        const height = Math.ceil(top + HEIGHT);
+        out.setAttribute('height', height);
+        out.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+        const plotG = svgEl('g', { transform: `translate(0,${top})` });
+        out.append(plotG);
+        const hidden = model.hidden ?? new Set();
+        if (!hidden.has('data')) {
+            const points = svgEl('g', paint('fill', colors.muted, POINT_ALPHA));
+            const r = pointRadius(model.x.length);
+            for (let i = 0; i < model.x.length; i++)
+                points.append(svgEl('circle', { cx: round2(sx(model.x[i])), cy: round2(sy(model.y[i])), r }));
+            plotG.append(points);
+        }
+        const shapes = boxShapes();
+        if (shapes.length) {
+            const boxG = svgEl('g', { 'clip-path': `url(#${clipId})` });
+            for (const b of shapes) {
+                boxG.append(svgEl('rect', { x: b.x + 0.5, y: b.y + 0.5, width: Math.max(0, b.w - 1), height: b.h,
+                    ...paint('fill', b.fill, b.fillAlpha), ...paint('stroke', b.stroke, b.strokeAlpha),
+                    'stroke-width': b.lineWidth }));
+                if (b.tick) {
+                    boxG.append(svgEl('line', { x1: b.x, x2: b.x + b.w, y1: b.tick.y, y2: b.tick.y,
+                        ...paint('stroke', b.tick.color), 'stroke-width': b.tick.width }));
+                }
+            }
+            plotG.append(boxG);
+        }
+        const skip = new Set([gHighlight.node(), cross.node(), overlay.node()]);
+        for (const node of svg.node().children) {
+            if (skip.has(node))
+                continue;
+            const copy = node.cloneNode(true);
+            inlineStyles(node, copy);
+            // clip-path definitions go first, as on the page
+            if (node.tagName === 'clipPath')
+                plotG.prepend(copy);
+            else
+                plotG.append(copy);
+        }
+        return { text: new XMLSerializer().serializeToString(out), width, height };
     }
 
     function highlight(interval) {
@@ -503,5 +642,77 @@ export function createMainChart(container) {
         hideTooltip();
     });
 
-    return { render, highlight, setBoxes };
+    return { render, highlight, setBoxes, toSvg };
+}
+
+/** Point radius for n points, px: smaller when dense. */
+function pointRadius(n) {
+    return n > 2000 ? 1.5 : n > 500 ? 2 : 2.5;
+}
+
+function round2(v) {
+    return Math.round(v * 100) / 100;
+}
+
+function svgEl(tag, attrs = {}) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs))
+        node.setAttribute(k, v);
+    return node;
+}
+
+/** Text broken at spaces into lines at most `room` wide by measure (a single longer word keeps its own line). */
+function wrapWords(text, room, measure) {
+    const lines = [];
+    let line = '';
+    for (const word of text.split(' ')) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && measure(next) > room) {
+            lines.push(line);
+            line = word;
+        }
+        else {
+            line = next;
+        }
+    }
+    lines.push(line);
+    return lines;
+}
+
+function svgText(text, attrs) {
+    const node = svgEl('text', attrs);
+    node.textContent = text;
+    return node;
+}
+
+/**
+ * A fill or stroke as SVG 1.1 attributes: rgba() split into its color and an opacity (times alpha), which
+ * editors that read only SVG 1.1 paint (Illustrator, Inkscape's older releases) understand.
+ */
+function paint(prop, color, alpha = 1) {
+    const m = /^rgba\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)[,\s/]+([\d.]+)\s*\)$/.exec(color);
+    if (m)
+        return { [prop]: `rgb(${m[1]}, ${m[2]}, ${m[3]})`, [`${prop}-opacity`]: Number(m[4]) * alpha };
+    return alpha === 1 ? { [prop]: color } : { [prop]: color, [`${prop}-opacity`]: alpha };
+}
+
+// Copy each element's computed paint and stroke styles onto its clone (same tree shape) as attributes.
+function inlineStyles(orig, copy) {
+    const cs = getComputedStyle(orig);
+    for (const prop of PAINT_PROPS) {
+        const value = cs.getPropertyValue(prop);
+        if (!value)
+            continue;
+        const attrs = paint(prop, value, Number(cs.getPropertyValue(`${prop}-opacity`) || 1));
+        for (const [k, v] of Object.entries(attrs))
+            copy.setAttribute(k, v);
+    }
+    for (const prop of STYLE_PROPS) {
+        const value = cs.getPropertyValue(prop);
+        if (value && !(prop === 'opacity' && value === '1') && !(prop === 'stroke-dasharray' && value === 'none'))
+            copy.setAttribute(prop, value);
+    }
+    copy.removeAttribute('class');
+    for (let i = 0; i < orig.children.length; i++)
+        inlineStyles(orig.children[i], copy.children[i]);
 }
