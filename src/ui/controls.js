@@ -63,66 +63,88 @@ const PENALTY_OPTIONS = [
 ];
 
 const TIPS = {
-    source: 'Bundled example data sets, signals simulated with Gaussian noise, or your own data pasted or dropped '
-        + 'as CSV.',
+    source: 'Where the data come from:\n'
+        + '- **Examples**: bundled data sets.\n'
+        + '- **Local data**: data sets kept on this machine (localdata/), listed only when served locally.\n'
+        + '- **Simulated**: signals with Gaussian noise added.\n'
+        + '- **Your data**: CSV pasted or dropped.',
     n: 'Number of observations, at x = i/n.',
     sigma: 'Standard deviation of the Gaussian noise added to the signal.',
     seed: 'Seed of the simulated noise: the same seed gives the same data.',
     xCol: 'The column for x; (row number) uses the order of the rows.',
     yCol: 'The column for y.',
     regionHead: 'Phase 1: a confidence region for f, from the data alone. The fit (phase 2) must stay inside it.',
-    region: 'P-spline band: a simultaneous band around a P-spline fit, which covers f if f is smooth. Bootstrap '
-        + 'band: around the same fit, from refits with random fractional weights on the observations, so it can be '
-        + 'asymmetric and wider where the noise is; it covers the smoothed f. Aₙ (Davies, Kovac & Meise 2009): '
-        + 'bounds on the sums of the residuals over intervals of the observations, assuming nothing about the '
-        + 'smoothness of f.',
+    region: 'The region the fit must stay inside:\n'
+        + '- **P-spline band**: a simultaneous band around a P-spline fit, which covers f if f is smooth.\n'
+        + '- **Bootstrap band**: around the same fit, from refits with random fractional weights on the observations, '
+        + 'so it can be asymmetric and wider where the noise is; it covers the smoothed f.\n'
+        + '- **Aₙ** (Davies, Kovac & Meise 2009): bounds on the sums of the residuals over intervals of the '
+        + 'observations, assuming nothing about the smoothness of f.',
     alphaBand: 'The probability that the band contains f at every point of the check grid at once (the data x and '
         + '4 points per segment), by Monte Carlo with B = 1000.',
     alphaBoot: 'The probability that the band contains the smoothed f at every point of the check grid at once (the '
         + 'data x and 4 points per segment), by the bootstrap with B = 2000 replicates (1000 above 1000 '
         + 'observations).',
-    weights: 'Every observation gets a positive weight in each replicate, and the weights sum to n. Like resampled '
-        + 'counts: the same mean, variance and skewness (about a fifth of the weights are below 0.1, as a count is 0 '
-        + 'with probability 0.37); it held its coverage best in simulations. Dirichlet: the Bayesian bootstrap of '
-        + 'Rubin (1981), or fractional-random-weight bootstrap; its weights are twice as skewed as counts. With '
-        + 'skewed noise its band\'s asymmetry came nearer the truth, but its coverage was lower.',
+    weights: 'Every observation gets a positive weight in each replicate, and the weights sum to n.\n'
+        + '- **Like resampled counts**: the same mean, variance and skewness (about a fifth of the weights are below '
+        + '0.1, as a count is 0 with probability 0.37); it held its coverage best in simulations.\n'
+        + '- **Dirichlet**: the Bayesian bootstrap of Rubin (1981), or fractional-random-weight bootstrap; its weights '
+        + 'are twice as skewed as counts. With skewed noise its band\'s asymmetry came nearer the truth, but its '
+        + 'coverage was lower.',
     alphaAn: 'τ is calibrated by Monte Carlo so that Aₙ contains f with this probability.',
-    family: 'The intervals of observations Aₙ checks. Blocks: the paper\'s, of lengths 1, 2, 4, … in fixed '
-        + 'positions. Overlapping: windows of each length shifted by ¼ of the length or by one observation, which '
-        + 'catch runs of residuals that straddle block edges. All: every interval (at most 300 distinct x). Denser '
-        + 'families need a larger τ for the same coverage.',
+    family: 'The intervals of observations Aₙ checks:\n'
+        + '- **Blocks**: the paper\'s, of lengths 1, 2, 4, … in fixed positions.\n'
+        + '- **Overlapping**: windows of each length shifted by ¼ of the length or by one observation, which catch '
+        + 'runs of residuals that straddle block edges.\n'
+        + '- **All**: every interval (at most 300 distinct x).\n'
+        + 'Denser families need a larger τ for the same coverage.',
     calibrate: 'Choose τ by simulating Aₙ\'s multiscale statistic on pure noise for this n, design and intervals, '
         + 'so that the coverage is α. Otherwise τ is given.',
     tau: 'Aₙ\'s threshold is c = σ̂·√(τ log n). The paper\'s default is 3; its coverage then depends on n and the '
         + 'intervals.',
     boxes: 'Each box spans an interval of observations, at the mean of y there ± c/√|I|; its tick is the fit\'s mean '
-        + 'over the interval, which must lie inside. Tightest: the level of the interval with the largest ratio.',
-    covariance: 'Bayesian: σ̂²(BᵀB + λDᵀD)⁻¹, which widens the band for the smoothing bias on average, so it covers '
-        + 'a smooth f. Sandwich: the frequentist covariance, which covers only the smoother\'s mean E f̂.',
+        + 'over the interval, which must lie inside.\n'
+        + '- **Tightest**: the level of the interval with the largest ratio.\n'
+        + '- **All levels**: every interval, as outlines.\n'
+        + '- **None**: no boxes.',
+    covariance: 'The covariance the band is built from:\n'
+        + '- **Bayesian**: σ̂²(BᵀB + λDᵀD)⁻¹, which widens the band for the smoothing bias on average, so it covers '
+        + 'a smooth f.\n'
+        + '- **Sandwich**: the frequentist covariance, which covers only the smoother\'s mean E f̂.',
     lambda: 'The smoothing parameter of the band\'s P-spline: the weight on the squared differences of its '
-        + 'coefficients. A larger λ gives a smoother fit and a narrower band. Chosen by GCV (generalized '
-        + 'cross-validation) or AIC, or given.',
+        + 'coefficients. A larger λ gives a smoother fit and a narrower band.\n'
+        + '- **GCV**: chosen by generalized cross-validation.\n'
+        + '- **AIC**: chosen by Akaike\'s information criterion.\n'
+        + '- **Given**: set with the slider.',
     logLambda: `Natural log of λ, over the range GCV searches (${LOG_LAMBDA_RANGE[0]} to ${LOG_LAMBDA_RANGE[1]}).`,
     undersmooth: 'Multiplies the chosen λ. A smaller λ follows bends more closely, so the band covers them too, at '
         + 'the cost of a wider band; with 1/4 or 1/16 the P-spline band contained smooth test signals in 94–98.5% of '
         + 'simulations.',
     diff: 'Order of the coefficient differences in the band\'s penalty: a large λ pulls the P-spline toward a '
-        + 'polynomial of degree order − 1.',
+        + 'polynomial of degree order − 1.\n'
+        + '- **1**: toward a constant.\n'
+        + '- **2**: toward a straight line.\n'
+        + '- **3**: toward a quadratic.',
     nseg: 'Equal segments of the cubic B-spline basis, for the band and the fit. Empty: automatic, about half the '
         + 'number of distinct x, at most 40.',
     nsegAn: ` For Aₙ at most ${AN_MAX_SEGMENTS}: its long intervals make each solve dense.`,
     fitHead: 'Phase 2: a second P-spline, penalized severely for leaving the region, slightly for distance from its '
         + 'center, and for ambition: pressure toward straight (or flat) lines.',
-    penalty: 'Squared differences: the fit gets straighter (or flatter) everywhere, smoothly. Number of bends or '
-        + 'steps: straight (or flat) pieces joined by short bends (or steps), by the adaptive ridge, which '
-        + 'approximates the count. Rounded: straight pieces whose bends also pay for their sharpness, so a large '
-        + 'turn (the top of a wave) spreads into a rounded bend while a small one stays short. |Second '
-        + 'differences|^q: their sizes to a power q between 0 and 2, toward straight (and toward flat with the first '
-        + 'differences\' share).',
-    q: 'The power on the size of each second difference. 2: the squared differences. 1: ℓ₁ trend filtering, straight '
-        + 'pieces joined by kinks. Toward 0: the number of bends. A smaller q concentrates the turning into fewer, '
-        + 'sharper bends; a larger one spreads it out. Below 1 the fit is a local optimum. With a share toward flat, '
-        + 'the first differences get the same power: flat pieces and steps.',
+    penalty: 'What ambition penalizes:\n'
+        + '- **Squared differences**: the fit gets straighter (or flatter) everywhere, smoothly.\n'
+        + '- **Number of bends or steps**: straight (or flat) pieces joined by short bends (or steps), by the adaptive '
+        + 'ridge, which approximates the count.\n'
+        + '- **Rounded**: straight pieces whose bends also pay for their sharpness, so a large turn (the top of a '
+        + 'wave) spreads into a rounded bend while a small one stays short.\n'
+        + '- **|Second differences|^q**: their sizes to a power q between 0 and 2, toward straight (and toward flat '
+        + 'with the first differences\' share).',
+    q: 'The power on the size of each second difference:\n'
+        + '- **2**: the squared differences.\n'
+        + '- **1**: ℓ₁ trend filtering, straight pieces joined by kinks.\n'
+        + '- **Toward 0**: the number of bends.\n'
+        + 'A smaller q concentrates the turning into fewer, sharper bends; a larger one spreads it out. Below 1 the '
+        + 'fit is a local optimum. With a share toward flat, the first differences get the same power: flat pieces '
+        + 'and steps.',
     bendLength: 'How round the bends of the rounded penalty are: a bend curves so that it leaves its tangent line by '
         + 'one half-width of the region (its median) over this fraction of the x range. 0 gives the sharp bends of '
         + 'the plain count. A bend\'s width grows with how far it turns, and the region limits it.',
@@ -449,7 +471,7 @@ export function createControls(container, state, onChange, examples = [], local 
         logLambdaField.hidden = !given;
         undersmoothField.hidden = given;
         const chosen = lambdaChosen !== null
-            ? ` ${st.lambdaMode.toUpperCase()} chose λ = ${fmtExp(lambdaChosen)} (log λ = `
+            ? `\n${st.lambdaMode.toUpperCase()} chose λ = ${fmtExp(lambdaChosen)} (log λ = `
                 + `${Math.log(lambdaChosen).toFixed(2)}) for these data.`
             : '';
         setInfo(lambdaInfo, TIPS.lambda + chosen);

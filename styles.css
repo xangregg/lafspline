@@ -770,6 +770,24 @@ footer a {
     line-height: 1.4;
 }
 
+.info-tip p,
+.info-tip ul {
+    margin: 0;
+}
+
+.info-tip * + p,
+.info-tip * + ul {
+    margin-top: 0.35em;
+}
+
+.info-tip ul {
+    padding-left: 1.1em;
+}
+
+.info-tip li + li {
+    margin-top: 0.2em;
+}
+
 .field-label .info,
 h2 .info {
     font-size: 0.65rem;
