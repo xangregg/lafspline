@@ -1,0 +1,148 @@
+# label: Life expectancy and income by country, 2007
+# source: Gapminder (https://www.gapminder.org/data/, CC BY 4.0), via the R package gapminder by Jennifer Bryan (https://github.com/jennybc/gapminder, CC0), retrieved 2026-11-06
+# x: log10_gdp
+# y: life_expectancy
+# note: 142 countries; GDP per capita in inflation-adjusted US dollars, x its base-10 log; life expectancy at birth, years; rises steeply at low incomes and levels off above about $20,000 (4.3), with low outliers mostly in southern Africa (HIV)
+log10_gdp,life_expectancy,gdp_per_capita,country,continent
+2.4433,46.462,277.6,Congo Dem. Rep.,Africa
+2.6175,45.678,414.5,Liberia,Africa
+2.6335,49.58,430.1,Burundi,Africa
+2.6718,43.487,469.7,Zimbabwe,Africa
+2.7629,46.388,579.2,Guinea-Bissau,Africa
+2.7922,56.867,619.7,Niger,Africa
+2.8071,58.04,641.4,Eritrea,Africa
+2.8394,52.947,690.8,Ethiopia,Africa
+2.8488,44.741,706.0,Central African Republic,Africa
+2.8767,59.448,752.7,Gambia,Africa
+2.8804,48.303,759.3,Malawi,Africa
+2.9158,42.082,823.7,Mozambique,Africa
+2.9358,42.568,862.5,Sierra Leone,Africa
+2.9361,46.242,863.1,Rwanda,Africa
+2.9459,58.42,883.0,Togo,Africa
+2.9667,48.159,926.1,Somalia,Africa
+2.9744,56.007,942.7,Guinea,Africa
+2.975,62.069,944.0,Myanmar,Asia
+2.9888,43.828,974.6,Afghanistan,Asia
+2.9939,65.152,986.1,Comoros,Africa
+3.0181,54.467,1042.6,Mali,Africa
+3.019,59.443,1044.8,Madagascar,Africa
+3.0238,51.542,1056.4,Uganda,Africa
+3.038,63.785,1091.4,Nepal,Asia
+3.0443,52.517,1107.5,Tanzania,Africa
+3.0798,60.916,1201.6,Haiti,Americas
+3.0853,52.295,1217.0,Burkina Faso,Africa
+3.1042,42.384,1271.2,Zambia,Africa
+3.1231,60.022,1327.6,Ghana,Africa
+3.1434,64.062,1391.3,Bangladesh,Asia
+3.1587,56.728,1441.3,Benin,Africa
+3.1653,54.11,1463.2,Kenya,Africa
+3.1889,48.328,1544.8,Cote d'Ivoire,Africa
+3.1957,42.592,1569.3,Lesotho,Africa
+3.2022,67.297,1593.1,Korea Dem. Rep.,Asia
+3.2037,65.528,1598.4,Sao Tome and Principe,Africa
+3.2315,50.651,1704.1,Chad,Africa
+3.2336,63.062,1712.5,Senegal,Africa
+3.234,59.723,1713.8,Cambodia,Asia
+3.256,64.164,1803.2,Mauritania,Africa
+3.3041,46.859,2014.0,Nigeria,Africa
+3.3101,50.43,2042.1,Cameroon,Africa
+3.3186,54.791,2082.5,Djibouti,Africa
+3.3581,62.698,2280.8,Yemen Rep.,Asia
+3.3877,74.249,2441.6,Vietnam,Asia
+3.3896,64.698,2452.2,India,Asia
+3.4154,58.556,2602.4,Sudan,Africa
+3.416,65.483,2605.9,Pakistan,Asia
+3.4392,72.899,2749.3,Nicaragua,Americas
+3.4808,73.422,3025.3,West Bank and Gaza,Asia
+3.4908,66.803,3095.8,Mongolia,Asia
+3.5039,71.688,3190.5,Philippines,Asia
+3.5491,70.65,3540.7,Indonesia,Asia
+3.55,70.198,3548.3,Honduras,Americas
+3.5602,55.322,3632.6,Congo Rep.,Africa
+3.5821,71.164,3820.2,Morocco,Africa
+3.5823,65.554,3822.1,Bolivia,Americas
+3.5988,72.396,3970.1,Sri Lanka,Asia
+3.6204,71.752,4172.8,Paraguay,Americas
+3.6216,74.143,4184.5,Syria,Asia
+3.6504,59.545,4471.1,Iraq,Asia
+3.6545,39.613,4513.5,Swaziland,Africa
+3.6551,72.535,4519.5,Jordan,Asia
+3.681,42.731,4797.2,Angola,Africa
+3.6822,52.906,4811.1,Namibia,Africa
+3.6954,72.961,4959.1,China,Asia
+3.7148,70.259,5186.1,Guatemala,Americas
+3.7467,71.338,5581.2,Egypt,Africa
+3.758,71.878,5728.4,El Salvador,Americas
+3.7736,76.423,5937.0,Albania,Europe
+3.78,72.235,6025.4,Dominican Republic,Americas
+3.794,72.301,6223.4,Algeria,Africa
+3.8372,74.994,6873.3,Ecuador,Americas
+3.8455,72.889,7006.6,Colombia,Americas
+3.8508,73.923,7092.9,Tunisia,Africa
+3.8646,72.567,7320.9,Jamaica,Americas
+3.8698,71.421,7408.9,Peru,Americas
+3.8719,74.852,7446.3,Bosnia and Herzegovina,Europe
+3.8726,70.616,7458.4,Thailand,Asia
+3.8848,76.442,7670.1,Reunion,Africa
+3.9273,71.777,8458.3,Turkey,Europe
+3.9517,78.273,8948.1,Cuba,Americas
+3.9574,72.39,9065.8,Brazil,Americas
+3.9663,74.543,9253.9,Montenegro,Europe
+3.9671,49.339,9269.7,South Africa,Africa
+3.9843,78.782,9645.1,Costa Rica,Americas
+3.9906,74.002,9786.5,Serbia,Europe
+3.9916,75.537,9809.2,Panama,Americas
+4.0196,71.993,10461.1,Lebanon,Asia
+4.0258,76.384,10611.5,Uruguay,Americas
+4.0286,73.005,10680.8,Bulgaria,Europe
+4.0338,72.476,10808.5,Romania,Europe
+4.0397,72.801,10957.0,Mauritius,Africa
+4.0575,73.747,11415.8,Venezuela,Americas
+4.0647,70.964,11605.7,Iran,Asia
+4.0784,76.195,11977.6,Mexico,Americas
+4.0813,73.952,12057.5,Libya,Africa
+4.0847,51.579,12154.1,Equatorial Guinea,Africa
+4.0952,74.241,12451.7,Malaysia,Asia
+4.0993,50.728,12569.9,Botswana,Africa
+4.1065,75.32,12779.4,Argentina,Americas
+4.1196,78.553,13171.6,Chile,Americas
+4.1208,56.735,13206.5,Gabon,Africa
+4.1649,75.748,14619.2,Croatia,Europe
+4.1872,75.563,15389.9,Poland,Europe
+4.2555,69.819,18008.5,Trinidad and Tobago,Americas
+4.2555,73.338,18008.9,Hungary,Europe
+4.2713,74.663,18678.3,Slovak Republic,Europe
+4.2862,78.746,19328.7,Puerto Rico,Americas
+4.312,78.098,20509.6,Portugal,Europe
+4.3356,72.777,21654.8,Saudi Arabia,Asia
+4.3486,75.64,22316.2,Oman,Asia
+4.3586,76.486,22833.3,Czech Republic,Europe
+4.3683,78.623,23348.1,Korea Rep.,Asia
+4.4011,80.204,25185.0,New Zealand,Oceania
+4.4069,80.745,25523.3,Israel,Asia
+4.4111,77.926,25768.3,Slovenia,Europe
+4.4399,79.483,27538.4,Greece,Europe
+4.4559,80.546,28569.7,Italy,Europe
+4.4582,78.4,28718.3,Taiwan,Asia
+4.4597,80.941,28821.1,Spain,Europe
+4.4742,75.635,29796.0,Bahrain,Asia
+4.4839,80.657,30470.0,France,Europe
+4.5005,82.603,31656.1,Japan,Asia
+4.5075,79.406,32170.4,Germany,Europe
+4.5212,79.313,33207.1,Finland,Europe
+4.5212,79.425,33203.3,United Kingdom,Europe
+4.5275,79.441,33692.6,Belgium,Europe
+4.5297,80.884,33859.7,Sweden,Europe
+4.537,81.235,34435.4,Australia,Oceania
+4.5475,78.332,35278.4,Denmark,Europe
+4.5578,79.829,36126.5,Austria,Europe
+4.5585,81.757,36180.8,Iceland,Europe
+4.5601,80.653,36319.2,Canada,Americas
+4.5658,79.762,36797.9,Netherlands,Europe
+4.5741,81.701,37506.4,Switzerland,Europe
+4.5991,82.208,39725.0,Hong Kong China,Asia
+4.6093,78.885,40676.0,Ireland,Europe
+4.633,78.242,42951.7,United States,Americas
+4.6734,79.972,47143.2,Singapore,Asia
+4.6749,77.588,47307.0,Kuwait,Asia
+4.6934,80.196,49357.2,Norway,Europe

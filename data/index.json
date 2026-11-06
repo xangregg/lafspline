@@ -1,5 +1,27 @@
 [
   {
+    "id": "co2-growth-mauna-loa",
+    "file": "co2-growth-mauna-loa.csv",
+    "label": "Annual CO₂ increase at Mauna Loa, 1959–2025",
+    "source": "NOAA Global Monitoring Laboratory, co2_gr_mlo.txt (https://gml.noaa.gov/ccgg/trends/, retrieved 2026-11-06); Lan, Tans & Thoning, NOAA/GML, with Keeling (Scripps) before 1974; NOAA data, freely available, citation requested",
+    "x": "year",
+    "y": "growth",
+    "n": 67,
+    "m": 67,
+    "note": "increase of the CO₂ mole fraction from January 1 to December 31, ppm per year (uncertainty about 0.11 ppm); rising, with large year-to-year swings from El Niño (1998, 2016, 2023–24) and the Pinatubo dip (1992)"
+  },
+  {
+    "id": "methane-growth-global",
+    "file": "methane-growth-global.csv",
+    "label": "Annual global methane increase, 1984–2025",
+    "source": "NOAA Global Monitoring Laboratory, ch4_gr_gl.txt (https://gml.noaa.gov/ccgg/trends_ch4/, retrieved 2026-11-06); Lan, Thoning & Dlugokencky, NOAA/GML; Dlugokencky et al. (1994), J. Geophys. Res. 99:17021–17043; NOAA data, freely available, citation requested",
+    "x": "year",
+    "y": "increase",
+    "n": 42,
+    "m": 42,
+    "note": "increase of the globally averaged CH₄ mole fraction from January 1 to December 31, ppb per year (column sd: its uncertainty); falling from the 1980s, with spikes in 1991 and 1998, near zero 1999–2006, rising again since 2007 to a peak in 2020–21"
+  },
+  {
     "id": "ozone-annual",
     "file": "ozone-annual.csv",
     "label": "Antarctic ozone minimum, annual means 1979–2025",
@@ -11,6 +33,17 @@
     "note": "min_ozone: mean over 21 September–16 October of the daily minimum Southern Hemisphere total ozone (DU), the yearly means of the daily series in ozone.csv; hole_area: mean ozone hole area over 7 September–13 October (million km²); no data for 1995; year-to-year changes in the polar vortex are part of the noise"
   },
   {
+    "id": "arctic-sea-ice-september",
+    "file": "arctic-sea-ice-september.csv",
+    "label": "Arctic sea ice extent in September, 1979–2026",
+    "source": "NSIDC Sea Ice Index, Version 4 (G02135), N_09_extent_v4.0.csv (https://nsidc.org/data/g02135, retrieved 2026-11-06); Fetterer, Knowles, Meier, Savoie & Windnagel, doi:10.7265/a98x-0f50; US government work (NOAA@NSIDC)",
+    "x": "year",
+    "y": "extent",
+    "n": 48,
+    "m": 48,
+    "note": "monthly mean extent of the September minimum, million km² (area: the ice-covered area); decline since the 1990s, the record low in 2012, and little net change since about 2007"
+  },
+  {
     "id": "neuroimage",
     "file": "neuroimage.csv",
     "label": "Blood levels by age",
@@ -20,6 +53,17 @@
     "n": 28,
     "m": 25,
     "note": "three age groups with top two age groups about the same; heteroskedastic"
+  },
+  {
+    "id": "central-england-temperature",
+    "file": "central-england-temperature.csv",
+    "label": "Central England temperature, annual means 1659–2025",
+    "source": "Met Office Hadley Centre, HadCET v2.1 meantemp_monthly_totals.txt (https://www.metoffice.gov.uk/hadobs/hadcet/, retrieved 2026-11-06); Manley (1974), Q. J. R. Meteorol. Soc. 100:389–405; Parker, Legg & Folland (1992), Int. J. Climatol. 12:317–342; © Crown copyright, Met Office, Open Government Licence v3",
+    "x": "year",
+    "y": "temperature",
+    "n": 367,
+    "m": 367,
+    "note": "annual mean temperature, °C, of a triangle between Lancashire, London and Bristol; monthly values before 1699 are given to the whole or half degree, so less precise; nearly level for two and a half centuries (cold 1690s), warmer since about 1990"
   },
   {
     "id": "chess-recall",
@@ -44,6 +88,28 @@
     "note": "three smooth pieces of 50 points each, f = 5 − √(1 − z), 5 + sin(2πz), 5 + z²/2 with z from 0 to 1 in each; y = f + N(0, 0.2²); column f is the noise-free curve; the first piece ends in a vertical tangent"
   },
   {
+    "id": "colorado-lees-ferry-peaks",
+    "file": "colorado-lees-ferry-peaks.csv",
+    "label": "Colorado River annual peak flow at Lees Ferry, water years 1921–2023",
+    "source": "USGS National Water Information System, peak streamflow for site 09380000, Colorado River at Lees Ferry, AZ (https://nwis.waterdata.usgs.gov/nwis/peak?site_no=09380000, retrieved 2026-11-06); USGS data, public domain",
+    "x": "water_year",
+    "y": "peak_cfs",
+    "n": 103,
+    "m": 103,
+    "note": "largest instantaneous flow of each water year (October–September), cubic feet per second (date: its day); Glen Canyon Dam, 15 miles upstream, began storing water in 1963 (water year 1963: 19,200 cfs, after 85,000 in 1962), which cut the spring floods to releases from the dam: a step down; the high-flow releases (1983–86 spills, the 1996 and later experiments) are visible after it; the historic 1884 peak (210,000 cfs, its date unknown) is left out"
+  },
+  {
+    "id": "bike-sharing-temperature",
+    "file": "bike-sharing-temperature.csv",
+    "label": "Daily bike rentals by temperature, Washington DC, 2011–2012",
+    "source": "Fanaee-T (2013), Bike Sharing [Dataset], UCI Machine Learning Repository, doi:10.24432/C5W894 (CC BY 4.0); Capital Bikeshare system data; Fanaee-T & Gama (2014), Prog. Artif. Intell. 2:113–127",
+    "x": "temp_c",
+    "y": "rentals",
+    "n": 731,
+    "m": 499,
+    "note": "rentals per day (casual and registered) against the day's temperature, °C (UCI's normalized temp × 41); rises with temperature and falls off on the hottest days; 2012 (yr = 1) has about 65% more rentals than 2011 at the same temperature, so the noise is two clusters, and days are serially correlated"
+  },
+  {
     "id": "dog-ages",
     "file": "dog-ages.csv",
     "label": "Dog vs Human ages",
@@ -66,6 +132,61 @@
     "note": "many duplicate x values; y ascending then level"
   },
   {
+    "id": "auto-mpg-horsepower",
+    "file": "auto-mpg-horsepower.csv",
+    "label": "Fuel economy by horsepower, cars of 1970–1982",
+    "source": "Quinlan (1993), Auto MPG [Dataset], UCI Machine Learning Repository, doi:10.24432/C5859H (CC BY 4.0); from the StatLib library, Carnegie Mellon (1983 ASA Data Exposition)",
+    "x": "horsepower",
+    "y": "mpg",
+    "n": 392,
+    "m": 93,
+    "note": "392 models (6 without horsepower dropped); miles per gallon falls steeply and then levels off with horsepower, and spreads more at low power; weight and model year explain much of the rest"
+  },
+  {
+    "id": "gistemp-global",
+    "file": "gistemp-global.csv",
+    "label": "Global surface temperature anomaly, 1880–2025",
+    "source": "NASA GISS Surface Temperature Analysis (GISTEMP v4), GLB.Ts+dSST.csv (https://data.giss.nasa.gov/gistemp/, retrieved 2026-11-06); GISTEMP Team (2026); Lenssen et al. (2019), J. Geophys. Res. Atmos. 124:6307–6326; NASA data, public domain",
+    "x": "year",
+    "y": "anomaly",
+    "n": 146,
+    "m": 146,
+    "note": "annual (January–December) mean land-ocean temperature anomaly, °C relative to 1951–1980; level or slightly falling 1880–1910 and 1940–1975, rising since; year-to-year (ENSO) variation is serially correlated"
+  },
+  {
+    "id": "gapminder-2007",
+    "file": "gapminder-2007.csv",
+    "label": "Life expectancy and income by country, 2007",
+    "source": "Gapminder (https://www.gapminder.org/data/, CC BY 4.0), via the R package gapminder by Jennifer Bryan (https://github.com/jennybc/gapminder, CC0), retrieved 2026-11-06",
+    "x": "log10_gdp",
+    "y": "life_expectancy",
+    "n": 142,
+    "m": 140,
+    "note": "142 countries; GDP per capita in inflation-adjusted US dollars, x its base-10 log; life expectancy at birth, years; rises steeply at low incomes and levels off above about $20,000 (4.3), with low outliers mostly in southern Africa (HIV)"
+  },
+  {
+    "id": "montana-traffic-death-rate",
+    "file": "montana-traffic-death-rate.csv",
+    "label": "Montana traffic deaths per 100 million vehicle miles, 1980–2023",
+    "source": "deaths: NHTSA Fatality Analysis Reporting System (FARS), national accident files 1980–2023 (https://www.nhtsa.gov/research-data/fatality-analysis-reporting-system-fars, retrieved 2026-11-06), STATE = 30, FATALS summed by year; vehicle miles: FHWA Highway Statistics table VM-2, Montana (1980–1995 from Highway Statistics Summary to 1995, vm202.xlw; 1996–2023 from each year's VM-2, https://www.fhwa.dot.gov/policyinformation/statistics.cfm); US government data, public domain",
+    "x": "year",
+    "y": "rate",
+    "n": 44,
+    "m": 44,
+    "note": "rate: deaths per 100 million vehicle miles on all public roads; rural_interstate_rate: the same on rural interstates, from 20–59 deaths a year, so noisier (crashes coded as rural interstate: 1980 by class of trafficway and land use, 1981 by road function and land use, 1982–2014 road function 1, from 2015 functional system 1 and rural); vmt columns in millions of miles. Rural interstate speed limits: 55 mph until April 1987, then 65 mph; no numeric daytime limit from December 8, 1995 (\"reasonable and prudent\"); 75 mph from May 1999, after State v. Stanko (December 1998); 80 mph from October 1, 2015. The rate falls from 4.9 in 1980 to about 2.2–2.5 around 1990 and 1.4–1.9 in the 2010s, as nationally; 1997 is high (2.82; 2.73 on rural interstates), and 2020–21 rise, as nationally. FHWA's functional classes changed in 2009 and urban boundaries in 2013 (Montana's urban miles rose by a quarter), which moved some miles from rural to urban roads"
+  },
+  {
+    "id": "montana-traffic-deaths-monthly",
+    "file": "montana-traffic-deaths-monthly.csv",
+    "label": "Montana traffic deaths per month, 1987–2004 (counts), around the end of its daytime speed limit",
+    "source": "NHTSA Fatality Analysis Reporting System (FARS), national accident files 1987–2004 (https://www.nhtsa.gov/research-data/fatality-analysis-reporting-system-fars, static.nhtsa.gov/nhtsa/downloads/FARS/, retrieved 2026-11-06), STATE = 30, deaths (FATALS) summed by month; US government data, public domain",
+    "x": "year",
+    "y": "deaths",
+    "n": 216,
+    "m": 216,
+    "note": "deaths in crashes on public roads in Montana, at mid-month (decimal year); rural_interstate: crashes on rural interstates (ROAD_FNC = 1), interstate: on interstate routes (ROUTE = 1). Montana had 65 mph on rural interstates from 1987; after the national maximum was repealed, from December 8, 1995 it had no numeric daytime limit on rural highways (\"reasonable and prudent\"), which the Montana Supreme Court found unconstitutionally vague (State v. Stanko, December 1998); a 75 mph interstate limit followed in May 1999. Yearly deaths 192–215 in 1988–1996, 265 in 1997, 220–269 after. Counts (about 18 a month), with more deaths in summer, so the noise is seasonal and grows with the level; not adjusted for miles driven (montana-traffic-death-rate has yearly rates per mile)"
+  },
+  {
     "id": "nile-flow",
     "file": "nile-flow.csv",
     "label": "Nile annual flow at Aswan, 1871–1970",
@@ -75,6 +196,17 @@
     "n": 100,
     "m": 100,
     "note": "annual flow in 10⁸ m³, \"with apparent changepoint near 1898\" (Cobb 1978); the example in R's help fits ar(Nile), which selects order 2: the noise is serially correlated"
+  },
+  {
+    "id": "oklahoma-earthquakes",
+    "file": "oklahoma-earthquakes.csv",
+    "label": "Oklahoma earthquakes of magnitude 3 or more per month, 1990–2025",
+    "source": "USGS ANSS Comprehensive Earthquake Catalog (ComCat), events of magnitude ≥ 3 in 33.6–37° N, 94.4–103° W with \"Oklahoma\" in the place name (https://earthquake.usgs.gov/fdsnws/event/1/, retrieved 2026-11-06); USGS data, public domain",
+    "x": "year",
+    "y": "count",
+    "n": 432,
+    "m": 432,
+    "note": "count of earthquakes per month at mid-month (decimal year); at most a few a year until 2008, then a surge to 80–116 a month in late 2015 and January 2016, linked to the disposal of wastewater by deep injection, and a decline after injection was cut back in 2016; counts, so the spread grows with the level"
   },
   {
     "id": "ozone",
