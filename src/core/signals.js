@@ -65,7 +65,7 @@ export const SIGNALS = {
     box: {
         label: 'Narrow box (paper eq. 18)',
         f: t => (Math.abs((t - BOX_CENTER) / BOX_HALF_WIDTH) <= 1 + BOX_EDGE_TOL ? 1 : 0),
-        n: 2000, sigma: 0.25, sd: null,
+        n: 500, sigma: 0.25, sd: null,
     },
     step: { label: 'Step (thirds at 0, 1, ½)', f: step, n: 500, sigma: 0.25, sd: null },
     noise: { label: 'Pure noise', f: () => 0, n: 500, sigma: 1, sd: null },
