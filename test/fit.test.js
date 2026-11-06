@@ -435,9 +435,56 @@ test('rounded bends report extremes and inflections; a bend that levels off is n
     }
 });
 
-test('rounded bends need a straight penalty and valid costs', () => {
+test('a flat share entirely toward flat: rounded bends are the count of steps (Step)', () => {
+    // no second differences are penalized, so there is nothing to round: fitSparse with D₁, fit for fit
+    const G_TOL = 1e-12; // units of y, rounding only
+    const LEVEL_TOL = 0.06; // units of y, in each span's middle 80% (measured 0.028, 0.045, 0.003; σ = 0.25)
+    const region = bootRegion('step', 0.25, 500);
+    const G = region.grid.length;
+    const spec = { ...regionSpec(region, { ambition: 0, flat: 1 }), flat: 1 };
+    const star = leavingAmbition(spec, { shaped: true });
+    assert.equal(star.ambition, leavingAmbition(spec, { sparse: true }).ambition);
+    const at = { ...regionSpec(region, { ambition: star.ambition, flat: 1 }), flat: 1 };
+    const shaped = fitShaped({ ...at, ...shapedLambdas({ ambition: star.ambition, flat: 1, G }) });
+    const sparse = fitSparse({ ...at, ...sparseLambdas({ ambition: star.ambition, flat: 1, G }) });
+    assert.ok(shaped.g.every((g, j) => Math.abs(g - sparse.g[j]) < G_TOL));
+    assert.equal(shaped.bends.length, 0);
+    assert.equal(shaped.pieces.orders[0].joins.length, 2);
+    const spans = [[0, 1 / 3, 0], [1 / 3, 2 / 3, 1], [2 / 3, 1, 0.5]];
+    for (const [lo, hi, level] of spans) {
+        const off = shaped.g.reduce((m, g, j) => {
+            const t = region.grid[j];
+            return t > lo + 0.1 * (hi - lo) && t < hi - 0.1 * (hi - lo) ? Math.max(m, Math.abs(g - level)) : m;
+        }, 0);
+        assert.ok(off < LEVEL_TOL, `${level}: ${off}`);
+    }
+});
+
+test('a flat share between 0 and 1: steps are counted, their corners are rounded bends (Step at 50%)', () => {
+    // The default costs (extremes and inflections) run the shape search with both orders. Measured at a*: two
+    // steps, each with its two corners (four bends, two inflections), flat between them, ED 3.0.
+    const region = bootRegion('step', 0.25, 500);
+    const G = region.grid.length;
+    const flat = 0.5;
+    const star = leavingAmbition({ ...regionSpec(region, { ambition: 0, flat }), flat }, { shaped: true });
+    assert.equal(star.capped, false);
+    const fit = fitShaped({ ...regionSpec(region, { ambition: star.ambition, flat }), flat,
+        ...shapedLambdas({ ambition: star.ambition, flat, G }) });
+    assert.ok(fit.maxRatio <= 1 + LEAVE_TOL, `${fit.maxRatio}`);
+    const steps = fit.pieces.orders.find(o => o.order === 1);
+    assert.equal(steps.joins.length, 2);
+    assert.equal(fit.bends.length, 4);
+    assert.equal(fit.inflections, 2);
+    // the top of the range is where one free difference, the cheaper of a step (θ) and a bend (1 − θ), costs more
+    // than the constant's region terms: with θ = ½ the same as fitSparse's (to rounding, relative)
+    const sparseTop = sparseMaxAmbition({ ...regionSpec(region, { ambition: 0, flat }), flat });
+    assert.ok(Math.abs(star.top / sparseTop - 1) < 1e-12, `${star.top} vs ${sparseTop}`);
+});
+
+test('rounded bends need an ambition penalty and valid costs', () => {
     const spec = syntheticSpec(x => x, 0.1);
-    assert.throws(() => fitShaped({ ...spec, lambda2: 0 }), RangeError);
+    assert.throws(() => fitShaped({ ...spec, lambda1: 0, lambda2: 0 }), RangeError);
+    assert.throws(() => fitShaped({ ...spec, lambda1: -1, lambda2: 1 }), RangeError);
     for (const shape of [{ toFlat: 0 }, { toFlat: 1.5 }, { extremum: -1 }, { length: -0.1 }, { roundingLimit: 0 }])
         assert.throws(() => fitShaped({ ...spec, lambda2: 1, shape }), RangeError, JSON.stringify(shape));
 });

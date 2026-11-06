@@ -338,7 +338,7 @@ function computeBand(st, data) {
 function starKey(st, data) {
     let shape = [st.flat];
     if (st.penalty === 'shaped')
-        shape = [st.bendLength, st.extremumCost, st.inflectionCost];
+        shape = [st.bendLength, st.extremumCost, st.inflectionCost, st.flat];
     else if (st.penalty === 'power')
         shape = [st.q, st.flat];
     return [regionKey(st, data), st.penalty, ...shape, st.logKappa, st.logEpsilon].join('|');
@@ -347,8 +347,7 @@ function starKey(st, data) {
 function phase2Options(st) {
     const shaped = st.penalty === 'shaped';
     const power = st.penalty === 'power';
-    // rounded bends are toward straight only
-    return { flat: shaped ? 0 : st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon,
+    return { flat: st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon,
         shape: shaped ? { length: st.bendLength, extremum: st.extremumCost, inflection: st.inflectionCost }
             : undefined,
         q: power ? st.q : undefined };
@@ -386,7 +385,7 @@ function computeFit(st, region, star) {
         fit = fitPower({ ...spec, ...powerLambdas({ ambition: a, q: opts.q, flat: opts.flat, G,
             nseg: spec.nseg }) });
     else if (shaped)
-        fit = fitShaped({ ...spec, ...shapedLambdas({ ambition: a, G }) });
+        fit = fitShaped({ ...spec, ...shapedLambdas({ ambition: a, flat: opts.flat, G }) });
     else if (sparse)
         fit = fitSparse({ ...spec, ...sparseLambdas({ ambition: a, flat: opts.flat, G }) });
     else
@@ -506,17 +505,26 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         penaltyName = `|second differences|^q, q = ${fit.q}`;
     else if (fit.power)
         penaltyName = `|${st.flat === 1 ? 'first' : 'first and second'} differences|^q, q = ${fit.q}`;
+    else if (fit.shaped && st.flat === 1)
+        penaltyName = 'count of steps';
     else if (fit.shaped)
-        penaltyName = 'count of bends, rounded';
+        penaltyName = st.flat === 0 ? 'count of bends, rounded' : 'count of bends, rounded, and steps';
     else if (fit.sparse)
         penaltyName = `count of ${counted}`;
+    let rounding = '';
+    if (fit.shaped && st.flat === 1) {
+        rounding = '. Entirely toward flat there are no bends to round: this is the count of steps';
+    }
+    else if (fit.shaped) {
+        rounding = '. Each bend also pays for the square of its second differences, which spreads a large turn over '
+            + `a wider, rounder bend; that cost levels off at ${SHAPE_DEFAULTS.roundingLimit} of the center's range `
+            + 'squared, so a turn the region forces to be sharp (a spike narrower than the bend length) costs at most '
+            + 'about that much' + (st.flat > 0 ? '. Steps (free first differences, the share toward flat) are '
+            + 'counted plainly; the corners on either side of a step are bends and are rounded like the others' : '');
+    }
     let penaltyNote = fit.sparse
         ? 'adaptive ridge (Frommlet & Nuel 2016), an approximation of the count: a local optimum, not proven fewest'
-            + (fit.shaped ? '. Each bend also pays for the square of its second differences, which spreads a large '
-                + `turn over a wider, rounder bend; that cost levels off at ${SHAPE_DEFAULTS.roundingLimit} of the `
-                + 'center\'s range squared, so a '
-                + 'turn the region forces to be sharp (a spike narrower than the bend length) costs at most about that '
-                + 'much' : '')
+            + rounding
         : 'straighter (or flatter) everywhere; no piece is exactly straight';
     if (fit.power) {
         const integral = st.flat === 0 ? 'a·∫|g\'\'|^q' : st.flat === 1 ? 'a·∫|g\'|^q'
@@ -537,11 +545,10 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
             + 'below that), and the bends (or steps) between them. Only for q ≤ 1 are pieces exactly straight (or '
             + 'flat); above, every difference is nonzero.');
     }
-    if (fit.shaped)
+    if (fit.shaped && st.flat < 1)
         addShapeRows(add, fit, st);
-    const flatShare = fit.shaped ? 0 : st.flat;
-    add('toward', flatShare === 0 ? 'straight' : flatShare === 1 ? 'flat' : `${Math.round(100 * (1 - flatShare))}% `
-        + `straight, ${Math.round(100 * flatShare)}% flat`, 'second (straight) and first (flat) differences of the '
+    add('toward', st.flat === 0 ? 'straight' : st.flat === 1 ? 'flat' : `${Math.round(100 * (1 - st.flat))}% `
+        + `straight, ${Math.round(100 * st.flat)}% flat`, 'second (straight) and first (flat) differences of the '
         + 'coefficients');
     add('ED', fmt(fit.ed), `effective dimension: the trace of the hat matrix, ${an ? 'the interval means of y'
         : `the center`} as data${an ? '' : ` (band: ${fmt(region.params.ed)})`}${fit.sparse

@@ -348,6 +348,24 @@ spans tilt to the band's edges either way (0.27–0.28 from their levels), and t
 the fit follows the band's center. The plain count with a flat share of ½ or 1 fits it: two steps, ED 3, within
 0.039 of the levels at −4 and a*.
 
+**Flat share for rounded bends.** The share θ toward flat adds the plain count of steps, a·θ·G per free first
+difference, to the rounded bends at a·(1 − θ)·G (fitShaped with both orders; the shape search's sign constraints
+take each order's own pinning weight). A step's two corners are bends and pay the rounding cost, which grows with the
+square of the turn, so the fit shortens its steps as far as the region lets it, and the levels move toward each
+other. Step (n = 500, B = 500), largest distance from the level in each span's middle 80% (0, 1, ½):
+
+| θ | rounded, −4 | rounded, a* | count, −4 and a* |
+|---|---|---|---|
+| 25% | 0.124, 0.047, 0.003 | 0.077, 0.127, 0.071 | 0.028, 0.045, 0.003 |
+| 50% | 0.129, 0.048, 0.036 (6 bends, ED 6.7) | 0.129, 0.128, 0.071 | the same |
+| 75% | the count's | 0.113, 0.147, 0.071 | the same |
+| 100% | the count's (no bends: fitSparse with D₁, test) | the count's | the same |
+
+At 50% and a* the second drop is 0.36 instead of 0.5, each step two differences wide. A small share leaves smooth
+fits alone: at 10% the sine's bends are unchanged (6, 6, 8, 6 differences at −4) and HeaviSine's fit differs little.
+Not tried: exempting a step's corners from rounding. With θ > 0 every sloped stretch is a run of free first
+differences, so a step can be told from a ramp only by the length of its run.
+
 ### 1.4c Power penalty (a fourth ambition penalty, prototype)
 
 λ₂·Σ|D₂β|^q with 0 < q ≤ 2, toward straight (fit.js fitPower): the bridge penalty on the second differences.

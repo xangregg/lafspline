@@ -169,7 +169,9 @@ const TIPS = {
     ambition: 'Decades from a*, the largest ambition before the fit leaves the region by more than 1% of its '
         + 'half-width. 0 is the simplest fit inside; below it the fit follows more detail, above it the fit '
         + 'leaves the region.',
-    flat: 'Share of the ambition on first differences (toward flat) rather than second (toward straight).',
+    flat: 'Share of the ambition on first differences (toward flat) rather than second (toward straight). With '
+        + 'rounded bends, the steps are counted plainly and only the bends are rounded, a step\'s two corners among '
+        + 'them.',
     kappa: 'Weight on the squared distance outside the region, per squared half-width: larger makes the region '
         + 'harder.',
     epsilon: 'Weight on the squared distance from the region\'s center: a slight pull inside the region, which also '
@@ -518,8 +520,6 @@ export function createControls(container, state, onChange, examples = [], local 
                 + (amb.clamped ? (amb.sparse ? ' (the top of the range).' : ' (the largest computed reliably).') : '.');
         }
         setInfo(ambitionInfo, TIPS.ambition + now);
-        // rounded bends are toward straight only
-        flatField.hidden = st.penalty === 'shaped';
         powerField.hidden = st.penalty !== 'power';
         bendLengthField.hidden = st.penalty !== 'shaped';
         shapeCosts.hidden = st.penalty !== 'shaped';
