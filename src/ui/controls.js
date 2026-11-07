@@ -399,7 +399,7 @@ export function createControls(container, state, onChange, examples = [], local 
         v => (v > 0 ? `${Math.round(100 * v)}%` : 'all'));
     const anBox = el('div', { class: 'group' }, [
         field('intervals', family, TIPS.family),
-        field('shortest interval (share of the x range)', anShare.row, TIPS.anShare),
+        field('shortest interval', anShare.row, TIPS.anShare),
         check(calibrate, 'calibrate τ for coverage α', TIPS.calibrate),
         tauField,
     ]);
@@ -438,7 +438,7 @@ export function createControls(container, state, onChange, examples = [], local 
     const featureScale = slider('featureScale', FEATURE_SCALE_MIN, FEATURE_SCALE_RANGE[1], FEATURE_SCALE_STEP,
         v => `${Math.round(100 * v)}%`);
     const featureScaleHint = el('span', { class: 'field-hint' });
-    const featureScaleField = field('feature scale (share of the x range)', featureScale.row, TIPS.featureScale);
+    const featureScaleField = field('feature scale', featureScale.row, TIPS.featureScale);
     featureScaleField.append(featureScaleHint);
     const diff = select('diff', DIFF_OPTIONS, Number);
     const bandBox = el('div', { class: 'group' }, [
