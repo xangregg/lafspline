@@ -9,7 +9,8 @@
 //
 // Configurations are covariance:factor, where covariance is bayes or sandwich (band.js) or the bootstrap band
 // (bootstrap.js) as boot[-weights[-window[-refit]]], e.g. boot, boot-dirichlet, boot-matched-Infinity,
-// boot-matched-0.1-linear.
+// boot-matched-0.1-linear, and factor is the undersmoothing factor on GCV's λ or s<scale> for λ by feature scale
+// (thumb.js scaleLambda, with its floor by n), e.g. bayes:s0.1.
 // --noise sets the noise ε: gauss (the signals' own), skew (Exp(1) − 1: mean 0, sd 1, right-skewed) or hetero
 // (Gaussian with sd growing from 0.25 to 1.75 times σ across x, average 1).
 //
@@ -29,7 +30,9 @@ const CALIBRATION_SEED = 1;
 function parseConfigs(text) {
     return text.split(',').map(item => {
         const [covariance, factor] = item.split(':');
-        return { covariance, undersmooth: Number(factor) };
+        if (factor.startsWith('s'))
+            return { covariance, scale: Number(factor.slice(1)), label: factor };
+        return { covariance, undersmooth: Number(factor), label: factor };
     });
 }
 
@@ -83,7 +86,9 @@ function sample(name, n, sigma, seed, noise) {
 }
 
 function makeBand(x, y, config, B) {
-    const common = { alpha: ALPHA, undersmooth: config.undersmooth, B, seed: CALIBRATION_SEED };
+    const lambda = config.scale === undefined ? { undersmooth: config.undersmooth }
+        : { criterion: 'scale', scale: config.scale };
+    const common = { alpha: ALPHA, ...lambda, B, seed: CALIBRATION_SEED };
     if (config.covariance.startsWith('boot')) {
         // boot-<weights>-<window>-<refit>, each optional: boot, boot-dirichlet, boot-matched-0.2-linear
         const [, weights, window, refit] = config.covariance.split('-');
@@ -97,7 +102,8 @@ const pct = (count, reps) => `${(100 * count / reps).toFixed(1)}%`;
 
 function main() {
     const opts = parseArgs(process.argv.slice(2));
-    console.log(`α = ${ALPHA}, ${opts.reps} replications, B = ${opts.B}; σ estimated; λ by GCV × factor; `
+    console.log(`α = ${ALPHA}, ${opts.reps} replications, B = ${opts.B}; σ estimated; λ by GCV × factor or by `
+        + 'feature scale (s); '
         + `noise ${opts.noise}`);
     console.log('signal | n | config | ∋ f | ∋ f at data x | ∋ E f̂ | half-width/σ | ED');
     for (const name of opts.signals) {
@@ -125,7 +131,7 @@ function main() {
                     halfSum += band.half.reduce((a, b) => a + b) / band.half.length / sigma;
                     edSum += p.ed;
                 }
-                console.log(`${name} | ${n} | ${config.covariance} ${config.undersmooth} | ${pct(coverF, opts.reps)} | ${pct(coverData, opts.reps)} | `
+                console.log(`${name} | ${n} | ${config.covariance} ${config.label} | ${pct(coverF, opts.reps)} | ${pct(coverData, opts.reps)} | `
                     + `${pct(coverMean, opts.reps)} | ${(halfSum / opts.reps).toFixed(2)} | `
                     + `${(edSum / opts.reps).toFixed(1)}`);
             }

@@ -207,6 +207,25 @@ export function lambdaHowText(p) {
     return `λ chosen by ${criterion}`;
 }
 
+// Simulated coverage of f by the Bayesian band (tools/sim-band.mjs, 400 replications per row, Gaussian noise; PLAN
+// §1.2 and open question 7)
+const BAYES_SIMULATED_SCALE = [
+    [0.1, 'with λ by feature scale at 10% it contained a line, a sine and a logistic ramp in 96.5–98% of samples'],
+    [0.2, 'with λ by feature scale at 20% it contained a line, a sine and a logistic ramp in 97.5–99% of samples, '
+        + 'but a sine with a period of 2.5 times the scale in 91% at n = 500'],
+];
+const SAME_SCALE = 1e-12; // a simulated scale matches to rounding
+
+function bayesSimulated(p) {
+    const hit = p.lambdaSource === 'scale'
+        ? BAYES_SIMULATED_SCALE.find(([s]) => Math.abs(s - p.rule.scale) < SAME_SCALE) : null;
+    if (hit)
+        return hit[1];
+    const not = p.lambdaSource === 'scale' ? ' (not this scale; at 10% and 20%, 91–99%)' : '';
+    return `with λ × 1/4 or 1/16 (λ by GCV) it contained a line, a sine and a logistic ramp in 94–98.5% of `
+        + `samples${not}`;
+}
+
 function bandClaim(p) {
     const criterion = lambdaSourceName(p.lambdaSource);
     let lambdaHow = `λ chosen by ${criterion}`;
@@ -217,7 +236,8 @@ function bandClaim(p) {
     const basis = `${DEGREE_NAMES[p.deg] ?? `degree-${p.deg}`} B-splines on ${p.nseg} segments, `
         + `${ORDER_NAMES[p.diff] ?? `order-${p.diff}`}-order difference penalty, ${lambdaHow}; effective dimension `
         + `${round(p.ed)}`;
-    const fixed = p.lambdaSource === 'given' ? '' : '; λ treated as fixed';
+    // a given λ, or one from the feature scale (x alone), is fixed given x; GCV's and the rules' depend on y
+    const fixed = p.lambdaSource === 'given' || p.lambdaSource === 'scale' ? '' : '; λ treated as fixed';
     const level = `with probability ≈ ${p.alpha} (Monte Carlo, B = ${p.B}${fixed})`;
     const where = 'at every x of the check grid (the data x and a fine grid between them)';
     const noise = 'for independent Gaussian noise with constant σ (estimated from the residuals)';
@@ -228,8 +248,8 @@ function bandClaim(p) {
     }
     return `Simultaneous band around a P-spline (${basis}), from the Bayesian covariance, which widens the band to `
         + `allow for the smoothing bias on average. Contains f ${where} ${level} ${noise}, if f is smooth: in `
-        + 'simulations at 95% with λ × 1/4 or 1/16 (λ by GCV) it contained a line, a sine and a logistic ramp in '
-        + '94–98.5% of samples. It does not contain jumps or corners of f sharper than the penalty allows.';
+        + `simulations at 95% ${bayesSimulated(p)}. It does not contain jumps or corners of f sharper than the `
+        + 'penalty allows.';
 }
 
 /**

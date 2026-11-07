@@ -6,6 +6,7 @@ import {
 } from '../src/core/thumb.js';
 import { fitPSpline, pSplineSystem, LOG_LAMBDA_RANGE } from '../src/core/pspline.js';
 import { bandRegion } from '../src/core/band.js';
+import { bootstrapBand } from '../src/core/bootstrap.js';
 import { createRng, normals } from '../src/core/rng.js';
 
 const grid = n => Float64Array.from({ length: n }, (_, i) => i / (n - 1));
@@ -163,4 +164,12 @@ test('a band with λ by feature scale says so, with no undersmoothing', () => {
     assert.equal(region.params.undersmooth, 1);
     assert.equal(region.params.lambda, scaleLambda(x, y, { scale: 0.15 }).lambda);
     assert.ok(region.claim.includes('features longer than 15% of the x range'), region.claim);
+    assert.ok(region.claim.includes('not this scale'), region.claim);
+    assert.ok(!region.claim.includes('λ treated as fixed'), region.claim); // λ from x alone is fixed given x
+    // at a simulated scale the claims cite its own coverage
+    const at10 = { criterion: 'scale', scale: 0.1, B: 200 };
+    assert.ok(bandRegion(x, y, at10).claim.includes('feature scale at 10% it contained a line'));
+    const boot = bootstrapBand(x, y, at10).claim;
+    assert.ok(boot.includes('feature scale at 10% it contained E f̂ in 93–96.5%') && boot.includes('fixed given x'),
+        boot);
 });

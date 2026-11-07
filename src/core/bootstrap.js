@@ -314,18 +314,39 @@ function mean(a) {
     return a.reduce((sum, v) => sum + v, 0) / a.length;
 }
 
-// Simulated coverage of E f̂ by undersmoothing factor (tools/sim-band.mjs, 200 replications per row; PLAN §1.2)
-const SIMULATED = [
+// Simulated coverage by GCV's undersmoothing factor and by feature scale (tools/sim-band.mjs, 200 replications per
+// row; PLAN §1.2 and open question 7)
+const SIMULATED_GCV = [
     [1 / 4, 'with λ by GCV × 1/4 it contained E f̂ in 84–98% of samples, least often for a ramp with skewed noise at '
         + 'n = 100 and for lines'],
     [1 / 16, 'with λ by GCV × 1/16 it contained E f̂ in 86–98% of samples, least often for a line with skewed noise'],
 ];
+const SIMULATED_SCALE = [
+    [0.1, 'with λ by feature scale at 10% it contained E f̂ in 93–96.5% of samples, and f (but for HeaviSine, whose '
+        + 'jumps it never holds) in 92.5–95.5%'],
+    [0.2, 'with λ by feature scale at 20% it contained E f̂ in 85–97.5% of samples, least often for a line and a ramp '
+        + 'with skewed noise at n = 100, and f as rarely as 7.5% for a sine with a period of 2.5 times the scale'],
+];
+const SAME = 1e-12; // a simulated setting matches to rounding
 
 function simulated(p) {
-    const hit = p.lambdaSource === 'gcv' ? SIMULATED.find(([u]) => Math.abs(u - p.undersmooth) < 1e-12) : null;
-    const not = p.lambdaSource === 'gcv' ? 'not this undersmoothing' : `not λ ${p.lambdaSource === 'scale'
-        ? 'by feature scale' : 'chosen this way'}`;
-    return hit ? hit[1] : `with λ by GCV × 1/4 and 1/16 (${not}) it contained E f̂ in 84–98% of samples`;
+    const table = { gcv: SIMULATED_GCV, scale: SIMULATED_SCALE }[p.lambdaSource];
+    const setting = p.lambdaSource === 'scale' ? p.rule.scale : p.undersmooth;
+    const hit = table?.find(([v]) => Math.abs(v - setting) < SAME);
+    if (hit)
+        return hit[1];
+    const not = { gcv: 'not this undersmoothing', scale: 'not this scale' }[p.lambdaSource] ?? 'not λ chosen this way';
+    return `with λ by GCV × 1/4 and 1/16 and by feature scale at 10% and 20% (${not}) it contained E f̂ in 84–98% `
+        + 'of samples';
+}
+
+/** How the claim treats λ: exact when it does not depend on y. */
+function fixedLambda(p) {
+    if (p.lambdaSource === 'given')
+        return 'λ is given';
+    if (p.lambdaSource === 'scale')
+        return 'λ depends on x alone, so it is fixed given x';
+    return 'λ is treated as fixed';
 }
 
 function bootstrapClaim(p) {
@@ -348,8 +369,8 @@ function bootstrapClaim(p) {
         + `replicates at every point at once. Contains the P-spline's mean, f smoothed by the same penalty, at every `
         + `x of the check grid with probability ≈ ${p.alpha}, for independent observations; the noise need not be `
         + `Gaussian, and its spread may change slowly along x. In simulations at 95% ${simulated(p)} (a `
-        + 'line, a sine, a ramp and HeaviSine; n = 100 and 500; Gaussian, skewed or heteroscedastic noise). λ is '
-        + 'treated as fixed, and the band contains f itself only where the smoothing bias is small compared with the '
+        + `line, a sine, a ramp and HeaviSine; n = 100 and 500; Gaussian, skewed or heteroscedastic noise). ${
+            fixedLambda(p)}, and the band contains f itself only where the smoothing bias is small compared with the `
         + 'half-width.';
 }
 

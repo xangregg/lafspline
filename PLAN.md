@@ -554,9 +554,30 @@ the default fit, toward straight, is a line.
    9.6), as its x is uneven: points per period is an average. From n = 100 up, 10% is not raised.
    *Default (2026-11-06): λ by feature scale, 10%,* in place of GCV × 1/4, so that the band (and with it the fit)
    follows features of the same relative length on every data set. GCV × 1/4, AIC, the rules and a given λ remain.
-   The bands' claims still cite coverage simulated with GCV, and say it was not simulated for λ by feature scale;
-   a coverage run at fixed scales (tools/sim-band.mjs) is still to do. A cost seen at the default: fuel economy's
-   fit ticks up at the high-horsepower end, as its data do (a few light sports cars).
+   A cost seen at the default: fuel economy's fit ticks up at the high-horsepower end, as its data do (a few light
+   sports cars).
+   *Coverage at a fixed scale* (`tools/sim-band.mjs` configs `boot-matched:s0.1` etc.; the rows of §1.2's app
+   defaults: line, sine, ramp, HeaviSine at n = 100 and 500; the bootstrap band 200 replications per row under
+   Gaussian, skewed and heteroscedastic noise, the Bayesian band 400 under Gaussian; GCV × 1/4 on the same seeds):
+
+   | band, λ | ∋ E f̂ | ∋ f (line, sine, ramp) | half-width/σ, line · sine · ramp, n = 100 / 500 |
+   |---|---|---|---|
+   | bootstrap, GCV × 1/4 | 84–98% | 79–95.5% | 0.47/0.20 · 1.27/0.58 · 0.98/0.49 |
+   | bootstrap, 10% | 93–96.5% | 92.5–95.5% | 1.55/0.64 · 1.55/0.64 · 1.55/0.64 |
+   | bootstrap, 20% | 85–97.5% | 84–95%; sine 80–90.5% at n = 100, 7.5–71.5% at 500 | 1.01/0.43 alike |
+   | Bayesian, GCV × 1/4 | 94–98.8% | 94–98.5% | 0.47/0.20 · 1.30/0.63 · 1.05/0.54 |
+   | Bayesian, 10% | 97–99.8% | 96.5–98% | 1.51/0.68 alike |
+   | Bayesian, 20% | 98.3–100% | 97.5–99%; sine 90.8% at n = 500 | 1.07/0.49 alike |
+
+   (Half-widths are from the Gaussian rows.) At 10% the bootstrap band holds E f̂ close to 95% in every row, HeaviSine
+   and skewed noise included, where GCV's data-chosen λ undercovered (a line at n = 500: 86% against 94.5%): λ from
+   x alone is fixed given x, as the calibration assumes. The price is width where GCV smooths more, up to 3 times on
+   a line, and alike on the sine (n = 500: 0.64σ against 0.58σ); on HeaviSine the band is narrower (0.70σ against
+   1.01σ). f itself is held as well as E f̂ wherever the scale is short against f's features. At 20% the test sine,
+   period 50% (2.5 times the scale), is smoothed by more than the narrow band at n = 500 allows: the band holds E f̂
+   (92.5–95%) but f in only 7.5–71.5% (the Bayesian band's bias allowance keeps 90.8%). HeaviSine's jumps are never
+   held at any setting (f at the data x: 17–35% at 10%, n = 100). The claims now cite these rows at 10% and 20%,
+   and the 84–98% range otherwise; for λ by feature scale they no longer say λ is treated as fixed.
 8. **Local σ:** a band from a constant-σ smoother is too wide where the noise is small and too narrow where it is
    large (the earlier project's dog-ages example). A variance model (P-spline on log squared residuals) would give a
    heteroscedastic band.
