@@ -8,8 +8,8 @@ import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import { lambdaSourceName, MIN_POINTS_PER_PERIOD } from '../core/thumb.js';
 import {
-    MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
-    BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_RANGE, FEATURE_SCALE_START, AN_SHARE_RANGE,
+    MAX_N, MAX_SEGMENTS, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
+    BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_START,
 } from './urlstate.js';
 import { fmtExp } from './format.js';
 import { infoIcon, setInfo } from './info.js';
@@ -24,6 +24,12 @@ const LOG_LAMBDA_STEP = 0.1; // natural log units on the given-λ slider
 const FEATURE_SCALE_STEP = 0.01; // share of the x range on the feature-scale slider
 const AN_SHARE_STEP = 0.01; // share of the x range on Aₙ's shortest-interval slider
 const FEATURE_SCALE_MIN = 0.02; // the slider's low end: finer than a few knot spacings the basis cannot follow
+// The sliders span less than a link may hold (urlstate.js AMBITION_RANGE, FEATURE_SCALE_RANGE, AN_SHARE_RANGE), for
+// finer steps where the useful values are; a value beyond the span shows its thumb at the nearer end, and its own
+// value beside it.
+const AMBITION_SLIDER = [-6, 1]; // decades of a/a*
+const FEATURE_SCALE_MAX = 0.4; // share of the x range
+const AN_SHARE_MAX = 0.3; // share of the x range
 const UNDERSMOOTH_OPTIONS = [
     [1, 'none: λ as chosen'],
     [1 / 4, 'λ × 1/4 (default)'],
@@ -395,7 +401,7 @@ export function createControls(container, state, onChange, examples = [], local 
     calibrate.addEventListener('change', () => onChange({ calibrate: calibrate.checked }));
     const tauInput = numberInput('tau', { min: TAU_RANGE[0], max: TAU_RANGE[1], step: 0.1 });
     const tauField = field('τ', tauInput, TIPS.tau);
-    const anShare = slider('anShare', AN_SHARE_RANGE[0], AN_SHARE_RANGE[1], AN_SHARE_STEP,
+    const anShare = slider('anShare', 0, AN_SHARE_MAX, AN_SHARE_STEP,
         v => (v > 0 ? `${Math.round(100 * v)}%` : 'all'));
     const anBox = el('div', { class: 'group' }, [
         field('intervals', family, TIPS.family),
@@ -435,7 +441,7 @@ export function createControls(container, state, onChange, examples = [], local 
     const logLambdaInfo = infoIcon(TIPS.logLambda, 'log λ');
     const logLambdaField = field('log λ', logLambda.row, logLambdaInfo);
     const undersmoothField = field('undersmoothing', undersmooth, TIPS.undersmooth);
-    const featureScale = slider('featureScale', FEATURE_SCALE_MIN, FEATURE_SCALE_RANGE[1], FEATURE_SCALE_STEP,
+    const featureScale = slider('featureScale', FEATURE_SCALE_MIN, FEATURE_SCALE_MAX, FEATURE_SCALE_STEP,
         v => `${Math.round(100 * v)}%`);
     const featureScaleHint = el('span', { class: 'field-hint' });
     const featureScaleField = field('feature scale', featureScale.row, TIPS.featureScale);
@@ -462,7 +468,7 @@ export function createControls(container, state, onChange, examples = [], local 
 
     // --- fit
     const signed = v => (v > 0 ? `+${v.toFixed(1)}` : v < 0 ? `−${(-v).toFixed(1)}` : '0');
-    const ambition = slider('ambition', AMBITION_RANGE[0], AMBITION_RANGE[1], AMBITION_STEP, signed);
+    const ambition = slider('ambition', AMBITION_SLIDER[0], AMBITION_SLIDER[1], AMBITION_STEP, signed);
     const ambitionEnds = el('div', { class: 'slider-ends' }, [el('span', { text: '← detail' }),
         el('span', { text: 'simplicity →' })]);
     const ambitionInfo = infoIcon(TIPS.ambition, 'ambition');

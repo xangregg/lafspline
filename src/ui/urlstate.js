@@ -15,7 +15,7 @@ import { WEIGHTS } from '../core/bootstrap.js';
 const MAX_DATA_CHARS = 8000; // encoded data longer than this stays out of the link (chat apps truncate long URLs)
 export const MAX_N = 5000; // simulated sample size cap, used by controls.js
 export const MAX_SEGMENTS = 400; // phase-1 basis segments, used by controls.js
-export const AMBITION_RANGE = [-8, 4]; // decades of a/a* (fit.js leavingAmbition), used by controls.js
+export const AMBITION_RANGE = [-8, 4]; // decades of a/a* (fit.js leavingAmbition); the slider spans less
 export const LOG_KAPPA_RANGE = [1, 8]; // log₁₀ κ
 export const LOG_EPSILON_RANGE = [-6, 0]; // log₁₀ ε
 export const UNDERSMOOTH_VALUES = [1, 1 / 4, 1 / 16, 1 / 64];
