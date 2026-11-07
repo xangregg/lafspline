@@ -3,6 +3,7 @@
 # x: age                                                                                                                                             
 # y: y
 # note: three age groups with top two age groups about the same; heteroskedastic
+# intro: Blood levels by age
 age,y
 24.0993788819876,0.458219655192431
 29.6894409937888,0.439963429500203

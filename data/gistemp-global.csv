@@ -3,6 +3,7 @@
 # x: year
 # y: anomaly
 # note: annual (January–December) mean land-ocean temperature anomaly, °C relative to 1951–1980; level or slightly falling 1880–1910 and 1940–1975, rising since; year-to-year (ENSO) variation is serially correlated
+# intro: Global surface temperature since 1880, relative to 1951–1980
 year,anomaly
 1880,-0.17
 1881,-0.09

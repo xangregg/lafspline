@@ -3,6 +3,7 @@
 # x: year
 # y: temperature
 # note: annual mean temperature, °C, of a triangle between Lancashire, London and Bristol; monthly values before 1699 are given to the whole or half degree, so less precise; nearly level for two and a half centuries (cold 1690s), warmer since about 1990
+# intro: Central England's yearly temperature since 1659
 year,temperature
 1659,8.87
 1660,9.1

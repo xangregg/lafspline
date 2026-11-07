@@ -3,6 +3,8 @@
 # x: dog age                                                                                                                                             
 # y: human age
 # note: y ascending sharply then slowly or leveling; non-decreasing; data scraped from a figure in an early preprint of the paper (bioRxiv v1), so they may not match later versions
+# intro: How old is a dog in human years?
+# outro: Values read from a figure in an early preprint, so they may not match later versions
 dog age,human age
 0.102723990810633,3.33724037695157
 0.197618266210323,2.17169112475972

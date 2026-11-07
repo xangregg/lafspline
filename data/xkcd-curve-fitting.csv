@@ -3,6 +3,8 @@
 # x: x
 # y: y
 # note: units are comic pixels from the axes' corner (the comic has no scales); two dots share an x; the comic's point is that many curves fit these data
+# intro: xkcd 2048: which curve would you fit?
+# outro: The comic's point: many curves fit these data
 x,y
 13.9,22.1
 26.9,58.2

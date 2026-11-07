@@ -3,6 +3,7 @@
 # x: year
 # y: increase
 # note: increase of the globally averaged CH₄ mole fraction from January 1 to December 31, ppb per year (column sd: its uncertainty); falling from the 1980s, with spikes in 1991 and 1998, near zero 1999–2006, rising again since 2007 to a peak in 2020–21
+# intro: How fast methane is rising: the yearly global increase, 1984–2025
 year,increase,sd
 1984,12.88,0.91
 1985,12.2,0.85

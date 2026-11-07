@@ -3,6 +3,8 @@
 # x: year
 # y: extent
 # note: monthly mean extent of the September minimum, million km² (area: the ice-covered area); decline since the 1990s, the record low in 2012, and little net change since about 2007
+# intro: Arctic sea ice at its September minimum, 1979–2026
+# outro: The record low came in September 2012
 year,extent,area
 1979,7.05,4.58
 1980,7.67,4.87

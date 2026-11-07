@@ -3,6 +3,8 @@
 # x: year
 # y: deaths
 # note: deaths in crashes on public roads in Montana, at mid-month (decimal year); rural_interstate: crashes on rural interstates (ROAD_FNC = 1), interstate: on interstate routes (ROUTE = 1). Montana had 65 mph on rural interstates from 1987; after the national maximum was repealed, from December 8, 1995 it had no numeric daytime limit on rural highways ("reasonable and prudent"), which the Montana Supreme Court found unconstitutionally vague (State v. Stanko, December 1998); a 75 mph interstate limit followed in May 1999. Yearly deaths 192–215 in 1988–1996, 265 in 1997, 220–269 after. Counts (about 18 a month), with more deaths in summer, so the noise is seasonal and grows with the level; not adjusted for miles driven (montana-traffic-death-rate has yearly rates per mile)
+# intro: Montana traffic deaths per month, 1987–2004
+# outro: No numeric daytime speed limit on rural highways from December 1995; a 75 mph interstate limit from May 1999
 year,deaths,rural_interstate,interstate,month
 1987.0417,21,0,0,1987-01
 1987.125,12,0,0,1987-02

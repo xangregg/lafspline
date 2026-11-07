@@ -3,6 +3,7 @@
 # x: year                                                                                                                                             
 # y: coal
 # note: sinusoidal pattern
+# intro: US coal production, 1920–1968 (from Tukey's Exploratory Data Analysis)
 year,coal
 1920,569
 1921,416

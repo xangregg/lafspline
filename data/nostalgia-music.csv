@@ -3,6 +3,8 @@
 # x: Song age
 # y: rating
 # note: peak around 17 (the paper's two-lines test puts it at 16.8); song age is the listener's age when the song was in the Billboard Top 10 (negative: before birth); rating is each respondent's standardized rating, averaged by song age
+# intro: How much we like a song, by our age when it was a hit
+# outro: The paper puts the peak at about age 17 (16.8)
 Song age,rating
 -40,-0.295455435504258
 -39,-0.178766115988597

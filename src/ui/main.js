@@ -40,7 +40,7 @@ import { cellEdges } from './layout.js';
 import { onThemeChange } from './theme.js';
 import { toCsv, fitTables } from './export.js';
 import { createHistory } from './history.js';
-import { animatedGif, animatedSvg, storyFrames, storySteps } from './story.js';
+import { animatedGif, animatedSvg, storyFrames, storySteps, SIGNAL_STORIES } from './story.js';
 
 const fmt = d3.format('.4~g');
 const fmtInt = d3.format(',');
@@ -239,6 +239,7 @@ function deriveData(st, exampleTexts, examples) {
         y = sim.y;
         fAt = signalFunction(st.source, st.n);
         label = SIGNALS[st.source].label;
+        story = SIGNAL_STORIES[st.source] ?? {};
         dataKey = `${st.source}|${st.n}|${st.sigma}|${st.seed}`;
         notes.push(`tᵢ = i/n; y = f(t) + ${fmt(st.sigma)}·Z, seed ${st.seed}`);
     }

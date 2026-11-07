@@ -35,6 +35,25 @@ const GIF_SCALE = 1.6; // GIF pixels per CSS pixel: 1280 × 720
 const GIF_COLORS = 256;
 const ALL_LAYERS = ['data', 'truth', 'center', 'band', 'fit'];
 
+const SIMULATED_INTRO = 'Simulated data: what curve is hidden in the noise?';
+
+/**
+ * The simulated signals' intro and outro (as a data file's intro and outro lines): the outro reveals the curve the
+ * data were drawn from.
+ */
+export const SIGNAL_STORIES = {
+    heavisine: { intro: SIMULATED_INTRO,
+        outro: 'The truth: HeaviSine, a sine wave with two jumps (Donoho & Johnstone)' },
+    exp5: { intro: SIMULATED_INTRO, outro: 'The truth: exp(5t), an exponential rise' },
+    sine: { intro: SIMULATED_INTRO, outro: 'The truth: sin(4πt), two full waves' },
+    box: { intro: SIMULATED_INTRO, outro: 'The truth: flat, with a narrow box 0.02 wide in the middle' },
+    step: { intro: SIMULATED_INTRO, outro: 'The truth: three flat levels, 0, 1 and ½, one per third' },
+    noise: { intro: SIMULATED_INTRO, outro: 'The truth: nothing at all; y is pure noise around 0' },
+    line: { intro: SIMULATED_INTRO, outro: 'The truth: a straight line' },
+    ramp: { intro: SIMULATED_INTRO,
+        outro: 'The truth: a logistic ramp, a smooth rise from 0 to 1 centered at t = 0.5' },
+};
+
 const fmt = d3.format('.3~g');
 const fmtInt = d3.format(',');
 
@@ -65,7 +84,8 @@ export function storySteps(view, st) {
     const xy = data.columns.length >= 2 ? ` of ${data.columns[1]} against ${data.columns[0]}` : '';
     const first = {
         headline: story.intro ?? data.label,
-        detail: [story.intro ? data.label : '', `${fmtInt(data.n)} observations${xy}`,
+        // a simulated signal's label would give away the outro, which reveals the curve
+        detail: [story.intro && !data.fAt ? data.label : '', `${fmtInt(data.n)} observations${xy}`,
             data.fAt ? `simulated: ${data.notes[0]}` : ''].filter(Boolean).join('; '),
         show: ['data'],
     };

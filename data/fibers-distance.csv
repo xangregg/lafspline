@@ -3,6 +3,7 @@
 # x: time                                                                                                                                             
 # y: distance
 # note: many duplicate x values; y ascending then level
+# intro: Fiber distance over time
 time,distance
 16,3.39324758842444
 16,3.37781350482315

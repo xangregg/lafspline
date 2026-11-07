@@ -3,6 +3,8 @@
 # x: water_year
 # y: peak_cfs
 # note: largest instantaneous flow of each water year (October–September), cubic feet per second (date: its day); Glen Canyon Dam, 15 miles upstream, began storing water in 1963 (water year 1963: 19,200 cfs, after 85,000 in 1962), which cut the spring floods to releases from the dam: a step down; the high-flow releases (1983–86 spills, the 1996 and later experiments) are visible after it; the historic 1884 peak (210,000 cfs, its date unknown) is left out
+# intro: The Colorado River's yearly peak flow at Lees Ferry, 1921–2023
+# outro: Glen Canyon Dam, 15 miles upstream, began storing water in 1963
 water_year,peak_cfs,date
 1921,170000,1921-06-18
 1922,116000,1922-05-31

@@ -3,6 +3,8 @@
 # x: x
 # y: y
 # note: three smooth pieces of 50 points each, f = 5 − √(1 − z), 5 + sin(2πz), 5 + z²/2 with z from 0 to 1 in each; y = f + N(0, 0.2²); column f is the noise-free curve; the first piece ends in a vertical tangent
+# intro: Three curves joined end to end, with noise (Cleveland's example)
+# outro: The true curve: three smooth pieces, the first ending in a vertical tangent
 x,y,f
 5.000000,4.316044,4.000000
 5.033557,3.658185,4.010257

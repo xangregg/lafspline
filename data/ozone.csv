@@ -3,6 +3,8 @@
 # x: Year
 # y: Data
 # note: y descending sharply then rising slowly or leveling; alt: use Day as x
+# intro: The Antarctic ozone hole: each spring's daily lowest ozone, 1979–2026
+# outro: The Montreal Protocol, signed in September 1987, phased out the CFCs and other chemicals that destroy stratospheric ozone
 Year,Day,Data
 1979,263,216
 1979,264,212
