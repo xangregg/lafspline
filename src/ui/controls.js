@@ -407,11 +407,10 @@ export function createControls(container, state, onChange, examples = [], local 
     const tauField = field('τ', tauInput, TIPS.tau);
     const anShare = slider('anShare', 0, AN_SHARE_MAX, AN_SHARE_STEP,
         v => (v > 0 ? `${Math.round(100 * v)}%` : 'all'));
+    const calibrateField = check(calibrate, 'calibrate τ for coverage α', TIPS.calibrate);
     const anBox = el('div', { class: 'group' }, [
         field('intervals', family, TIPS.family),
         field('shortest interval', anShare.row, TIPS.anShare),
-        check(calibrate, 'calibrate τ for coverage α', TIPS.calibrate),
-        tauField,
     ]);
 
     // --- region: band
@@ -458,8 +457,8 @@ export function createControls(container, state, onChange, examples = [], local 
         logLambdaField,
         featureScaleField,
         undersmoothField,
-        field('penalty order', diff, TIPS.diff),
     ]);
+    const diffField = field('penalty order', diff, TIPS.diff);
     const nsegInput = el('input', { type: 'number', min: 3, max: MAX_SEGMENTS, step: 1, placeholder: 'auto' });
     nsegInput.value = state.nseg === null ? '' : String(state.nseg);
     nsegInput.addEventListener('input', () => {
@@ -469,6 +468,16 @@ export function createControls(container, state, onChange, examples = [], local 
             later({ nseg: Math.round(Number(nsegInput.value)) });
     });
     const nsegInfo = infoIcon(TIPS.nseg, 'segments');
+    // Settings rarely changed from their defaults, as in the Fit section's Advanced; each still shows only for the
+    // regions it applies to.
+    const regionAdvanced = el('details', {}, [
+        el('summary', { text: 'Advanced' }),
+        weightsField,
+        diffField,
+        field('segments', nsegInput, nsegInfo),
+        calibrateField,
+        tauField,
+    ]);
 
     // --- fit
     const signed = v => (v > 0 ? `+${v.toFixed(1)}` : v < 0 ? `−${(-v).toFixed(1)}` : '0');
@@ -522,7 +531,7 @@ export function createControls(container, state, onChange, examples = [], local 
         alphaField,
         anBox,
         bandBox,
-        field('segments', nsegInput, nsegInfo),
+        regionAdvanced,
         heading('Fit', TIPS.fitHead),
         field('ambition penalty', penalty, TIPS.penalty),
         field('ambition (decades from a*)', el('div', {}, [ambition.row, ambitionEnds]), ambitionInfo),
@@ -580,6 +589,8 @@ export function createControls(container, state, onChange, examples = [], local 
         const an = st.region === 'An';
         anBox.hidden = !an;
         bandBox.hidden = an;
+        diffField.hidden = an;
+        calibrateField.hidden = !an;
         // Aₙ has no band or phase-1 fit to draw, only its boxes
         centerToggle.hidden = an;
         bandToggle.hidden = an;
