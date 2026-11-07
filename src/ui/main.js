@@ -42,6 +42,7 @@ import { toCsv, fitTables } from './export.js';
 const fmt = d3.format('.4~g');
 const fmtInt = d3.format(',');
 const fmtShort = d3.format('.2~g');
+const fmtShort3 = d3.format('.3~g');
 const CACHE_LIMIT = 24; // bands kept
 const BAND_B = 1000; // Monte Carlo draws for the band's critical value
 const BAND_SEED = 1;
@@ -1441,23 +1442,35 @@ async function startup() {
         scheduleHash();
     }
 
-    /** One line under a pane: its data, region and fit, and whether the fit stays inside the region. */
+    /**
+     * One line under a pane: n, the region's size (a band's ED, Aₙ's τ), the fit's ED and pieces, and only where
+     * the fit (or the true f of simulated data) leaves the region: {line, outside} (outside '' when nothing leaves).
+     * The full region label and the data's notes are its tooltip.
+     */
     function paneSummary(view) {
         const { data, result, phase2, truthCheck } = view;
         const region = result.region;
         const an = region.kind === 'An';
         const fit = phase2.fit;
-        const where = an ? 'Aₙ' : 'the band';
-        const inside = fit.leaving === 0 ? `inside ${where}`
-            : `leaves ${where} at ${fmtInt(fit.leaving)} ${an ? 'intervals' : 'check-grid points'} (largest `
-                + `|g − c|/h = ${fmt(fit.maxRatio)})`;
-        const parts = [`n = ${fmtInt(data.n)}`, region.label, `fit ED ${fmt(fit.ed)}${piecesText(fit)}, ${inside}`];
-        if (truthCheck) {
-            const symbol = an ? 'Aₙ' : 'band';
-            parts.push(truthCheck.ok ? `true f ∈ ${symbol}`
-                : `true f ∉ ${symbol} at ${fmtInt(truthCheck.outside)} ${an ? 'intervals' : 'points'}`);
+        const unit = an ? 'intervals' : 'pts';
+        const parts = [`n = ${fmtInt(data.n)}`, an ? `Aₙ τ = ${fmtShort3(result.an.params.tau)}`
+            : `band ED ${fmtShort3(region.params.ed)}`, `fit ED ${fmtShort3(fit.ed)}`];
+        if (fit.sparse) {
+            const counts = fit.pieces.orders.filter(o => o.pieces > 0)
+                .map(o => `${fmtInt(o.pieces)} ${o.order === 2 ? 'straight' : 'flat'}`);
+            if (counts.length)
+                parts.push(counts.join(', '));
         }
-        return parts.join(PANE_SUMMARY_SEP);
+        const out = [];
+        if (fit.leaving > 0)
+            out.push(`fit ${fmtInt(fit.leaving)} ${unit} (${fmtShort3(fit.maxRatio)} h)`);
+        if (truthCheck && !truthCheck.ok)
+            out.push(`true f ${fmtInt(truthCheck.outside)} ${unit}`);
+        // each phrase kept whole (no-break spaces), so a wrapped line breaks between them
+        const whole = text => text.replaceAll(' ', '\u00a0');
+        return { line: parts.join(PANE_SUMMARY_SEP),
+            outside: out.length ? `${whole(`outside: ${out[0]}`)}${out.slice(1).map(o => `, ${whole(o)}`).join('')}`
+                : '' };
     }
 
     function drawPane(pane) {
@@ -1476,8 +1489,22 @@ async function startup() {
             return;
         }
         drawInto(pane.chart, view);
-        pane.summary.textContent = paneSummary(view);
-        pane.summary.title = view.data.notes.join('\n');
+        const where = view.result.region.kind === 'An' ? 'Aₙ' : 'the band';
+        const { line, outside } = paneSummary(view);
+        const fit = view.phase2.fit;
+        // an excursion is never cut off: the line may wrap to show it
+        pane.summary.replaceChildren(line);
+        pane.summary.classList.toggle('outside', Boolean(outside));
+        if (outside) {
+            const warn = document.createElement('span');
+            warn.className = 'pane-outside';
+            warn.textContent = outside;
+            pane.summary.append(PANE_SUMMARY_SEP, warn);
+        }
+        pane.summary.title = [line + (outside ? PANE_SUMMARY_SEP + outside : ''), view.result.region.label,
+            fit.leaving === 0 ? `The fit stays inside ${where}.`
+                : `The fit leaves ${where} at ${fmtInt(fit.leaving)} ${view.result.region.kind === 'An' ? 'intervals'
+                    : 'check-grid points'}, by up to ${fmt(fit.maxRatio)} half-widths.`, ...view.data.notes].join('\n');
     }
 
     /**

@@ -360,10 +360,23 @@ body.gallery main {
     color: var(--ink-2);
     font-size: 0.78rem;
     line-height: 1.35;
+    /* one line; a narrow pane cuts it with an ellipsis, and the tooltip has it whole */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pane-summary.outside {
+    white-space: normal;
+}
+
+.pane-outside {
+    color: var(--violation);
 }
 
 .pane-summary.error {
     color: var(--violation);
+    white-space: normal;
 }
 
 .view-toggle {
