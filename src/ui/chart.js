@@ -8,7 +8,7 @@ import { themeColors, cssColor } from './theme.js';
 import { showTooltip, hideTooltip } from './tooltip.js';
 
 const HEIGHT = 340; // px
-const COMPACT_HEIGHT = 190; // px, a gallery pane's plot
+const COMPACT_HEIGHT = 215; // px, a gallery pane's plot
 const COMPACT_MARGIN = { top: 6, right: 6, bottom: 6, left: 6 }; // px: no axes
 const POINT_ALPHA = 0.55;
 const MARK_ROW = 9; // px above the x axis for extreme-plateau marks

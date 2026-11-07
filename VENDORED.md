@@ -94,7 +94,7 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/export.js`: `atObservations` (grid values at the observations, ties sharing their x's value) and
   `fitTables` (lafspline's per-observation and per-grid-point tables) added; `test/export.test.js` has tests for
   both.
-- `src/ui/chart.js`: `createMainChart(container, {compact})` draws a gallery pane: shorter (190 px), no axes, grid
+- `src/ui/chart.js`: `createMainChart(container, {compact})` draws a gallery pane: shorter (215 px), no axes, grid
   lines or legend of its own, small margins; the tooltip is unchanged. The legend is drawn by `drawLegend`, exported
   so the gallery draws one legend for all its panes from each chart's `legendItems()`.
 - `src/ui/layout.js`: `xScale(edges, width, margin)` takes the margins (the compact chart's), `MARGIN` by default.
