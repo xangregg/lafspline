@@ -77,12 +77,11 @@ const LOCAL_INDEX = 'index.json'; // in LOCAL_DIR: a JSON array of CSV file name
 const LOCAL_PROBE = 'README.md'; // in LOCAL_DIR, committed, so it is always there to ask
 const LISTING_SERVER = /^SimpleHTTP\//; // the Server header of Python's http.server, which lists directories
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
-// The gallery's data sets, in order: the first PANE_COUNTS[1] are its default, and a larger count takes the next.
-// Real data with different features (level stretches, a step, a spike, leveling off, a hump), then two signals.
-const GALLERY_SOURCES = ['example:gistemp-global', 'example:arctic-sea-ice-september',
-    'example:colorado-lees-ferry-peaks', 'example:oklahoma-earthquakes', 'example:auto-mpg-horsepower',
-    'example:bike-sharing-temperature', 'box', 'step'];
-const DEFAULT_PANES = PANE_COUNTS[1];
+// The gallery's default data sets, in order (fewer panes show the first ones): real data with different features
+// (level stretches, a level shift, leveling off, a hump), then two signals.
+const GALLERY_SOURCES = ['example:gistemp-global', 'example:ozone-annual', 'example:nile-flow', 'example:dog-ages',
+    'example:auto-mpg-horsepower', 'example:bike-sharing-temperature', 'ramp', 'step'];
+const DEFAULT_PANES = PANE_COUNTS[2];
 
 const state = {
     view: 'single', // 'single' (one chart with its readouts) | 'gallery' (several data sets, the settings shared)
