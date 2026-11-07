@@ -73,7 +73,8 @@ export function storySteps(view, st) {
     const fit = phase2.fit;
     const pieces = piecesPhrase(fit);
     const last = {
-        headline: 'The least ambitious fit',
+        // the method named, capitalized; 'as simple as the data allow' only when the fit stays inside its region
+        headline: fit.leaving > 0 ? 'Least Ambitious Fit' : 'Least Ambitious Fit: as simple as the data allow',
         detail: story.outro ?? `${pieces ? `${capitalize(pieces)}, ` : ''}${fit.leaving > 0 ? 'mostly ' : ''}`
             + `inside ${result.an ? 'Aₙ' : `the ${Math.round(100 * result.region.params.alpha)}% band`}`,
         keepDetail: Boolean(story.outro),
