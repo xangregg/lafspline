@@ -90,12 +90,12 @@ test('with a shortest interval the claim says what is not checked and cites the 
     const { x, y } = simulate('line', 30, 0.25, 7);
     const calibration = { alpha: 0.95, B: 1000, family: 'chosen' };
     const at5 = anRegion(x, y, { tau: 2.3, calibration, family: { kind: 'blocks', lambda: 2, minShare: 0.05 } });
-    assert.match(at5.claim, /Only intervals spanning at least 5% of the x range are checked/);
-    assert.match(at5.claim, /these intervals it held f in 93.5–97.5% of samples under Gaussian noise, but in 28–66%/);
+    assert.match(at5.claim, /Every interval spans at least 5% of the x range \(shorter ones are merged or widened\)/);
+    assert.match(at5.claim, /these intervals it held f in 92.8–99.3% of samples under Gaussian noise, but in 16–56%/);
     assert.match(at5.label, /spanning at least 5% of x/);
     const all = anRegion(x, y, { tau: 2.3, calibration }).claim;
     assert.match(all, /with these intervals it held f in 96–99.8% .* but in 0–2.5%/);
-    assert.doesNotMatch(all, /Only intervals spanning/);
+    assert.doesNotMatch(all, /Every interval spans/);
     assert.match(anRegion(x, y, { tau: 2.3, calibration, family: { kind: 'blocks', lambda: 2, minShare: 0.1 } }).claim,
         /In simulations \(not this shortest interval\)/);
     assert.match(anRegion(x, y, { tau: 2.3, calibration, family: { kind: 'all', minShare: 0.05 } }).claim,

@@ -516,16 +516,35 @@ the default fit, toward straight, is a line.
    - At steps of Blocks the flat sparse fit overshoots (a free run of differences allows a bump): Aₙ does not
      forbid it, and the count of steps does not see it.
    - *Shortest interval (2026-11-07, default 5%):* Aₙ has no λ, so the feature scale does not apply; its analog is
-     a shortest interval, a share of the x range (intervals.js `minShare`): Aₙ drops the intervals spanning less,
-     where an interval spans from midway to the previous x to midway to the next. τ is calibrated for the smaller
-     family, so it falls (n = 100: 3.4 → 2.3; n = 500: 2.8 → 1.5) and the remaining wide intervals tighten (c from
-     about 4.0σ to 3.2σ). With every interval the fit on dog ages was energetic (4 bends, 5 inflections, ED 8.3,
-     a dip from 69 to 22 near dog age 1.4): seven points at human ages 1.7–3 among points at 20–85 (dog ages
-     1.6–4.2, apparently a second series in the scraped figure) are each held by a single-observation interval.
-     At 5%: 3 bends, 2 inflections, ED 2.9; at 10% a line up to about 67 at dog age 6, then flat, near the 10%
-     bootstrap fit, but starting at 20 instead of following the dozen points near 3 below dog age 0.4. From 5% to
-     10% every example tried (dog ages, ozone, blood levels) drops toward one bend; ozone keeps its step up around
-     2012 with every interval but loses it at 10%. Blood levels hardly change.
+     a shortest interval, a share of the x range (intervals.js `minShare`), where an interval spans from midway to
+     the previous x to midway to the next. With every interval the fit on dog ages was energetic (4 bends,
+     5 inflections, ED 8.3, a dip from 69 to 22 near dog age 1.4): seven points at human ages 1.7–3 among points
+     at 20–85 (dog ages 1.6–4.2, apparently a second series in the scraped figure) are each held by a
+     single-observation interval.
+     First the shorter intervals were dropped. τ, calibrated for the smaller family, fell (n = 100: 3.4 → 2.3;
+     n = 500: 2.8 → 1.5) and c from about 4.0σ to 3.2σ. Dog ages at 5%: 3 bends, 2 inflections, ED 2.9; at 10% a
+     line up to about 67 at dog age 6, then flat, near the 10% bootstrap fit, but starting at 20 instead of
+     following the dozen points near 3 below dog age 0.4. From 5% to 10% every example tried (dog ages, ozone,
+     blood levels) dropped toward one bend; ozone kept its step up around 2012 with every interval but lost it at
+     10%. But dropping left stretches of dense x with no interval at a level (no boxes there at the tightest level).
+     Merging each short block into its neighbor, which keeps a level a partition, swallowed neighbors that were
+     long enough: on dog ages the block where x turns from dense to sparse (0.6–1.4) joined the dense run before
+     it, and the fit lost the steep start (a line from 18, as at 10%).
+     Widening each short interval one distinct x at a time on the nearer side until it spans enough (duplicates
+     removed) keeps every interval that spans enough and every stretch of x covered, but where every block is short
+     it makes about one interval per observation per level: 489 at n = 500 on an even design (dog ages at 5%:
+     τ 2.73, 63 intervals, the steep start kept, then flats near 35 and 70). τ fell less (n = 100: 3.4 → 2.9;
+     n = 500: 2.8 → 2.2).
+     *Kept (2026-11-07): merged runs.* In a level of blocks, each block that spans enough stays; each run of
+     consecutive shorter blocks is cut, at block boundaries, into ⌊T/shortest⌋ parts about equally wide (T the
+     run's span); a run too short even as one part (a short block between two long ones) is widened over its
+     neighbors. Overlapping windows and all intervals are widened. So a level is a partition except where such a
+     run overlaps, and a long-enough block is never swallowed. On an even design the finest level becomes about
+     20 parts: Step (n = 500) has 84 intervals, against 999 with every interval, and at its tightest level parts of
+     28–52 observations that tile x (3 bends, ED 3.0, the two steps found). τ: n = 100 3.4 → 2.7, n = 500
+     2.8 → 1.8; c about 3.35–3.6σ. Dog ages: τ 2.63, 55 intervals, flats near 40 and 70 after a rise from 17
+     (3 bends, ED 3.0; the first part merges the dozen points below dog age 0.5, so the fit no longer reaches 3).
+     Ozone: τ 3.34, 48 intervals, the decline to a flat (1 bend). Blood levels: a line and a flat, as before.
      Blocks in x (the range cut into 1, 2, 4, … bins of equal width, so a level means one width everywhere) were
      tried and removed: on dog ages alone they removed the dip (ED 4.9) but kept a bump; on ozone (even x) they gave
      6 bends against 3; in simulation they matched the paper's blocks within about 6 points, uneven design
@@ -533,20 +552,24 @@ the default fit, toward straight, is a line.
      *Coverage* (`tools/sim-an.mjs`: τ calibrated at α = 0.95 with B = 1000, σ estimated; line, sine, ramp,
      HeaviSine at n = 100 and 500, designs i/n and (i/n)², 400 replications per row):
 
-     | noise | every interval | shortest 5% |
-     |---|---|---|
-     | Gaussian | 96–99.8% | 93.5–97.5% |
-     | skewed or heteroscedastic, n = 100 | 11–85% | 45–97% |
-     | skewed or heteroscedastic, n = 500 | 0–2.5% | 28–66% |
+     | noise | every interval | 5%, dropped | 5%, widened | 5%, merged runs (kept) |
+     |---|---|---|---|---|
+     | Gaussian | 96–99.8% | 93.5–97.5% | 95.5–99.5% | 92.8–99.3% |
+     | skewed or heteroscedastic, n = 100 | 11–85% | 45–97% | 33–93% | 44.5–94.3% |
+     | skewed or heteroscedastic, n = 500 | 0–2.5% | 28–66% | 13–51% | 16–56% |
+     | intervals, n = 100 / 500, even design | 199 / 999 | 24 / 30 | 105 / 489 | 60 / 84 |
 
-     Under Gaussian noise the least-squares line was rejected for the ramp at n = 100 in 98.5–99.3% of samples at
-     5% against 84.5–90.3% with every interval, and for the line signal (a false alarm) in 1–3% either way. With
-     every interval, single observations are held to the Gaussian tail, and one skewed or high-variance point at
-     n = 500 excludes f. The rest of the shortfall is σ̂: the median of absolute differences underestimates σ by
-     about 26% for the skewed noise (c/σ 2.41 against 3.26) and 15% for the heteroscedastic, and τ is calibrated
-     for Gaussian noise. The bootstrap band at 10% held 92.5–95.5% under the same noise (open question 7), which
-     remains its advantage. The claim cites these rows; a σ̂ or calibration robust to such noise would be a separate
-     change.
+     Under Gaussian noise the least-squares line was rejected for the ramp at n = 100 in 84.5–90.3% of samples with
+     every interval, 98.5–99.3% dropped, 95.3–97.5% widened and 95.8–98.5% with merged runs; for the line signal (a
+     false alarm) in 1–4.3% in every case. With every interval, single observations are held to the Gaussian tail,
+     and one skewed or high-variance point at n = 500 excludes f. The other families fall short under such noise
+     roughly with their number of intervals of a few dozen observations, each a sum of skewed or uneven terms. The
+     rest of the shortfall is σ̂: the median of absolute differences underestimates σ by about 26% for the skewed
+     noise (c/σ 2.41 against 3.26 with short ones dropped) and 15% for the heteroscedastic, and τ is calibrated for
+     Gaussian noise. The bootstrap band at 10% held 92.5–95.5% under the same noise (open question 7), which remains
+     its advantage. The claim cites the merged-runs rows; a σ̂ or calibration robust to such noise would be a
+     separate change. Gaussian coverage with merged runs is a little below 95% at n = 500 on the even design (line
+     92.8%, ramp 93.0%), within about two standard errors of 400 replications and τ's Monte Carlo error.
 7. **Phase-1 λ:** GCV versus REML or Fellner–Schall; whether to offer it as the long-term/short-term knob instead
    of (or as well as) the ambition multiplier. GCV can be bimodal (a noisy line: a shallow local minimum at
    ED ≈ 6 and the global one at the line, ED → 2), so the grid stays ahead of any local refinement; and it

@@ -94,9 +94,12 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   simulations (`tools/sim-an.mjs`) of a calibrated τ under Gaussian, skewed and heteroscedastic noise; τ = 3's
   measured coverage is claimed only for every one of the paper's blocks.
 - `src/core/intervals.js`: an interval family may have a shortest span, `minShare` (a share of the x range):
-  `familyLevels` drops the intervals whose span (`intervalSpan`: from midway to the previous distinct x to midway
-  to the next) is shorter, keeping the whole range and the level numbers; `familyText` names it. So Aₙ answers
-  only to features at least that wide, and on uneven x a short interval is kept where x is sparse. Tests added.
+  no interval spans (`intervalSpan`: from midway to the previous distinct x to midway to the next) less. In a level
+  of blocks, `familyLevels` keeps each block that spans enough, merges each run of shorter blocks into parts about
+  equally wide (`mergeShort`), and widens a run too short even as one part over its neighbors (`widen`); overlapping
+  windows and all intervals are widened; duplicates within a level are removed. `familyText` names it. So Aₙ
+  answers only to features at least that wide, every stretch of x keeps intervals at every level, and on uneven x a
+  short interval passes unchanged where x is sparse. Tests added.
 - `src/ui/chart.js`: a `hidden` set in the model leaves layers undrawn ('data', 'truth', 'band', a fit's key) and
   out of the legend, while they still set the scales and stay in the tooltip. The Aₙ box shapes are listed once
   (`boxShapes`) and drawn on the canvas or exported. `toSvg({title})` returns the chart as drawn as a standalone SVG

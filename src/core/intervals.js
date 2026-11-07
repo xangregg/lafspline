@@ -137,9 +137,9 @@ const SPAN_TOL = 1e-9; // share of the x range: an interval exactly at the short
  *     | {kind: 'overlapping', lambda: number, offsets: number}
  *     | {kind: 'all'}) & {minShare?: number}} IntervalFamily
  *     blocks: the paper's family (eq. 9); overlapping: overlappingLevels; all: every interval (O(m²), limited
- *     to m ≤ ALL_INTERVALS_MAX distinct x). minShare (0 to 1, default 0): drop the intervals whose span
- *     (intervalSpan) is below this share of the x range, so Aₙ answers only to features at least that wide; the
- *     whole range is always kept. Spans are in x, so on uneven x a short interval is kept where x is sparse
+ *     to m ≤ ALL_INTERVALS_MAX distinct x). minShare (0 to 1, default 0): no interval spans (intervalSpan) less
+ *     than this share of the x range, so Aₙ answers only to features at least that wide (see familyLevels).
+ *     Spans are in x, so on uneven x a short interval passes where x is sparse
  */
 
 export const ALL_INTERVALS_MAX = 300; // distinct x: 45,150 intervals, already slow for the MIP
@@ -147,6 +147,16 @@ export const ALL_INTERVALS_MAX = 300; // distinct x: 45,150 intervals, already s
 /**
  * A family of x-intervals as observation ranges, level by level (ties never split; levels group intervals of
  * similar length, ⌊log₂ length⌋ for 'all').
+ *
+ * With a shortest span (family.minShare), no interval spanning less is kept as it is, and none is simply dropped,
+ * which would leave stretches of dense x without an interval at that level. In a level of blocks, every block that
+ * spans enough stays; each run of consecutive short blocks is merged within itself into parts that span enough
+ * (mergeShort), and a run too short even as one part is widened over its neighbors (widen). So a level stays a
+ * partition except where such a run overlaps, a block long enough is never swallowed by a short neighbor (on dog
+ * ages, the block where x turns from dense to sparse), and where every block is short (an even design) the level
+ * becomes about 1/share parts instead of one widened block per observation. Overlapping windows and all intervals
+ * overlap anyway: each short one is widened. Duplicates within a level are removed. All of it depends on x alone,
+ * so the family is still fixed before y is seen.
  *
  * @param {ArrayLike<number>} x  sorted (ties allowed)
  * @param {IntervalFamily} family
@@ -160,9 +170,118 @@ export function familyLevels(x, family) {
         return levels;
     const n = x.length;
     const shortest = (share - SPAN_TOL) * (x[n - 1] - x[0]);
-    // level numbers stay array indices (the chart looks a level up by them), so a level can be left empty
-    return levels.map(level => level.filter(iv => (iv.lo === 0 && iv.hi === n - 1) || intervalSpan(x, iv)
-        >= shortest));
+    if (family.kind === 'blocks')
+        return levels.map(level => distinct(mergeRuns(x, level, shortest)));
+    return levels.map(level => distinct(level.map(iv => widen(x, iv, shortest))));
+}
+
+// The intervals ordered by lo (then hi), each once.
+function distinct(intervals) {
+    const seen = new Set();
+    const out = [];
+    for (const iv of intervals.sort((a, b) => a.lo - b.lo || a.hi - b.hi)) {
+        const key = `${iv.lo},${iv.hi}`;
+        if (seen.has(key))
+            continue;
+        seen.add(key);
+        out.push(iv);
+    }
+    return out;
+}
+
+/**
+ * One level of blocks with a shortest span: the blocks that span at least `shortest` unchanged, each maximal run
+ * of shorter blocks between them merged within itself (mergeShort), and a run that is short even as one part
+ * widened over its neighbors.
+ *
+ * @param {ArrayLike<number>} x  sorted
+ * @param {Interval[]} level  ordered by lo, covering 0..n−1
+ * @param {number} shortest  units of x
+ * @returns {Interval[]}
+ */
+function mergeRuns(x, level, shortest) {
+    const out = [];
+    let run = [];
+    const flush = () => {
+        for (const part of mergeShort(x, run, shortest))
+            out.push(intervalSpan(x, part) < shortest ? widen(x, part, shortest) : part);
+        run = [];
+    };
+    for (const iv of level) {
+        if (intervalSpan(x, iv) >= shortest) {
+            flush();
+            out.push(iv);
+        }
+        else {
+            run.push(iv);
+        }
+    }
+    flush();
+    return out;
+}
+
+/**
+ * Consecutive blocks merged into parts that each span at least `shortest`, as far as their total allows: the run's
+ * span T makes p = ⌊T/shortest⌋ parts (at least 1), cut at block boundaries where a part first reaches T/p, and a
+ * last part left short joins the one before it. So the parts are about equally wide in x, and as many as fit. O(r)
+ * for r blocks.
+ *
+ * @param {ArrayLike<number>} x  sorted
+ * @param {Interval[]} blocks  consecutive, ordered by lo
+ * @param {number} shortest  units of x
+ * @returns {Interval[]}  consecutive, covering the same observations
+ */
+function mergeShort(x, blocks, shortest) {
+    if (blocks.length === 0)
+        return [];
+    const level = blocks[0].level;
+    const whole = { lo: blocks[0].lo, hi: blocks[blocks.length - 1].hi, level };
+    const parts = Math.max(1, Math.floor(intervalSpan(x, whole) / shortest));
+    const target = intervalSpan(x, whole) / parts;
+    const out = [];
+    let lo = whole.lo;
+    for (const iv of blocks) {
+        if (intervalSpan(x, { lo, hi: iv.hi }) >= target) {
+            out.push({ lo, hi: iv.hi, level });
+            lo = iv.hi + 1;
+        }
+    }
+    if (lo <= whole.hi) {
+        if (out.length > 0 && intervalSpan(x, { lo, hi: whole.hi }) < shortest)
+            out[out.length - 1].hi = whole.hi;
+        else
+            out.push({ lo, hi: whole.hi, level });
+    }
+    return out;
+}
+
+/**
+ * An interval grown one distinct x at a time, on the side whose next x is nearer, until it spans at least
+ * `shortest` or covers every observation; tied observations are taken together.
+ *
+ * @param {ArrayLike<number>} x  sorted
+ * @param {Interval} iv
+ * @param {number} shortest  units of x
+ * @returns {Interval}
+ */
+function widen(x, iv, shortest) {
+    const n = x.length;
+    let { lo, hi } = iv;
+    while (intervalSpan(x, { lo, hi }) < shortest && (lo > 0 || hi < n - 1)) {
+        const left = lo > 0 ? x[lo] - x[lo - 1] : Infinity;
+        const right = hi < n - 1 ? x[hi + 1] - x[hi] : Infinity;
+        if (left <= right) {
+            lo--;
+            while (lo > 0 && x[lo - 1] === x[lo])
+                lo--;
+        }
+        else {
+            hi++;
+            while (hi < n - 1 && x[hi + 1] === x[hi])
+                hi++;
+        }
+    }
+    return { lo, hi, level: iv.level };
 }
 
 function unfilteredLevels(x, family) {

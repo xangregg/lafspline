@@ -1331,6 +1331,15 @@ async function startup() {
      * Aₙ boxes for the chart: the level of the interval with the largest ratio (the tightest), or every level in
      * outline. Each box is mean_I(y) ± c/√|I| over its interval's cells, with the fit's mean as a tick.
      */
+    // a level's intervals have one count, unless a shortest span merged or widened some of them
+    function levelCounts(level) {
+        const counts = level.map(iv => iv.hi - iv.lo + 1);
+        const lo = d3.min(counts);
+        const hi = d3.max(counts);
+        return lo === hi ? `${fmtInt(lo)}-observation intervals`
+            : `intervals of ${fmtInt(lo)}–${fmtInt(hi)} observations`;
+    }
+
     function anBoxSpec(result, phase2, data) {
         if (state.boxes === 'off')
             return null;
@@ -1347,8 +1356,8 @@ async function startup() {
         const level = result.levels[tight.level];
         const emphasize = level.findIndex(iv => iv.lo === tight.lo && iv.hi === tight.hi);
         return { ...common, faint: false, levels: [{ boxes: boxesOf(level), emphasize }],
-            label: `Aₙ boxes at the tightest level (${fmtInt(tight.hi - tight.lo + 1)}-observation intervals): the `
-                + 'fit\'s mean (tick) must lie in each box' };
+            label: `Aₙ boxes at the tightest level (${levelCounts(level)}): the fit's mean (tick) must lie in each `
+                + 'box' };
     }
 
     /** Show the single view or the gallery: the readouts and the main chart, or the panes. */

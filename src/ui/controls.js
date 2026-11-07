@@ -106,14 +106,16 @@ const TIPS = {
         + 'runs of residuals that straddle block edges.\n'
         + '- **All**: every interval (at most 300 distinct x).\n'
         + 'Denser families need a larger τ for the same coverage.',
-    anShare: 'Aₙ checks only the intervals that span at least this share of the x range (an interval spans from '
-        + 'midway to the previous x to midway to the next, so a lone observation where x is sparse can pass), so it '
-        + 'answers only to features at least this wide, much as the band\'s feature scale does. 5% by default; "all" '
-        + 'keeps every interval, the paper\'s family.\n'
-        + 'With fewer intervals a calibrated τ is smaller, so the wide intervals that remain are tighter. In '
-        + 'simulations, 5% held f about as often as every interval did under Gaussian noise (93.5–97.5%) and much '
-        + 'more often under skewed or uneven noise (28–66% at n = 500, against 0–2.5%), where single observations '
-        + 'fall outside the Gaussian tail.',
+    anShare: 'Every interval Aₙ checks spans at least this share of the x range (an interval spans from midway to '
+        + 'the previous x to midway to the next, so where x is sparse a lone observation can be enough). Of the '
+        + 'paper\'s blocks, those that span enough stay as they are; runs of shorter blocks are merged with each other '
+        + 'into parts about equally wide, and a run too short even then is widened over its neighbors. So Aₙ answers '
+        + 'only to features at least this wide, much as the band\'s feature scale does. 5% by default; "all" keeps '
+        + 'every interval as it is, the paper\'s family.\n'
+        + 'With fewer intervals a calibrated τ is smaller, so the wide intervals are tighter. In simulations, 5% held '
+        + 'f about as often as every interval did under Gaussian noise (92.8–99.3%) and more often under skewed or '
+        + 'uneven noise (16–56% at n = 500, against 0–2.5%), where single observations fall outside the Gaussian '
+        + 'tail.',
     calibrate: 'Choose τ by simulating Aₙ\'s multiscale statistic on pure noise for this n, design and intervals, '
         + 'so that the coverage is α. Otherwise τ is given.',
     tau: 'Aₙ\'s threshold is c = σ̂·√(τ log n). The paper\'s default is 3; its coverage then depends on n and the '

@@ -123,26 +123,71 @@ test('an interval spans midway to its neighbors (clipped to the range)', () => {
     assert.equal(intervalSpan(UNEVEN, { lo: 0, hi: 13 }), 10);
 });
 
-test('a shortest span keeps only the intervals at least that wide, and always the whole range', () => {
-    for (const kind of ['blocks', 'all']) {
-        const full = familyLevels(UNEVEN, { kind, lambda: 2 });
-        for (const share of [0.05, 0.2, 0.5, 1]) {
-            const levels = familyLevels(UNEVEN, { kind, lambda: 2, minShare: share });
-            assert.equal(levels.length, full.length, 'level numbers stay array indices');
-            const kept = levels.flat();
-            const keys = new Set(kept.map(iv => `${iv.level}:${iv.lo},${iv.hi}`));
-            const dropped = full.flat().filter(iv => !keys.has(`${iv.level}:${iv.lo},${iv.hi}`));
-            for (const iv of kept)
-                assert.ok(intervalSpan(UNEVEN, iv) >= share * 10 * (1 - 1e-9) || (iv.lo === 0 && iv.hi === 13));
-            for (const iv of dropped)
-                assert.ok(intervalSpan(UNEVEN, iv) < share * 10);
-            assert.ok(kept.some(iv => iv.lo === 0 && iv.hi === 13));
+test('with a shortest span blocks long enough stay, runs of short blocks merge, and every part spans enough', () => {
+    const full = familyLevels(UNEVEN, { kind: 'blocks', lambda: 2 });
+    for (const share of [0.05, 0.2, 0.5, 1]) {
+        const shortest = share * 10;
+        const levels = familyLevels(UNEVEN, { kind: 'blocks', lambda: 2, minShare: share });
+        assert.equal(levels.length, full.length, 'level numbers stay array indices');
+        for (const [k, level] of levels.entries()) {
+            const starts = new Set(full[k].map(iv => iv.lo));
+            const ends = new Set(full[k].map(iv => iv.hi));
+            for (const iv of level) {
+                assert.equal(iv.level, k);
+                assert.ok(intervalSpan(UNEVEN, iv) >= shortest * (1 - 1e-9) || level.length === 1);
+            }
+            // every observation is in some part, and a block long enough is a part as it was
+            for (let i = 0; i < UNEVEN.length; i++)
+                assert.ok(level.some(iv => iv.lo <= i && i <= iv.hi));
+            for (const iv of full[k]) {
+                if (intervalSpan(UNEVEN, iv) >= shortest)
+                    assert.ok(level.some(w => w.lo === iv.lo && w.hi === iv.hi));
+            }
+            // a part not widened is a run of whole blocks
+            for (const iv of level.filter(w => starts.has(w.lo) && ends.has(w.hi)))
+                assert.ok(full[k].some(b => b.lo === iv.lo) && full[k].some(b => b.hi === iv.hi));
         }
-        assert.equal(familyIntervals(UNEVEN, { kind, lambda: 2, minShare: 1 }).length, 1);
     }
-    // where x is sparse a lone observation passes a span that a dense run of several does not
-    const kept = familyIntervals(UNEVEN, { kind: 'blocks', lambda: 2, minShare: 0.2 });
-    assert.ok(kept.some(iv => iv.lo === 10 && iv.hi === 10)); // x = 4 alone spans 2.5
-    assert.ok(!kept.some(iv => iv.lo === 0 && iv.hi === 3)); // x = 0 to 0.02, four observations, span 0.035
+    // an even design: every singleton is short, so the finest level becomes about 1/share parts, a partition
+    const even = Float64Array.from({ length: 100 }, (_, i) => i);
+    const finest = familyLevels(even, { kind: 'blocks', lambda: 2, minShare: 0.05 })[0];
+    assert.ok(finest.length >= 15 && finest.length <= 20, `${finest.length} parts`);
+    let next = 0;
+    for (const iv of finest) {
+        assert.equal(iv.lo, next);
+        next = iv.hi + 1;
+    }
+    assert.equal(next, 100);
+    // 60 distinct intervals, against 199 with every block and 105 when each short block was widened on its own
+    assert.equal(familyIntervals(even, { kind: 'blocks', lambda: 2, minShare: 0.05 }).length, 60);
+});
+
+test('with a shortest span short intervals are widened to it, ties kept together, duplicates removed', () => {
+    for (const family of [{ kind: 'overlapping', lambda: 2, offsets: 4 }, { kind: 'all' }]) {
+        const full = familyLevels(UNEVEN, family);
+        for (const share of [0.05, 0.2, 0.5, 1]) {
+            const levels = familyLevels(UNEVEN, { ...family, minShare: share });
+            assert.equal(levels.length, full.length);
+            for (const [k, level] of levels.entries()) {
+                assert.equal(new Set(level.map(iv => `${iv.lo},${iv.hi}`)).size, level.length);
+                for (const iv of level) {
+                    assert.ok(intervalSpan(UNEVEN, iv) >= share * 10 * (1 - 1e-9) || (iv.lo === 0 && iv.hi === 13));
+                    assert.ok(iv.lo === 0 || UNEVEN[iv.lo] !== UNEVEN[iv.lo - 1], 'ties are never split');
+                    assert.ok(iv.hi === 13 || UNEVEN[iv.hi] !== UNEVEN[iv.hi + 1], 'ties are never split');
+                }
+                // every original interval lies inside a widened one of its level, and one spanning enough is kept
+                for (const iv of full[k]) {
+                    assert.ok(level.some(w => w.lo <= iv.lo && w.hi >= iv.hi));
+                    if (intervalSpan(UNEVEN, iv) >= share * 10)
+                        assert.ok(level.some(w => w.lo === iv.lo && w.hi === iv.hi));
+                }
+            }
+        }
+        assert.equal(familyIntervals(UNEVEN, { ...family, minShare: 1 }).length, 1);
+    }
+    // where x is sparse a widened block holds fewer observations than where it is dense
+    const finest = familyLevels(UNEVEN, { kind: 'blocks', lambda: 2, minShare: 0.2 })[0];
+    const count = iv => iv.hi - iv.lo + 1;
+    assert.ok(count(finest[0]) > count(finest.at(-1)), finest.map(count).join(','));
     assert.equal(familyText({ kind: 'blocks', lambda: 2, minShare: 0.05 }), 'λ = 2, spanning at least 5% of x');
 });

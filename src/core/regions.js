@@ -53,8 +53,8 @@ const NULL_SEED = 1;
 // sine, ramp, HeaviSine at n = 100 and 500, even and uneven x, 400 replications; PLAN.md open question 6), with the
 // shortest interval at SIMULATED_SHARE of the x range and with every interval.
 const SIMULATED_SHARE = 0.05;
-const SIMULATED_GAUSS = { share: '93.5–97.5%', all: '96–99.8%' };
-const SIMULATED_OTHER = { share: '28–66%', all: '0–2.5%' }; // n = 500, skewed or heteroscedastic noise
+const SIMULATED_GAUSS = { share: '92.8–99.3%', all: '96–99.8%' };
+const SIMULATED_OTHER = { share: '16–56%', all: '0–2.5%' }; // n = 500, skewed or heteroscedastic noise
 
 /**
  * The coverage sentence for Aₙ. τ = 3 numbers are tautfit's measurements (PLAN.md §4).
@@ -91,8 +91,8 @@ function anClaim(p) {
         coverage = `Coverage of τ = ${round(p.tau)} is not known; calibrate τ for a stated level. Assumes the noise `
             + `is independent Gaussian${p.sigmaSource === 'given' ? ' with the given σ' : ' (σ estimated from the data)'}.`;
     }
-    const shortest = p.minShare > 0 ? ` Only intervals spanning at least ${pctOf(p.minShare)} of the x range are `
-        + 'checked, so narrower features are neither required nor ruled out.' : '';
+    const shortest = p.minShare > 0 ? ` Every interval spans at least ${pctOf(p.minShare)} of the x range (shorter `
+        + 'ones are merged or widened), so narrower features are neither required nor ruled out.' : '';
     return `${coverage}${shortest} No smoothness is assumed about f.`;
 }
 
