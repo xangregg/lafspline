@@ -9,7 +9,7 @@ import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import { lambdaSourceName, MIN_POINTS_PER_PERIOD } from '../core/thumb.js';
 import {
     MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
-    BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_RANGE, FEATURE_SCALE_START,
+    BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_RANGE, FEATURE_SCALE_START, AN_SHARE_RANGE,
 } from './urlstate.js';
 import { fmtExp } from './format.js';
 import { infoIcon, setInfo } from './info.js';
@@ -22,6 +22,7 @@ const BEND_LENGTH_STEP = 0.005; // fraction of the x range
 const POWER_STEP = 0.05; // the power penalty's q
 const LOG_LAMBDA_STEP = 0.1; // natural log units on the given-λ slider
 const FEATURE_SCALE_STEP = 0.01; // share of the x range on the feature-scale slider
+const AN_SHARE_STEP = 0.01; // share of the x range on Aₙ's shortest-interval slider
 const FEATURE_SCALE_MIN = 0.02; // the slider's low end: finer than a few knot spacings the basis cannot follow
 const UNDERSMOOTH_OPTIONS = [
     [1, 'none: λ as chosen'],
@@ -105,6 +106,14 @@ const TIPS = {
         + 'runs of residuals that straddle block edges.\n'
         + '- **All**: every interval (at most 300 distinct x).\n'
         + 'Denser families need a larger τ for the same coverage.',
+    anShare: 'Aₙ checks only the intervals that span at least this share of the x range (an interval spans from '
+        + 'midway to the previous x to midway to the next, so a lone observation where x is sparse can pass), so it '
+        + 'answers only to features at least this wide, much as the band\'s feature scale does. 5% by default; "all" '
+        + 'keeps every interval, the paper\'s family.\n'
+        + 'With fewer intervals a calibrated τ is smaller, so the wide intervals that remain are tighter. In '
+        + 'simulations, 5% held f about as often as every interval did under Gaussian noise (93.5–97.5%) and much '
+        + 'more often under skewed or uneven noise (28–66% at n = 500, against 0–2.5%), where single observations '
+        + 'fall outside the Gaussian tail.',
     calibrate: 'Choose τ by simulating Aₙ\'s multiscale statistic on pure noise for this n, design and intervals, '
         + 'so that the coverage is α. Otherwise τ is given.',
     tau: 'Aₙ\'s threshold is c = σ̂·√(τ log n). The paper\'s default is 3; its coverage then depends on n and the '
@@ -384,8 +393,11 @@ export function createControls(container, state, onChange, examples = [], local 
     calibrate.addEventListener('change', () => onChange({ calibrate: calibrate.checked }));
     const tauInput = numberInput('tau', { min: TAU_RANGE[0], max: TAU_RANGE[1], step: 0.1 });
     const tauField = field('τ', tauInput, TIPS.tau);
+    const anShare = slider('anShare', AN_SHARE_RANGE[0], AN_SHARE_RANGE[1], AN_SHARE_STEP,
+        v => (v > 0 ? `${Math.round(100 * v)}%` : 'all'));
     const anBox = el('div', { class: 'group' }, [
         field('intervals', family, TIPS.family),
+        field('shortest interval (share of the x range)', anShare.row, TIPS.anShare),
         check(calibrate, 'calibrate τ for coverage α', TIPS.calibrate),
         tauField,
     ]);

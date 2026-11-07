@@ -115,11 +115,31 @@ export function overlappingLevels(n, lambda = 2, offsets = 4) {
 }
 
 /**
- * @typedef {{kind: 'blocks', lambda: number}
+ * The stretch of x an interval of observations stands for: from midway to the previous distinct x to midway to
+ * the next (clipped to [min x, max x]), so a lone observation where x is sparse spans the gap around it, and a run
+ * of observations where x is dense spans little.
+ *
+ * @param {ArrayLike<number>} x  sorted
+ * @param {Interval} iv
+ * @returns {number}  units of x
+ */
+export function intervalSpan(x, iv) {
+    const n = x.length;
+    const left = iv.lo > 0 ? (x[iv.lo - 1] + x[iv.lo]) / 2 : x[0];
+    const right = iv.hi < n - 1 ? (x[iv.hi] + x[iv.hi + 1]) / 2 : x[n - 1];
+    return right - left;
+}
+
+const SPAN_TOL = 1e-9; // share of the x range: an interval exactly at the shortest span is kept despite rounding
+
+/**
+ * @typedef {({kind: 'blocks', lambda: number}
  *     | {kind: 'overlapping', lambda: number, offsets: number}
- *     | {kind: 'all'}} IntervalFamily
+ *     | {kind: 'all'}) & {minShare?: number}} IntervalFamily
  *     blocks: the paper's family (eq. 9); overlapping: overlappingLevels; all: every interval (O(m²), limited
- *     to m ≤ ALL_INTERVALS_MAX distinct x)
+ *     to m ≤ ALL_INTERVALS_MAX distinct x). minShare (0 to 1, default 0): drop the intervals whose span
+ *     (intervalSpan) is below this share of the x range, so Aₙ answers only to features at least that wide; the
+ *     whole range is always kept. Spans are in x, so on uneven x a short interval is kept where x is sparse
  */
 
 export const ALL_INTERVALS_MAX = 300; // distinct x: 45,150 intervals, already slow for the MIP
@@ -134,6 +154,18 @@ export const ALL_INTERVALS_MAX = 300; // distinct x: 45,150 intervals, already s
  * @throws {RangeError} for 'all' with more than ALL_INTERVALS_MAX distinct x
  */
 export function familyLevels(x, family) {
+    const levels = unfilteredLevels(x, family);
+    const share = family.minShare ?? 0;
+    if (!(share > 0))
+        return levels;
+    const n = x.length;
+    const shortest = (share - SPAN_TOL) * (x[n - 1] - x[0]);
+    // level numbers stay array indices (the chart looks a level up by them), so a level can be left empty
+    return levels.map(level => level.filter(iv => (iv.lo === 0 && iv.hi === n - 1) || intervalSpan(x, iv)
+        >= shortest));
+}
+
+function unfilteredLevels(x, family) {
     const { start, m } = tieRanges(x);
     if (family.kind === 'blocks')
         return multiresolutionLevels(m, family.lambda).map(level => toObservations(level, start));
@@ -179,13 +211,16 @@ export function familyIntervals(x, family) {
  * @returns {string}
  */
 export function familyText(family) {
+    let text = 'all intervals';
     if (family.kind === 'blocks')
-        return `λ = ${family.lambda}`;
-    if (family.kind === 'overlapping') {
+        text = `λ = ${family.lambda}`;
+    else if (family.kind === 'overlapping') {
         const steps = family.offsets === Infinity ? 'every position' : `1/${family.offsets}-width steps`;
-        return `λ = ${family.lambda}, ${steps}`;
+        text = `λ = ${family.lambda}, ${steps}`;
     }
-    return 'all intervals';
+    if (family.minShare > 0)
+        text += `, spanning at least ${+(100 * family.minShare).toPrecision(3)}% of x`;
+    return text;
 }
 
 /**

@@ -49,11 +49,19 @@ const NULL_SEED = 1;
  * @property {number} [tauHi]
  */
 
+// Simulated coverage of f by Aₙ with a calibrated τ (α = 0.95) over the paper's blocks (tools/sim-an.mjs: line,
+// sine, ramp, HeaviSine at n = 100 and 500, even and uneven x, 400 replications; PLAN.md open question 6), with the
+// shortest interval at SIMULATED_SHARE of the x range and with every interval.
+const SIMULATED_SHARE = 0.05;
+const SIMULATED_GAUSS = { share: '93.5–97.5%', all: '96–99.8%' };
+const SIMULATED_OTHER = { share: '28–66%', all: '0–2.5%' }; // n = 500, skewed or heteroscedastic noise
+
 /**
  * The coverage sentence for Aₙ. τ = 3 numbers are tautfit's measurements (PLAN.md §4).
  *
  * @param {{tau: number, sigmaSource: 'estimated'|'given', calibration: Calibration|null,
- *     blocks: boolean}} p  blocks: the paper's interval family, the one the τ = 3 numbers were measured for
+ *     blocks: boolean, minShare: number}} p  blocks: the paper's interval family, the one the τ = 3 numbers and
+ *     the simulations were measured for; minShare: the shortest interval as a share of the x range (0: all)
  * @returns {string}
  */
 function anClaim(p) {
@@ -63,7 +71,13 @@ function anClaim(p) {
     let coverage;
     if (p.calibration) {
         coverage = `Contains the true f with probability ≈ ${p.calibration.alpha} (τ = ${round(p.tau)} calibrated `
-            + `by Monte Carlo, B = ${p.calibration.B}, for this n, design and intervals) ${noise}.`;
+            + `by Monte Carlo, B = ${p.calibration.B}, for this n, design and intervals) ${noise}. `
+            + anSimulated(p);
+    }
+    else if (p.tau === DEFAULT_TAU && p.blocks && p.minShare > 0) {
+        coverage = `Coverage of τ = ${DEFAULT_TAU} with these intervals is not known: higher than with all of the `
+            + 'paper\'s blocks, since fewer intervals give the noise fewer chances to exceed c. Calibrate τ for a '
+            + 'stated level.';
     }
     else if (p.tau === DEFAULT_TAU && !p.blocks) {
         coverage = `Coverage of τ = ${DEFAULT_TAU} with these intervals is not known: lower than with the paper's `
@@ -77,7 +91,35 @@ function anClaim(p) {
         coverage = `Coverage of τ = ${round(p.tau)} is not known; calibrate τ for a stated level. Assumes the noise `
             + `is independent Gaussian${p.sigmaSource === 'given' ? ' with the given σ' : ' (σ estimated from the data)'}.`;
     }
-    return `${coverage} No smoothness is assumed about f.`;
+    const shortest = p.minShare > 0 ? ` Only intervals spanning at least ${pctOf(p.minShare)} of the x range are `
+        + 'checked, so narrower features are neither required nor ruled out.' : '';
+    return `${coverage}${shortest} No smoothness is assumed about f.`;
+}
+
+// What the simulations found for this shortest interval, or the nearest rows they ran, saying so.
+function anSimulated(p) {
+    const tail = 'σ̂ from differences underestimates such noise, and with every interval single observations are '
+        + 'also held to the Gaussian tail.';
+    const both = `with intervals spanning at least ${pctOf(SIMULATED_SHARE)} of x, ${SIMULATED_GAUSS.share} under `
+        + `Gaussian noise but ${SIMULATED_OTHER.share} at n = 500 with skewed or heteroscedastic noise; with every `
+        + `interval, ${SIMULATED_GAUSS.all} and ${SIMULATED_OTHER.all}`;
+    if (!p.blocks)
+        return `In simulations with the paper's blocks (not these intervals) it held f ${both}: ${tail}`;
+    if (p.minShare === SIMULATED_SHARE) {
+        return `In simulations with these intervals it held f in ${SIMULATED_GAUSS.share} of samples under Gaussian `
+            + `noise, but in ${SIMULATED_OTHER.share} at n = 500 with skewed or heteroscedastic noise (with every `
+            + `interval, ${SIMULATED_OTHER.all}): ${tail}`;
+    }
+    if (!(p.minShare > 0)) {
+        return `In simulations with these intervals it held f in ${SIMULATED_GAUSS.all} of samples under Gaussian `
+            + `noise, but in ${SIMULATED_OTHER.all} at n = 500 with skewed or heteroscedastic noise (with intervals `
+            + `spanning at least ${pctOf(SIMULATED_SHARE)} of x, ${SIMULATED_OTHER.share}): ${tail}`;
+    }
+    return `In simulations (not this shortest interval) it held f ${both}: ${tail}`;
+}
+
+function pctOf(share) {
+    return `${round(100 * share)}%`;
 }
 
 function round(v) {
@@ -122,7 +164,8 @@ export function anRegion(x, y, opts = {}) {
     return {
         kind: 'An',
         label: `Aₙ (τ = ${round(tau)}, ${intervalsText})`,
-        claim: anClaim({ tau, sigmaSource, calibration, blocks: !opts.intervals && family.kind === 'blocks' }),
+        claim: anClaim({ tau, sigmaSource, calibration, blocks: !opts.intervals && family.kind === 'blocks',
+            minShare: opts.intervals ? 0 : family.minShare ?? 0 }),
         draw: 'boxes',
         lo, hi, center, width,
         scale: threshold(sigma, tau, n),

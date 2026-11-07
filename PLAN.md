@@ -515,6 +515,38 @@ the default fit, toward straight, is a line.
      (chess recall, fibers). A second-difference floor of 1e-12 of the strongest penalty present fixes it.
    - At steps of Blocks the flat sparse fit overshoots (a free run of differences allows a bump): Aₙ does not
      forbid it, and the count of steps does not see it.
+   - *Shortest interval (2026-11-07, default 5%):* Aₙ has no λ, so the feature scale does not apply; its analog is
+     a shortest interval, a share of the x range (intervals.js `minShare`): Aₙ drops the intervals spanning less,
+     where an interval spans from midway to the previous x to midway to the next. τ is calibrated for the smaller
+     family, so it falls (n = 100: 3.4 → 2.3; n = 500: 2.8 → 1.5) and the remaining wide intervals tighten (c from
+     about 4.0σ to 3.2σ). With every interval the fit on dog ages was energetic (4 bends, 5 inflections, ED 8.3,
+     a dip from 69 to 22 near dog age 1.4): seven points at human ages 1.7–3 among points at 20–85 (dog ages
+     1.6–4.2, apparently a second series in the scraped figure) are each held by a single-observation interval.
+     At 5%: 3 bends, 2 inflections, ED 2.9; at 10% a line up to about 67 at dog age 6, then flat, near the 10%
+     bootstrap fit, but starting at 20 instead of following the dozen points near 3 below dog age 0.4. From 5% to
+     10% every example tried (dog ages, ozone, blood levels) drops toward one bend; ozone keeps its step up around
+     2012 with every interval but loses it at 10%. Blood levels hardly change.
+     Blocks in x (the range cut into 1, 2, 4, … bins of equal width, so a level means one width everywhere) were
+     tried and removed: on dog ages alone they removed the dip (ED 4.9) but kept a bump; on ozone (even x) they gave
+     6 bends against 3; in simulation they matched the paper's blocks within about 6 points, uneven design
+     included. A shortest span in x already compensates for uneven x.
+     *Coverage* (`tools/sim-an.mjs`: τ calibrated at α = 0.95 with B = 1000, σ estimated; line, sine, ramp,
+     HeaviSine at n = 100 and 500, designs i/n and (i/n)², 400 replications per row):
+
+     | noise | every interval | shortest 5% |
+     |---|---|---|
+     | Gaussian | 96–99.8% | 93.5–97.5% |
+     | skewed or heteroscedastic, n = 100 | 11–85% | 45–97% |
+     | skewed or heteroscedastic, n = 500 | 0–2.5% | 28–66% |
+
+     Under Gaussian noise the least-squares line was rejected for the ramp at n = 100 in 98.5–99.3% of samples at
+     5% against 84.5–90.3% with every interval, and for the line signal (a false alarm) in 1–3% either way. With
+     every interval, single observations are held to the Gaussian tail, and one skewed or high-variance point at
+     n = 500 excludes f. The rest of the shortfall is σ̂: the median of absolute differences underestimates σ by
+     about 26% for the skewed noise (c/σ 2.41 against 3.26) and 15% for the heteroscedastic, and τ is calibrated
+     for Gaussian noise. The bootstrap band at 10% held 92.5–95.5% under the same noise (open question 7), which
+     remains its advantage. The claim cites these rows; a σ̂ or calibration robust to such noise would be a separate
+     change.
 7. **Phase-1 λ:** GCV versus REML or Fellner–Schall; whether to offer it as the long-term/short-term knob instead
    of (or as well as) the ambition multiplier. GCV can be bimodal (a noisy line: a shallow local minimum at
    ED ≈ 6 and the global one at the line, ED → 2), so the grid stays ahead of any local refinement; and it

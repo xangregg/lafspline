@@ -25,6 +25,8 @@ export const POWER_RANGE = [0.1, 2]; // q of the power penalty
 export const BEND_LENGTH_RANGE = [0, 0.25]; // shaped bends' length L, fraction of the x range
 export const SHAPE_COST_RANGE = [0, 20]; // shaped bends' extremum and inflection costs, in plain bends
 export const FAMILIES = ['blocks', 'quarter', 'every', 'all']; // Aₙ intervals
+export const AN_SHARE_RANGE = [0, 0.5]; // Aₙ's shortest interval, share of the x range (0: every interval)
+export const AN_SHARE_START = 0.05; // share of the x range: Aₙ's default shortest interval (PLAN open question 6)
 export const BOX_VIEWS = ['tightest', 'all', 'off']; // Aₙ boxes drawn on the chart
 export const AN_MAX_SEGMENTS = 100; // phase-2 basis for Aₙ: its long intervals make the Newton system dense
 export const TAU_RANGE = [0.1, 20];
@@ -90,6 +92,7 @@ const FIELDS = {
     yCol: int(0, MAX_COLUMN),
     region: enumOf(REGIONS),
     family: enumOf(FAMILIES),
+    anShare: num(...AN_SHARE_RANGE),
     calibrate: bool,
     tau: num(...TAU_RANGE),
     boxes: enumOf(BOX_VIEWS),

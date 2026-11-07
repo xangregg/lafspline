@@ -99,7 +99,9 @@
                 its critical value by Monte Carlo. It covers f itself if f is smooth.</li>
             <li><strong>Aₙ</strong> (Davies, Kovac &amp; Meise): bounds on the sums of the residuals over intervals
                 of the observations, with τ calibrated by Monte Carlo for the coverage. It assumes nothing about
-                the smoothness of f.</li>
+                the smoothness of f, but more than the bands about the noise: skewed or uneven noise lowers its
+                coverage far more. By default it checks only the intervals spanning at least 5% of the x range,
+                so it answers to features at least that wide.</li>
         </ul>
         <p>
             The bands' λ comes from a feature scale: the shortest features of interest, as a share of the x range

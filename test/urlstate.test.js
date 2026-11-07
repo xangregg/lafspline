@@ -6,7 +6,7 @@ import { SIGNALS } from '../src/core/signals.js';
 // Mirrors the initial state in src/ui/main.js.
 const DEFAULTS = {
     source: 'ramp', n: SIGNALS.ramp.n, sigma: SIGNALS.ramp.sigma, seed: 1, showTruth: true, userText: '',
-    xCol: null, yCol: null, region: 'band', family: 'blocks', calibrate: true, tau: 3, boxes: 'tightest',
+    xCol: null, yCol: null, region: 'band', family: 'blocks', anShare: 0.05, calibrate: true, tau: 3, boxes: 'tightest',
     alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
     nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, bendLength: 0.05, extremumCost: 2,
     inflectionCost: 1, logKappa: 4, logEpsilon: -2, showData: true, showCenter: true, showBand: true, showFit: true,
@@ -180,4 +180,13 @@ test('λ by feature scale round-trips; a scale out of range is rejected', async 
     assert.deepEqual((await hashToState(hash, DEFAULTS)).state, st);
     for (const bad of ['0', '1.5', 'x'])
         assert.deepEqual((await hashToState(`#featureScale=${bad}`, DEFAULTS)).rejected, ['featureScale']);
+});
+
+test('Aₙ\'s shortest interval round-trips; 0 keeps every interval; out of range is rejected', async () => {
+    for (const anShare of [0, 0.12]) {
+        const { hash } = await stateToHash({ ...DEFAULTS, region: 'An', anShare }, DEFAULTS);
+        assert.equal(hash, `#region=An&anShare=${anShare}`);
+        assert.equal((await hashToState(hash, DEFAULTS)).state.anShare, anShare);
+    }
+    assert.deepEqual((await hashToState('#anShare=0.6', DEFAULTS)).rejected, ['anShare']);
 });

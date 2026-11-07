@@ -86,6 +86,25 @@ test('the claim states the noise assumption and how τ was chosen', () => {
     assert.match(anRegion(x, y, { family: { kind: 'all' } }).claim, /Coverage of τ = 3 with these intervals is not known/);
 });
 
+test('with a shortest interval the claim says what is not checked and cites the simulations for it', () => {
+    const { x, y } = simulate('line', 30, 0.25, 7);
+    const calibration = { alpha: 0.95, B: 1000, family: 'chosen' };
+    const at5 = anRegion(x, y, { tau: 2.3, calibration, family: { kind: 'blocks', lambda: 2, minShare: 0.05 } });
+    assert.match(at5.claim, /Only intervals spanning at least 5% of the x range are checked/);
+    assert.match(at5.claim, /these intervals it held f in 93.5–97.5% of samples under Gaussian noise, but in 28–66%/);
+    assert.match(at5.label, /spanning at least 5% of x/);
+    const all = anRegion(x, y, { tau: 2.3, calibration }).claim;
+    assert.match(all, /with these intervals it held f in 96–99.8% .* but in 0–2.5%/);
+    assert.doesNotMatch(all, /Only intervals spanning/);
+    assert.match(anRegion(x, y, { tau: 2.3, calibration, family: { kind: 'blocks', lambda: 2, minShare: 0.1 } }).claim,
+        /In simulations \(not this shortest interval\)/);
+    assert.match(anRegion(x, y, { tau: 2.3, calibration, family: { kind: 'all', minShare: 0.05 } }).claim,
+        /with the paper's blocks \(not these intervals\)/);
+    // τ = 3's measured numbers are for every one of the paper's blocks
+    assert.match(anRegion(x, y, { family: { kind: 'blocks', lambda: 2, minShare: 0.05 } }).claim,
+        /Coverage of τ = 3 with these intervals is not known: higher/);
+});
+
 test('with σ = 0 the check gives ratio 0 or ∞, never NaN (regression: pasted data with exact replicates)', () => {
     const x = Float64Array.from({ length: 12 }, (_, i) => Math.floor(i / 2));
     const y = Float64Array.from(x, v => 1 + 0.1 * v); // replicates agree exactly, so σ̂ = 0

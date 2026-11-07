@@ -32,7 +32,8 @@ import { tauFromSample } from '../core/calibrate.js';
 import { constraintBoxes } from '../core/region.js';
 import { createControls, sourceSelect } from './controls.js';
 import { infoIcon } from './info.js';
-import { stateToHash, hashToState, AN_MAX_SEGMENTS, MAX_N, PANE_COUNTS, FEATURE_SCALE_START } from './urlstate.js';
+import { stateToHash, hashToState, AN_MAX_SEGMENTS, MAX_N, PANE_COUNTS, FEATURE_SCALE_START, AN_SHARE_START }
+    from './urlstate.js';
 import { fmtExp } from './format.js';
 import { createMainChart, drawLegend } from './chart.js';
 import { cellEdges } from './layout.js';
@@ -97,6 +98,7 @@ const state = {
     yCol: null, // column index, null = auto (second column if there are ≥ 2, else the only one)
     region: 'boot', // phase 1: 'band' (P-spline) | 'boot' (bootstrap band) | 'An' (Davies, Kovac & Meise's)
     family: 'blocks', // Aₙ intervals: 'blocks' | 'quarter' (¼-width steps) | 'every' (every position) | 'all'
+    anShare: AN_SHARE_START, // Aₙ: the shortest interval kept, share of the x range (intervals.intervalSpan)
     calibrate: true, // Aₙ: τ calibrated for coverage alpha, instead of tau
     tau: 3, // Aₙ: τ when not calibrated
     boxes: 'tightest', // Aₙ boxes on the chart: 'tightest' (the level of the largest ratio) | 'all' | 'off'
@@ -254,11 +256,14 @@ function bandKey(st, data) {
 }
 
 function familyOf(st) {
+    let family = { kind: 'blocks', lambda: AN_LAMBDA };
     if (st.family === 'all')
-        return { kind: 'all' };
-    if (st.family === 'quarter' || st.family === 'every')
-        return { kind: 'overlapping', lambda: AN_LAMBDA, offsets: st.family === 'quarter' ? 4 : Infinity };
-    return { kind: 'blocks', lambda: AN_LAMBDA };
+        family = { kind: 'all' };
+    else if (st.family === 'quarter' || st.family === 'every')
+        family = { kind: 'overlapping', lambda: AN_LAMBDA, offsets: st.family === 'quarter' ? 4 : Infinity };
+    if (st.anShare > 0)
+        family.minShare = st.anShare;
+    return family;
 }
 
 function anSegments(st, data) {
@@ -270,7 +275,7 @@ function regionKey(st, data) {
     if (st.region !== 'An')
         return bandKey(st, data);
     const tau = st.calibrate ? `cal:${st.alpha}` : st.tau;
-    return ['An', data.dataKey, st.family, tau, anSegments(st, data).nseg].join('|');
+    return ['An', data.dataKey, st.family, st.anShare, tau, anSegments(st, data).nseg].join('|');
 }
 
 /**
@@ -293,7 +298,7 @@ function computeAn(st, data, nullCache) {
     let calibration = null;
     let calMs = null;
     if (st.calibrate) {
-        const key = `${data.dataKey}|${st.family}`;
+        const key = `${data.dataKey}|${st.family}|${st.anShare}`;
         let cal = nullCache.get(key);
         if (!cal) {
             const t = performance.now();
@@ -723,7 +728,9 @@ function renderAnReadouts(sel, result, truthCheck, data) {
             : `in steps of 1/${f.offsets} of the length`}`,
         all: 'every interval',
     };
-    add('intervals', fmtInt(an.lo.length), kind[f.kind]);
+    const shortest = f.minShare > 0 ? `; only those spanning at least ${fmtShort3(100 * f.minShare)}% of the x range`
+        : '';
+    add('intervals', fmtInt(an.lo.length), kind[f.kind] + shortest);
     add('box half-height', `${fmt(d3.min(region.half))} – ${fmt(d3.max(region.half))}`, 'c/√|I|, units of y');
     add('computed in', `${fmt(result.ms)} ms`, result.calMs === null
         ? (cal ? 'the calibration sample was already computed for these x and intervals' : '')
@@ -845,7 +852,10 @@ function shortClaim(result) {
         const level = p.calibration
             ? `Contains f with probability ≈ ${fmt(p.calibration.alpha)} (τ calibrated)`
             : `τ = ${fmt(p.tau)} is given, so its coverage is not calibrated`;
-        return `${level}, if the noise is independent Gaussian; no smoothness is assumed about f.`;
+        const shortest = p.family?.minShare > 0 ? ` Features narrower than ${fmtShort3(100 * p.family.minShare)}% `
+            + 'of the x range are not checked.' : '';
+        return `${level}, if the noise is independent Gaussian (skewed or uneven noise lowers it far more than the `
+            + `bootstrap band's); no smoothness is assumed about f.${shortest}`;
     }
     const p = result.region.params;
     if (p.covariance === 'bootstrap') {
@@ -1330,7 +1340,8 @@ async function startup() {
         const common = { limit: 1 + LEAVE_TOL, fitColorVar: FIT_COLOR };
         if (state.boxes === 'all') {
             return { ...common, faint: true, label: 'Aₙ boxes, all levels',
-                levels: result.levels.map(level => ({ boxes: boxesOf(level), emphasize: -1 })) };
+                levels: result.levels.filter(level => level.length > 0)
+                    .map(level => ({ boxes: boxesOf(level), emphasize: -1 })) };
         }
         const tight = result.intervals[phase2.fit.argMax];
         const level = result.levels[tight.level];

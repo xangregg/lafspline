@@ -24,8 +24,8 @@ projects can be compared later.
 | `calibrate.js` | Monte Carlo calibration of τ (phase 4) |
 | `regions.js` | Aₙ as a region: `anRegion`, claim, `checkFit`, `calibrateTau`, `nullSample` (phase 4; trimmed) |
 
-`region.js`, `intervals.js` and `calibrate.js` are unchanged, with their tests. `an.js` (Aₙ as boxes for phase 2) is
-lafspline's own.
+`region.js` and `calibrate.js` are unchanged, with their tests; `intervals.js` has one addition (below). `an.js` (Aₙ
+as boxes for phase 2) is lafspline's own.
 
 ## src/ui
 
@@ -78,15 +78,25 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   `region` also takes `boot` (the bootstrap band), with `bootWeights` for its weights. `penalty` also takes `shaped`
   (rounded bends), with `bendLength`, `extremumCost` and `inflectionCost`. `source` also takes `local:<id>`, a data
   set in `localdata/` (main.js lists them when the app runs from this machine). `lambdaMode` also takes `scale`,
-  with `featureScale` (a share of the x range). `view` (`single` or `gallery`) and
+  with `featureScale` (a share of the x range), and `anShare` is Aₙ's shortest interval (a share of the x range,
+  0 for every interval). `view` (`single` or `gallery`) and
   `panes` (the gallery's sources, comma-separated, 4, 6 or 8 of them, never pasted data; written only in the gallery,
   with the seed and true-f toggle for its simulated panes) are added; a setting is compared with its default as
-  written, so a list equal to its default is left out. The hash and data packing code is unchanged. `test/urlstate.test.js` is the earlier project's with the lafspline fields.
+  written, so a list equal to its default is left out. `view` and `panes` are last in the field table, so a link
+  writes them after every other setting (before only the pasted data) and the rest are easier to edit by hand. The
+  hash and data packing code is unchanged. `test/urlstate.test.js` is the earlier project's with the lafspline fields.
 - `styles.css`: slider and Advanced-panel rules appended.
 - `src/core/regions.js`: trimmed to Aₙ. The earlier project's smoother band (`bandRegion`, `bandClaim`, which need its
   `smoother.js`) and LP framing (`standardRows`, for its `lp-build.js`) are removed, since lafspline's band is
   `band.js` and phase 2 takes the constraints in box form (`an.js`). `scaleStatistic` and `nullSample` lost their
-  band branches. `test/regions.test.js` is the earlier project's without the band, LP and kink tests.
+  band branches. `test/regions.test.js` is the earlier project's without the band, LP and kink tests. The claim
+  takes the family's shortest interval (`minShare`): it says which features are not checked and cites lafspline's
+  simulations (`tools/sim-an.mjs`) of a calibrated τ under Gaussian, skewed and heteroscedastic noise; τ = 3's
+  measured coverage is claimed only for every one of the paper's blocks.
+- `src/core/intervals.js`: an interval family may have a shortest span, `minShare` (a share of the x range):
+  `familyLevels` drops the intervals whose span (`intervalSpan`: from midway to the previous distinct x to midway
+  to the next) is shorter, keeping the whole range and the level numbers; `familyText` names it. So Aₙ answers
+  only to features at least that wide, and on uneven x a short interval is kept where x is sparse. Tests added.
 - `src/ui/chart.js`: a `hidden` set in the model leaves layers undrawn ('data', 'truth', 'band', a fit's key) and
   out of the legend, while they still set the scales and stay in the tooltip. The Aₙ box shapes are listed once
   (`boxShapes`) and drawn on the canvas or exported. `toSvg({title})` returns the chart as drawn as a standalone SVG

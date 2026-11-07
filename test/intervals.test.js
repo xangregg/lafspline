@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { multiresolutionLevels, multiresolution, allIntervals, overlappingLevels, familyLevels, familyIntervals,
-    familyText, xIntervalFamily, ALL_INTERVALS_MAX } from '../src/core/intervals.js';
+    familyText, xIntervalFamily, intervalSpan, ALL_INTERVALS_MAX } from '../src/core/intervals.js';
 
 const SIZES = [1, 2, 3, 7, 8, 9, 100, 500, 1000, 1023, 1024, 1025];
 
@@ -109,4 +109,40 @@ test('families over tied x never split ties, and blocks equal the λ family', ()
     assert.equal(familyText({ kind: 'overlapping', lambda: 2, offsets: 4 }), 'λ = 2, 1/4-width steps');
     const big = Float64Array.from({ length: ALL_INTERVALS_MAX + 1 }, (_, i) => i);
     assert.throws(() => familyLevels(big, { kind: 'all' }), RangeError);
+});
+
+// uneven x with ties: dense near 0, sparse after, two tied pairs
+const UNEVEN = Float64Array.from([0, 0.01, 0.02, 0.02, 0.05, 0.3, 0.31, 1, 2, 2, 4, 7, 7.5, 10]);
+
+test('an interval spans midway to its neighbors (clipped to the range)', () => {
+    const tol = 1e-12; // units of x
+    assert.ok(Math.abs(intervalSpan(UNEVEN, { lo: 0, hi: 0 }) - 0.005) < tol);
+    assert.ok(Math.abs(intervalSpan(UNEVEN, { lo: 10, hi: 10 }) - (5.5 - 3)) < tol); // x = 4, between 2 and 7
+    assert.ok(Math.abs(intervalSpan(UNEVEN, { lo: 8, hi: 9 }) - (3 - 1.5)) < tol); // the tied pair at 2
+    assert.ok(Math.abs(intervalSpan(UNEVEN, { lo: 13, hi: 13 }) - (10 - 8.75)) < tol);
+    assert.equal(intervalSpan(UNEVEN, { lo: 0, hi: 13 }), 10);
+});
+
+test('a shortest span keeps only the intervals at least that wide, and always the whole range', () => {
+    for (const kind of ['blocks', 'all']) {
+        const full = familyLevels(UNEVEN, { kind, lambda: 2 });
+        for (const share of [0.05, 0.2, 0.5, 1]) {
+            const levels = familyLevels(UNEVEN, { kind, lambda: 2, minShare: share });
+            assert.equal(levels.length, full.length, 'level numbers stay array indices');
+            const kept = levels.flat();
+            const keys = new Set(kept.map(iv => `${iv.level}:${iv.lo},${iv.hi}`));
+            const dropped = full.flat().filter(iv => !keys.has(`${iv.level}:${iv.lo},${iv.hi}`));
+            for (const iv of kept)
+                assert.ok(intervalSpan(UNEVEN, iv) >= share * 10 * (1 - 1e-9) || (iv.lo === 0 && iv.hi === 13));
+            for (const iv of dropped)
+                assert.ok(intervalSpan(UNEVEN, iv) < share * 10);
+            assert.ok(kept.some(iv => iv.lo === 0 && iv.hi === 13));
+        }
+        assert.equal(familyIntervals(UNEVEN, { kind, lambda: 2, minShare: 1 }).length, 1);
+    }
+    // where x is sparse a lone observation passes a span that a dense run of several does not
+    const kept = familyIntervals(UNEVEN, { kind: 'blocks', lambda: 2, minShare: 0.2 });
+    assert.ok(kept.some(iv => iv.lo === 10 && iv.hi === 10)); // x = 4 alone spans 2.5
+    assert.ok(!kept.some(iv => iv.lo === 0 && iv.hi === 3)); // x = 0 to 0.02, four observations, span 0.035
+    assert.equal(familyText({ kind: 'blocks', lambda: 2, minShare: 0.05 }), 'λ = 2, spanning at least 5% of x');
 });
