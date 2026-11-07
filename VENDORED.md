@@ -112,3 +112,5 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   lines or legend of its own, small margins; the tooltip is unchanged. The legend is drawn by `drawLegend`, exported
   so the gallery draws one legend for all its panes from each chart's `legendItems()`.
 - `src/ui/layout.js`: `xScale(edges, width, margin)` takes the margins (the compact chart's), `MARGIN` by default.
+- `src/core/datasets.js`: two optional metadata keys, `intro` and `outro`, the first and last steps' text in the
+  animated export (src/ui/story.js); they are not in the index.

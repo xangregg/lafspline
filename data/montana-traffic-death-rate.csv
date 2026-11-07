@@ -3,6 +3,8 @@
 # x: year
 # y: rate
 # note: rate: deaths per 100 million vehicle miles on all public roads; rural_interstate_rate: the same on rural interstates, from 20–59 deaths a year, so noisier (crashes coded as rural interstate: 1980 by class of trafficway and land use, 1981 by road function and land use, 1982–2014 road function 1, from 2015 functional system 1 and rural); vmt columns in millions of miles. Rural interstate speed limits: 55 mph until April 1987, then 65 mph; no numeric daytime limit from December 8, 1995 ("reasonable and prudent"); 75 mph from May 1999, after State v. Stanko (December 1998); 80 mph from October 1, 2015. The rate falls from 4.9 in 1980 to about 2.2–2.5 around 1990 and 1.4–1.9 in the 2010s, as nationally; 1997 is high (2.82; 2.73 on rural interstates), and 2020–21 rise, as nationally. FHWA's functional classes changed in 2009 and urban boundaries in 2013 (Montana's urban miles rose by a quarter), which moved some miles from rural to urban roads
+# intro: Montana traffic deaths per mile driven, 1980–2023
+# outro: Rural interstate speed limits: 65 mph from April 1987, no numeric daytime limit from December 1995, 75 mph from May 1999, 80 mph from October 2015
 year,rate,rural_interstate_rate,deaths,rural_interstate_deaths,vmt_millions,rural_interstate_vmt_millions
 1980,4.907,3.869,325,51,6623,1318
 1981,4.827,3.614,338,48,7002,1328

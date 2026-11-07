@@ -40,6 +40,7 @@ import { cellEdges } from './layout.js';
 import { onThemeChange } from './theme.js';
 import { toCsv, fitTables } from './export.js';
 import { createHistory } from './history.js';
+import { animatedGif, animatedSvg, storyDurations, storyFrames, storySteps } from './story.js';
 
 const fmt = d3.format('.4~g');
 const fmtInt = d3.format(',');
@@ -176,6 +177,7 @@ function deriveData(st, exampleTexts, examples) {
     let columns = [];
     let dataKey;
     let label;
+    let story = {}; // the animated export's first and last text, from the file's intro and outro lines
     const notes = [];
     if (examples.has(st.source)) {
         const id = st.source;
@@ -192,6 +194,7 @@ function deriveData(st, exampleTexts, examples) {
         y = d.y;
         columns = [d.xName, d.yName];
         dataKey = st.source;
+        story = { intro: d.meta.intro, outro: d.meta.outro };
         notes.push(`Source: ${d.meta.source}`);
         if (d.meta.note)
             notes.push(d.meta.note);
@@ -220,6 +223,7 @@ function deriveData(st, exampleTexts, examples) {
         x = d.x;
         y = d.y;
         dataKey = `user|${hashText(st.userText)}|${xCol}|${yCol}`;
+        story = { intro: meta.intro, outro: meta.outro };
         if (meta.source)
             notes.push(`Source: ${meta.source}`);
         if (meta.note)
@@ -242,7 +246,7 @@ function deriveData(st, exampleTexts, examples) {
     const m = distinctCount(x);
     if (m < 4)
         return { error: 'Need at least 4 distinct x values.', columns };
-    return { columns, notes, label, x, y, fAt, n, m, dataKey, edges: cellEdges(x) };
+    return { columns, notes, label, story, x, y, fAt, n, m, dataKey, edges: cellEdges(x) };
 }
 
 function bandKey(st, data) {
@@ -1721,6 +1725,10 @@ async function startup() {
             say(`Saved ${name} (${fmtInt(columns[0].values.length)} rows).`);
             return;
         }
+        if (kind === 'gif' || kind === 'anim-svg') {
+            await exportStory(kind, base);
+            return;
+        }
         const svg = chart.toSvg({ title: data.label });
         if (kind === 'svg') {
             download(new Blob([svg.text], { type: 'image/svg+xml' }), `${base}.svg`);
@@ -1735,6 +1743,36 @@ async function startup() {
         }
         catch (err) {
             say(`Could not make the image: ${err.message}`);
+        }
+    }
+    /** The fit built up step by step (story.js), as an animated GIF or SVG. */
+    async function exportStory(kind, base) {
+        const { steps, error } = storySteps(current, state);
+        if (error) {
+            say(error);
+            return;
+        }
+        const details = document.getElementById('export-details').checked;
+        try {
+            const story = storyFrames(document.getElementById('main-chart'), chartModel(current).model, steps,
+                { details });
+            const durations = storyDurations(steps.length);
+            const seconds = durations.reduce((a, b) => a + b, 0);
+            if (kind === 'anim-svg') {
+                const name = `${base}-steps.svg`;
+                download(new Blob([animatedSvg(story, durations)], { type: 'image/svg+xml' }), name);
+                say(`Saved ${name} (${steps.length} steps, ${fmt(seconds)} s, looping).`);
+                return;
+            }
+            say('Making the GIF…');
+            const gif = await animatedGif(story, durations);
+            const name = `${base}-steps.gif`;
+            download(gif.blob, name);
+            say(`Saved ${name} (${gif.width} × ${gif.height} px, ${steps.length} steps, ${fmt(seconds)} s, `
+                + `${gif.colors} colors, ${fmtInt(Math.round(gif.blob.size / 1024))} KB).`);
+        }
+        catch (err) {
+            say(`Could not make the animation: ${err.message}`);
         }
     }
     exportMenu.addEventListener('click', event => {

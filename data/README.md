@@ -23,6 +23,9 @@ Each `.csv` file here appears in the app's dataset list under **Examples** and i
      the data.
    - `x`, `y`: column names to use; default the first two columns.
    - `note`: anything a reader should know (known features, units, caveats such as serial correlation).
+   - `intro`, `outro`: optional text for the animated export (Export → Steps as animated GIF or SVG). `intro` is the
+     first step's headline, in place of the label, for a reader who does not know the data; `outro` is the last
+     step's detail line, for context such as a date that bears on the fit (the Montreal Protocol, a speed limit).
 
    Rows with a missing or non-numeric x or y are dropped (and counted in the readouts). Tied x are fine.
 3. Run `npm run data:index` to regenerate `data/index.json`. It reports any problem with a file and writes
