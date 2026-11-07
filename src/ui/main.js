@@ -1368,8 +1368,19 @@ async function startup() {
         }
         onChange({ panes: next });
     });
-    let panes = []; // {source, root, chartEl, chart, summary, select, view}
+    let panes = []; // {source, root, chartEl, chart, summary, select, view, key}
     let galleryRun = 0;
+    // Settings that do not change a pane's fit: the view, the panes, the display toggles, and the single view's data
+    // (a pane has its own source, and a signal its own n and σ).
+    const NOT_PANE_KEYS = new Set([...DISPLAY_KEYS, 'view', 'panes', 'source', 'n', 'sigma', 'userText', 'xCol',
+        'yCol']);
+
+    /** What a pane's fit depends on: its source and the shared settings (the seed only for a signal). */
+    function paneKey(source) {
+        const shared = Object.entries(state).filter(([key]) => !NOT_PANE_KEYS.has(key)
+            && (key !== 'seed' || SIGNALS[source]));
+        return JSON.stringify([source, shared]);
+    }
 
     /** A pane's state: the shared settings with its source (a signal at its own n and σ). */
     function paneState(source) {
@@ -1378,38 +1389,41 @@ async function startup() {
             ...(spec ? { n: Math.min(spec.n, MAX_N), sigma: spec.sigma } : {}) };
     }
 
+    function makePane(i) {
+        const root = document.createElement('div');
+        root.className = 'pane';
+        const head = document.createElement('div');
+        head.className = 'pane-head';
+        const select = sourceSelect(exampleList, localList, { user: false });
+        select.setAttribute('aria-label', `Data set in pane ${i + 1}`);
+        select.addEventListener('change', () => {
+            const next = [...state.panes];
+            next[i] = select.value;
+            onChange({ panes: next });
+        });
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.className = 'pane-open';
+        open.textContent = '↗';
+        open.title = 'Open this data set in the single view, with its readouts';
+        open.setAttribute('aria-label', `Open pane ${i + 1} in the single view`);
+        open.addEventListener('click', () => openPane(i));
+        head.append(select, open);
+        const chartEl = document.createElement('div');
+        const summary = document.createElement('p');
+        summary.className = 'pane-summary';
+        root.append(head, chartEl, summary);
+        galleryGrid.append(root);
+        return { source: null, root, chartEl, chart: createMainChart(chartEl, { compact: true }), summary, select,
+            view: null, key: null };
+    }
+
+    /** As many panes as state.panes, keeping the ones there are (and what they show). */
     function buildPanes() {
-        if (panes.length !== state.panes.length) {
-            galleryGrid.replaceChildren();
-            panes = state.panes.map((source, i) => {
-                const root = document.createElement('div');
-                root.className = 'pane';
-                const head = document.createElement('div');
-                head.className = 'pane-head';
-                const select = sourceSelect(exampleList, localList, { user: false });
-                select.setAttribute('aria-label', `Data set in pane ${i + 1}`);
-                select.addEventListener('change', () => {
-                    const next = [...state.panes];
-                    next[i] = select.value;
-                    onChange({ panes: next });
-                });
-                const open = document.createElement('button');
-                open.type = 'button';
-                open.className = 'pane-open';
-                open.textContent = '↗';
-                open.title = 'Open this data set in the single view, with its readouts';
-                open.setAttribute('aria-label', `Open pane ${i + 1} in the single view`);
-                open.addEventListener('click', () => openPane(i));
-                head.append(select, open);
-                const chartEl = document.createElement('div');
-                const summary = document.createElement('p');
-                summary.className = 'pane-summary';
-                root.append(head, chartEl, summary);
-                galleryGrid.append(root);
-                return { source, root, chartEl, chart: createMainChart(chartEl, { compact: true }), summary, select,
-                    view: null };
-            });
-        }
+        while (panes.length > state.panes.length)
+            panes.pop().root.remove();
+        while (panes.length < state.panes.length)
+            panes.push(makePane(panes.length));
         panes.forEach((pane, i) => {
             pane.source = state.panes[i];
             pane.select.value = pane.source;
@@ -1496,12 +1510,14 @@ async function startup() {
         document.body.dataset.ready = 'false';
         controls.sync(state, {});
         buildPanes();
-        for (const pane of panes)
+        // only the panes whose data set or settings changed are recomputed; the others keep their fit
+        const todo = panes.filter(pane => pane.key !== paneKey(pane.source));
+        for (const pane of todo)
             pane.root.classList.add('stale');
-        for (let i = 0; i < panes.length; i++) {
-            const pane = panes[i];
+        for (let i = 0; i < todo.length; i++) {
+            const pane = todo[i];
             status.classed('error', false).text(`Gallery: computing ${pane.select.selectedOptions[0]?.text ?? ''} `
-                + `(${i + 1} of ${panes.length})…`);
+                + `(${i + 1} of ${todo.length})…`);
             // let the page paint the panes done so far before the next (a band can take a second)
             await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
             if (run !== galleryRun)
@@ -1515,6 +1531,7 @@ async function startup() {
                 view = computeView(st);
             }
             pane.view = view;
+            pane.key = paneKey(pane.source);
             drawPane(pane);
         }
         drawGalleryLegend();
