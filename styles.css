@@ -897,6 +897,35 @@ footer a {
     font-size: 0.7rem;
 }
 
+/* --- settings history: three icon buttons at the top right of the controls panel */
+#controls-panel {
+    position: relative;
+}
+
+.history-bar {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    display: flex;
+    gap: 0.25rem;
+}
+
+.history-bar button {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.3rem;
+}
+
+.history-bar svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 #controls details {
     margin-bottom: 0.5rem;
 }

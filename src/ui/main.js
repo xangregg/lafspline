@@ -38,6 +38,7 @@ import { createMainChart, drawLegend } from './chart.js';
 import { cellEdges } from './layout.js';
 import { onThemeChange } from './theme.js';
 import { toCsv, fitTables } from './export.js';
+import { createHistory } from './history.js';
 
 const fmt = d3.format('.4~g');
 const fmtInt = d3.format(',');
@@ -125,7 +126,16 @@ const state = {
 // Settings that change only what the chart draws: a change to them redraws without refitting.
 const DISPLAY_KEYS = new Set(['showTruth', 'showData', 'showCenter', 'showBand', 'showFit', 'boxes']);
 const PANE_SUMMARY_SEP = ' · ';
+// What chooses the data (the source, pasted data and its columns, a signal's n, σ and seed, the gallery's panes)
+// and the view: Reset, Undo and Redo leave these alone and change only the other settings.
+const DATA_KEYS = new Set(['view', 'panes', 'source', 'n', 'sigma', 'seed', 'userText', 'xCol', 'yCol']);
 const DEFAULTS = structuredClone(state);
+const SETTING_KEYS = Object.keys(DEFAULTS).filter(key => !DATA_KEYS.has(key));
+
+/** The settings that Reset, Undo and Redo act on. */
+function settingsOf(st) {
+    return Object.fromEntries(SETTING_KEYS.map(key => [key, st[key]]));
+}
 
 let tableCache = { text: null, table: null };
 
@@ -1133,8 +1143,13 @@ async function startup() {
     let current = null; // {data, result, phase2, truthCheck} drawn in the single view
 
     const controlsEl = document.getElementById('controls');
+    const settingsHistory = createHistory(settingsOf(state));
     const onChange = patch => {
         Object.assign(state, patch);
+        if (Object.keys(patch).some(key => !DATA_KEYS.has(key))) {
+            settingsHistory.record(settingsOf(state), performance.now());
+            syncHistory();
+        }
         if ((current || state.view === 'gallery') && Object.keys(patch).every(key => DISPLAY_KEYS.has(key)))
             draw();
         else
@@ -1598,6 +1613,8 @@ async function startup() {
         linkNote = rejectedNote(next.rejected);
         Object.assign(state, next.state);
         state.panes = availablePanes(state.panes, examples).panes;
+        settingsHistory.record(settingsOf(state), performance.now(), { coalesce: false });
+        syncHistory();
         rebuildControls();
         update();
     });
@@ -1686,6 +1703,55 @@ async function startup() {
                 onChange({ view: button.dataset.view });
         });
     }
+    // --- settings history: Reset, Undo and Redo change the settings, never the data sets
+    const resetButton = document.getElementById('settings-reset');
+    const undoButton = document.getElementById('settings-undo');
+    const redoButton = document.getElementById('settings-redo');
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const undoKeys = mac ? '⌘Z' : 'Ctrl+Z';
+    const redoKeys = mac ? '⇧⌘Z' : 'Ctrl+Shift+Z or Ctrl+Y';
+    resetButton.title = 'Reset the settings to their defaults (the data sets stay as they are; Undo brings them back)';
+    function syncHistory() {
+        undoButton.disabled = !settingsHistory.canUndo();
+        redoButton.disabled = !settingsHistory.canRedo();
+        resetButton.disabled = JSON.stringify(settingsOf(state)) === JSON.stringify(settingsOf(DEFAULTS));
+        undoButton.title = `Undo the last change to the settings (${undoKeys})`;
+        redoButton.title = `Redo (${redoKeys})`;
+    }
+    function applySettings(snapshot) {
+        if (!snapshot)
+            return;
+        Object.assign(state, snapshot);
+        syncHistory();
+        rebuildControls();
+        update();
+        scheduleHash();
+    }
+    resetButton.addEventListener('click', () => {
+        const defaults = settingsOf(DEFAULTS);
+        if (settingsHistory.record(defaults, performance.now(), { coalesce: false }))
+            applySettings(defaults);
+    });
+    undoButton.addEventListener('click', () => applySettings(settingsHistory.undo()));
+    redoButton.addEventListener('click', () => applySettings(settingsHistory.redo()));
+    // the keys act on the settings unless a text field has focus, which keeps its own undo
+    const typing = target => target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement
+        && !['range', 'checkbox', 'radio', 'button', 'file'].includes(target.type)) || target?.isContentEditable;
+    document.addEventListener('keydown', event => {
+        if (!(event.metaKey || event.ctrlKey) || event.altKey || typing(event.target))
+            return;
+        const key = event.key.toLowerCase();
+        const redo = (key === 'z' && event.shiftKey) || (key === 'y' && !mac && !event.shiftKey);
+        if (key === 'z' && !event.shiftKey) {
+            event.preventDefault();
+            applySettings(settingsHistory.undo());
+        }
+        else if (redo) {
+            event.preventDefault();
+            applySettings(settingsHistory.redo());
+        }
+    });
+    syncHistory();
     const about = document.getElementById('about');
     document.getElementById('about-open').addEventListener('click', () => about.showModal());
 

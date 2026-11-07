@@ -43,7 +43,20 @@
         </nav>
     </header>
     <main>
-        <aside id="controls" aria-label="Controls"></aside>
+        <aside id="controls-panel" aria-label="Controls">
+            <div class="history-bar" role="group" aria-label="Settings history">
+                <button type="button" id="settings-reset" aria-label="Reset the settings">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.6 1.8v2.8h2.8"/></svg>
+                </button>
+                <button type="button" id="settings-undo" aria-label="Undo">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3 2.5 6l3 3"/><path d="M2.5 6h7a4 4 0 0 1 0 8H7"/></svg>
+                </button>
+                <button type="button" id="settings-redo" aria-label="Redo">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10.5 3 3 3-3 3"/><path d="M13.5 6h-7a4 4 0 0 0 0 8H9"/></svg>
+                </button>
+            </div>
+            <div id="controls"></div>
+        </aside>
         <section id="charts" aria-label="Charts">
             <div id="main-chart"></div>
             <div id="gallery" hidden>
@@ -116,6 +129,8 @@
                 and the ⓘ icons for what each setting and readout means.</li>
             <li><em>Gallery</em> shows several data sets at once with the same settings, each chosen above its
                 chart; a pane's ↗ opens it in the single view with its readouts.</li>
+            <li>The ↺ ↶ ↷ buttons above the settings reset them to their defaults, undo and redo (⌘Z and ⇧⌘Z, or
+                Ctrl+Z and Ctrl+Shift+Z); they leave the data sets as they are.</li>
             <li>The address bar holds the current settings, so reloading keeps them and <em>Copy link</em> shares
                 them. Pasted data is included when it compresses to a short enough link.</li>
             <li><em>Export</em> saves the data and fits as CSV, at the observations or on the check grid, and the
