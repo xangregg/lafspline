@@ -76,22 +76,11 @@ const EXAMPLE = /^(example|local):[a-z0-9][a-z0-9-]*$/;
 
 const isSource = s => Boolean(SIGNALS[s]) || s === USER || EXAMPLE.test(s);
 
-// Every persisted state key with its codec. Ranges match the inputs in controls.js.
+// Every persisted state key with its codec, in link order. Ranges match the inputs in controls.js.
 const FIELDS = {
     source: {
         write: v => v,
         read: s => (isSource(s) ? s : undefined),
-    },
-    view: enumOf(VIEWS),
-    // the gallery's data sets, comma-separated: simulated signals and data files (pasted data has one slot, the
-    // single view's)
-    panes: {
-        write: v => v.join(','),
-        read: s => {
-            const list = s.split(',');
-            return PANE_COUNTS.includes(list.length) && list.every(p => isSource(p) && p !== USER) ? list
-                : undefined;
-        },
     },
     n: int(3, MAX_N),
     sigma: num(0),
@@ -138,6 +127,18 @@ const FIELDS = {
     showCenter: bool,
     showBand: bool,
     showFit: bool,
+    // last in a link (before only the pasted data), so the settings ahead of them are easier to edit by hand
+    view: enumOf(VIEWS),
+    // the gallery's data sets, comma-separated: simulated signals and data files (pasted data has one slot, the
+    // single view's)
+    panes: {
+        write: v => v.join(','),
+        read: s => {
+            const list = s.split(',');
+            return PANE_COUNTS.includes(list.length) && list.every(p => isSource(p) && p !== USER) ? list
+                : undefined;
+        },
+    },
 };
 const USER_ONLY = new Set(['xCol', 'yCol']);
 const SIMULATED_ONLY = new Set(['n', 'sigma', 'seed', 'showTruth']);

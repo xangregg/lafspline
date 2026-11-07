@@ -151,8 +151,9 @@ test('the gallery round-trips with its panes; the panes stay out of a single-vie
     const panes = ['example:nile-flow', 'local:kyoto-cherry-blossom', 'heavisine', 'step'];
     const st = { ...DEFAULTS, source: 'example:ozone', view: 'gallery', panes, seed: 7 };
     const { hash } = await stateToHash(st, DEFAULTS);
-    // the seed is written for the gallery's simulated panes although the single view's source is a data file
-    assert.equal(hash, `#source=example%3Aozone&view=gallery&panes=${encodeURIComponent(panes.join(','))}&seed=7`);
+    // the seed is written for the gallery's simulated panes although the single view's source is a data file;
+    // view and panes come last, so the settings ahead of them are easy to edit by hand
+    assert.equal(hash, `#source=example%3Aozone&seed=7&view=gallery&panes=${encodeURIComponent(panes.join(','))}`);
     const back = await hashToState(hash, DEFAULTS);
     assert.deepEqual(back.state, st);
     assert.deepEqual(back.rejected, []);
