@@ -82,6 +82,8 @@ function tickFormat(scale, count) {
  * @property {{start: number, end: number}[]} runs  runs of equal g (for step drawing)
  * @property {string} colorVar       CSS custom property holding the color
  * @property {boolean} primary
+ * @property {boolean} [afterBand]   its legend item follows the band's, so the band's item does not move when this
+ *                                   fit is shown or hidden (the phase-2 fit, added after the band)
  * @property {number[]} [breakAfter]  observation indices i after which the fit jumps (no line from i to i + 1;
  *                                    a dotted connector shows the gap instead)
  */
@@ -385,7 +387,8 @@ export function createMainChart(container, opts = {}) {
             else {
                 d = line(fit.g);
             }
-            series.push({ key: fit.key, label: fit.label, d, color, width: fit.primary ? PRIMARY_WIDTH : OVERLAY_WIDTH });
+            series.push({ key: fit.key, label: fit.label, d, color, width: fit.primary ? PRIMARY_WIDTH : OVERLAY_WIDTH,
+                afterBand: fit.afterBand ?? false });
         }
         gGaps.selectAll('path').data(gapPaths, g => g.key).join('path')
             .attr('class', 'gap-connector')
@@ -441,12 +444,14 @@ export function createMainChart(container, opts = {}) {
             })
             .attr('fill', colors.ink);
 
-        const items = [...(hidden.has('data') ? [] : [{ label: 'data', color: colors.muted, dot: true }]), ...series];
+        const items = [...(hidden.has('data') ? [] : [{ label: 'data', color: colors.muted, dot: true }]),
+            ...series.filter(s => !s.afterBand)];
         const bandShown = m.band && !hidden.has('band');
         if (bandShown)
             items.push({ label: m.band.label, color: colors['band'], box: true });
         if (bandShown && m.exact)
             items.push({ label: m.exact.label, color: colors.ink, glyph: '┄' });
+        items.push(...series.filter(s => s.afterBand));
         if (gapPaths.some(g => !g.isBreak) && anyGap)
             items.push({ label: 'gap in x: step fit undefined between the data', color: colors['ink-2'], glyph: '┈' });
         if (gapPaths.some(g => g.isBreak))

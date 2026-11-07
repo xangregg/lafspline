@@ -1287,7 +1287,7 @@ async function startup() {
         }
         if (phase2) {
             fits.push({ key: 'fit', label: 'fit (phase 2)', g: phase2.curve.g, x: phase2.curve.x, colorVar: FIT_COLOR,
-                primary: true });
+                primary: true, afterBand: true });
         }
         const boxes = an && phase2 ? anBoxSpec(result, phase2, data) : null;
         const hidden = new Set();
