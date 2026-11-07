@@ -383,6 +383,37 @@ top of the range: the fit never leaves the region). Elsewhere, at 10% and 50%: t
 HeaviSine at −4 takes the count's start (its objective is lower), up to 0.25 h from before, ED 29 instead of 24–27,
 the same distance from f; a* unchanged. The second start costs one plain count and one refit, 30–100% more time.
 
+**Flat ends (tried, not kept).** At the defaults (15% toward flat, −3.4 decades) two fits carry a slope to an edge
+where the data level off: fuel economy at low horsepower (mean mpg 35, 33, 34 for 40–69 hp; the band's P-spline
+33.9 at 46 hp and 32.3 at 68 hp, the band widest there, 25.6–41.9; the fit 37.5 and 31.1), and life expectancy at
+the highest incomes (Gapminder 2007, against log GDP). A level stretch costs a bend, and saves only the flat share
+per difference. The two cases differ:
+- Gapminder's band does not allow leveling. GCV gives its P-spline ED 3.1, nearly straight (slope over the top 15%
+  of x 0.85 of its overall slope), and holding it level there takes it 3.2 half-widths out. No ambition penalty can
+  help. Without the six lowest life expectancies (a stand-in for a robust band) the band's ED is 8.0 and the fit is
+  still the line. Penalty order 1 flattens the band's P-spline at the right to 0.48 of its slope (band ED 16) and
+  the fit to 0.70; against GDP rather than log GDP both level off fully (edge slope about 0).
+- Fuel economy's band does allow it. A flat share of 50% everywhere levels the fit's left end (32.2 and 31.1 mpg).
+
+The prototype raised the flat share near each end of x, linearly over the outer 5–20% of the range, in two forms:
+the shares still adding to one (bends cheaper at the ends), or the slope's share alone raised (the ends costlier).
+Both behaved alike (slope over the outer 10% relative to the overall slope; Δg from the default, in half-widths):
+
+| | default | ends at 50% | ends at 100% (slope's share alone) |
+|---|---|---|---|
+| fuel economy, left | 2.23 | unchanged | 0.12, Δg 0.78 h |
+| Gapminder, right | 1.00 | unchanged | unchanged |
+| GISTEMP | 9 straight pieces, ED 7.4 | 4 pieces, ED 3.0, Δg 0.62 h; a* × 11 | the same |
+| bike rentals, left (a real rise) | 1.60 | unchanged | flattened, Δg 1.07 h; a* ÷ 13 |
+| sine | 5 straight pieces | unchanged | bends moved, Δg 0.29 h |
+
+Nile, ozone, dog ages, Step and the ramp moved by 0.25 h or less. Not kept: flat ends are a prior that suits a
+response that saturates (fuel economy) and bends a real slope at an edge (GISTEMP's recent rise, rentals rising from
+cold days), and the band, widest at the edges, cannot tell them apart. And since the knob is in decades from a*, a
+change to the penalty's form moves a* (here by 11× or more), which changes the fit everywhere: GISTEMP's simpler fit
+came from its new a*, not from its ends. The existing knobs cover the cases it fixed: a larger flat share for fuel
+economy, penalty order 1 for Gapminder.
+
 ### 1.4c Power penalty (a fourth ambition penalty, prototype)
 
 λ₂·Σ|D₂β|^q with 0 < q ≤ 2, toward straight (fit.js fitPower): the bridge penalty on the second differences.
