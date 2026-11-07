@@ -4,7 +4,7 @@
 # y: min_ozone
 # note: min_ozone: mean over 21 September–16 October of the daily minimum Southern Hemisphere total ozone (DU), the yearly means of the daily series in ozone.csv; hole_area: mean ozone hole area over 7 September–13 October (million km²); no data for 1995; year-to-year changes in the polar vortex are part of the noise
 # intro: The Antarctic ozone hole: each spring's lowest ozone, 1979–2025
-# outro: The Montreal Protocol, signed in September 1987, phased out the CFCs and other chemicals that destroy stratospheric ozone
+# outro: The Montreal Protocol (1987) phased out the chemicals that destroy ozone
 year,min_ozone,hole_area
 1979,225.0,0.1
 1980,203.0,1.4

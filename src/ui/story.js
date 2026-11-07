@@ -11,7 +11,6 @@
 import * as d3 from 'd3';
 import { createMainChart } from './chart.js';
 import { encodeGif, gifPalette, indexPixels } from '../core/gif.js';
-import { lambdaSourceName } from '../core/thumb.js';
 import { constraintBoxes } from '../core/region.js';
 import { familyLevels } from '../core/intervals.js';
 import { LEAVE_TOL } from '../core/fit.js';
@@ -23,7 +22,7 @@ const BANNER_LINE = 1.3; // banner line height, in its font sizes
 const BANNER_PAD = 10; // px around the banner text
 const BANNER_GAP = 8; // px between the banner and the chart's legend
 const MAX_HEADLINE_LINES = 2; // longer headlines are cut with an ellipsis
-const MAX_DETAIL_LINES = 3;
+const MAX_DETAIL_LINES = 2; // detail lines are written to fit on one; a long outro may take two
 const STEP_SECONDS = 3.5; // s each step is shown
 const LAST_SECONDS = 7; // s the finished fit is shown before the loop starts over
 const MAX_FINE_BOXES = 64; // Aₙ's first boxes: the first level of the paper's blocks with at most this many
@@ -85,8 +84,8 @@ export function storySteps(view, st) {
     const first = {
         headline: story.intro ?? data.label,
         // a simulated signal's label would give away the outro, which reveals the curve
-        detail: [story.intro && !data.fAt ? data.label : '', `${fmtInt(data.n)} observations${xy}`,
-            data.fAt ? `simulated: ${data.notes[0]}` : ''].filter(Boolean).join('; '),
+        detail: data.fAt ? `${fmtInt(data.n)} points: y = f(t) + noise, with f unknown`
+            : `${fmtInt(data.n)} observations${xy}`,
         show: ['data'],
     };
     const middle = result.an ? anSteps(view, st) : bandSteps(view, st);
@@ -110,29 +109,23 @@ function bandSteps(view, st) {
     const { result, phase2 } = view;
     const p = result.region.params;
     const boot = p.covariance === 'bootstrap';
-    const pct = `${Math.round(100 * p.alpha)}%`;
     const fit = phase2.fit;
-    const G = result.region.grid.length;
-    const leaves = fit.leaving > 0
-        ? `; it leaves the band by more than 1% of its half-width at ${fmtInt(fit.leaving)} of ${fmtInt(G)} points`
-        : '';
-    const pieces = piecesPhrase(fit);
+    const strays = fit.leaving > 0 ? `; it strays outside at ${fmtInt(fit.leaving)} points` : '';
     return [
         {
             headline: 'Fit a P-spline',
-            detail: `A smooth curve through the data (penalized B-splines, ${lambdaPhrase(p)}; effective dimension `
-                + `${fmt(p.ed)})`,
+            detail: 'Flexible spline pieces, kept smooth by a penalty on roughness',
             show: ['data', 'center'],
         },
         {
-            headline: `Add a ${pct} confidence band${boot ? ' (bootstrap)' : ''}`,
-            detail: bandPhrase(p),
+            headline: `Add a ${Math.round(100 * p.alpha)}% confidence band${boot ? ' (bootstrap)' : ''}`,
+            detail: boot ? `Refit to ${fmtInt(p.B)} resamples of the data: where the smooth trend plausibly runs`
+                : 'The spline\'s uncertainty, widened to hold at every x at once',
             show: ['data', 'center', 'band'],
         },
         {
             headline: 'Fit the simplest curve inside the band',
-            detail: `A second P-spline, penalized severely for leaving the band and for ${ambitionPhrase(st)}`
-                + `${pieces ? `: ${pieces}` : ''}${leaves}`,
+            detail: `A second spline must stay inside the band, ${preferPhrase(st)}${strays}`,
             show: ['data', 'center', 'band', 'fit'],
         },
     ];
@@ -147,7 +140,6 @@ function bandSteps(view, st) {
  */
 function anSteps(view, st) {
     const { data, result, phase2 } = view;
-    const p = result.an.params;
     const c = result.an.scale;
     const share = result.family?.minShare ?? 0;
     const levels = result.levels.filter(level => level.length > 0);
@@ -160,24 +152,17 @@ function anSteps(view, st) {
     let fine = raw.findIndex(level => level.length <= MAX_FINE_BOXES);
     if (fine < 0)
         fine = raw.length - 1;
-    const skipped = fine > 0 ? `; ${fine === 1 ? 'the finer level' : `the ${fine} finer levels`} (up to `
-        + `${fmtInt(raw[0].length)} blocks) ${fine === 1 ? 'is' : 'are'} not drawn` : '';
-    const tau = p.calibration ? `τ = ${fmt(p.tau)}, calibrated` : `τ = ${fmt(p.tau)}, given`;
     const steps = [{
         headline: 'Average the data in small blocks',
-        detail: `Each box: the mean of y over a block (here ${levelCounts(raw[fine], 'blocks')}) ± c/√(its count), c = `
-            + `σ̂·√(τ log n) = ${fmt(c)} from the noise σ̂ = ${fmt(p.sigma)} and ${tau}`
-            + `${share > 0 ? '; the paper\'s blocks, before the shortest interval merges them' : ''}${skipped}`,
+        detail: 'Each box: a block\'s mean of y, ± a margin that shrinks with √(points)',
         show: ['data'],
         boxes: spec([raw[fine]], { label: 'Aₙ blocks' }),
     }];
-    const count = `${fmtInt(result.intervals.length)} intervals in all`;
     if (share > 0) {
         steps.push({
             headline: `Merge blocks narrower than ${fmt(100 * share)}% of the x range`,
-            detail: `Aₙ checks these (${levelCounts(levels[0], 'blocks')}) and their unions at every coarser scale, `
-                + `${count}. `
-                + capitalize(anPhrase(p, share)),
+            detail: `Each spans at least ${fmt(100 * share)}% of x; their unions, at every coarser scale, are checked `
+                + 'too',
             show: ['data'],
             boxes: spec([levels[0]], { label: 'Aₙ blocks, merged' }),
         });
@@ -185,24 +170,20 @@ function anSteps(view, st) {
     else {
         steps.push({
             headline: 'Check every scale at once',
-            detail: `Aₙ checks the blocks and their unions at every coarser scale, ${count}. `
-                + capitalize(anPhrase(p, share)),
+            detail: `The blocks and their unions at every coarser scale: ${fmtInt(result.intervals.length)} boxes, all `
+                + 'checked',
             show: ['data'],
             boxes: spec(levels.slice(fine), { faint: true, label: 'Aₙ blocks, every level' }),
         });
     }
     const fit = phase2.fit;
-    const pieces = piecesPhrase(fit);
     const tight = result.intervals[fit.argMax];
     const tightLevel = result.levels[tight.level];
     const emphasize = tightLevel.findIndex(iv => iv.lo === tight.lo && iv.hi === tight.hi);
-    const misses = fit.leaving > 0
-        ? `; it misses ${fmtInt(fit.leaving)} of ${fmtInt(result.intervals.length)} boxes by more than 1%` : '';
+    const misses = fit.leaving > 0 ? `; it misses ${fmtInt(fit.leaving)} boxes` : '';
     steps.push({
         headline: 'Fit the simplest curve whose averages lie in every box',
-        detail: `A P-spline, penalized severely for leaving Aₙ and for ${ambitionPhrase(st)}${pieces ? `: ${pieces}`
-            : ''}${misses}. Drawn: the level where it comes closest to a box's edge (${levelCounts(tightLevel)}), each `
-            + 'tick its average over the interval',
+        detail: `A spline that keeps its averages (ticks) in the boxes, ${preferPhrase(st)}${misses}`,
         show: ['data', 'fit'],
         boxes: { limit: 1 + LEAVE_TOL, fitColorVar: FIT_COLOR, faint: false,
             levels: [{ boxes: boxesOf(tightLevel), emphasize }],
@@ -211,59 +192,15 @@ function anSteps(view, st) {
     return steps;
 }
 
-/** What Aₙ covers, shortened from main.js shortClaim. */
-function anPhrase(p, share) {
-    const level = p.calibration
-        ? `It holds f with probability ≈ ${fmt(p.calibration.alpha)} (τ calibrated)`
-        : `τ = ${fmt(p.tau)} is given, so its coverage is not calibrated`;
-    const narrow = share > 0 ? `; features narrower than ${fmt(100 * share)}% of the x range are not checked` : '';
-    return `${level}, if the noise is independent Gaussian; no smoothness is assumed${narrow}`;
-}
-
-/** 'intervals of 24–30 observations' or '25-observation intervals' (main.js levelCounts), or of blocks. */
-function levelCounts(level, noun = 'intervals') {
-    const counts = level.map(iv => iv.hi - iv.lo + 1);
-    const lo = d3.min(counts);
-    const hi = d3.max(counts);
-    return lo === hi ? `${fmtInt(lo)}-observation ${noun}` : `${noun} of ${fmtInt(lo)}–${fmtInt(hi)} observations`;
-}
-
-function lambdaPhrase(p) {
-    if (p.lambdaSource === 'scale')
-        return `λ for features about ${fmt(100 * p.rule.scale)}% of the x range wide`;
-    if (p.lambdaSource === 'given')
-        return 'λ given';
-    const under = p.undersmooth && p.undersmooth !== 1 ? ` × ${fractionText(p.undersmooth)}` : '';
-    return `λ by ${lambdaSourceName(p.lambdaSource)}${under}`;
-}
-
-function fractionText(v) {
-    return v < 1 ? `1/${fmt(1 / v)}` : fmt(v);
-}
-
-/** What the band covers, shortened from main.js shortClaim. */
-function bandPhrase(p) {
-    if (p.covariance === 'bootstrap') {
-        return `It holds the P-spline's mean (the trend, smoothed) at every x with probability ≈ ${p.alpha}, by `
-            + 'resampling; the noise need not be Gaussian';
-    }
-    if (p.covariance === 'sandwich') {
-        return `It holds the P-spline's mean (the trend, smoothed) at every x with probability ≈ ${p.alpha}, for `
-            + 'independent Gaussian noise';
-    }
-    return `It holds the trend at every x with probability ≈ ${p.alpha}, if it is smooth and the noise independent `
-        + 'Gaussian';
-}
-
-/** What the ambition penalty charges, after 'penalized … for'. */
-function ambitionPhrase(st) {
+/**
+ * What the ambition prefers, as a participle phrase: 'preferring flatness and avoiding bends'. Steps, peaks and
+ * inflections are kinds of bends, so the penalty's finer costs are left to the readouts.
+ */
+function preferPhrase(st) {
+    const prefer = st.flat === 0 ? 'straight lines' : 'flatness';
     if (st.penalty === 'quadratic')
-        return st.flat === 1 ? 'its slope' : 'its curvature';
-    if (st.penalty === 'power')
-        return 'the sizes of its bends';
-    const kinds = [...(st.flat < 1 ? ['bend'] : []), ...(st.flat > 0 ? ['step'] : []),
-        ...(st.penalty === 'shaped' && st.flat < 1 ? ['peak', 'wiggle'] : [])];
-    return `each ${kinds.length > 1 ? `${kinds.slice(0, -1).join(', ')} and ${kinds.at(-1)}` : kinds[0]}`;
+        return `preferring ${prefer}`;
+    return `preferring ${prefer} and avoiding ${st.flat === 1 ? 'steps' : 'bends'}`;
 }
 
 /** '3 straight pieces and 2 flat pieces' for a fit with pieces; '' for the others. */

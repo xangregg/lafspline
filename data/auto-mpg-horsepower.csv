@@ -4,7 +4,7 @@
 # y: mpg
 # note: 392 models (6 without horsepower dropped); miles per gallon falls steeply and then levels off with horsepower, and spreads more at low power; weight and model year explain much of the rest
 # intro: Miles per gallon against horsepower, 392 cars of 1970–1982
-# outro: Weight and model year explain much of what horsepower leaves unexplained
+# outro: Weight and model year explain much of what horsepower leaves
 horsepower,mpg,weight,year
 46.0,26.0,1835.0,1970
 46.0,26.0,1950.0,1973

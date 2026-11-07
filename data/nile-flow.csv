@@ -4,7 +4,7 @@
 # y: flow
 # note: annual flow in 10⁸ m³, "with apparent changepoint near 1898" (Cobb 1978); the example in R's help fits ar(Nile), which selects order 2: the noise is serially correlated
 # intro: The Nile's yearly flow at Aswan, 1871–1970
-# outro: The classic reading is a drop near 1898 (Cobb 1978), the year construction of the first Aswan dam began
+# outro: The classic reading: a drop near 1898, as the first Aswan dam was begun
 year,flow
 1871,1120
 1872,1160

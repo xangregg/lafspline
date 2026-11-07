@@ -4,7 +4,7 @@
 # y: rentals
 # note: rentals per day (casual and registered) against the day's temperature, °C (UCI's normalized temp × 41); rises with temperature and falls off on the hottest days; 2012 (yr = 1) has about 65% more rentals than 2011 at the same temperature, so the noise is two clusters, and days are serially correlated
 # intro: Daily bike rentals in Washington DC by temperature, 2011–2012
-# outro: 2012 had about 65% more rentals than 2011 at the same temperature, so the scatter is two clusters
+# outro: 2012 had about 65% more rentals than 2011, so the scatter is two clusters
 temp_c,rentals,date,yr
 2.424,981,2011-01-22,0
 3.957,986,2011-01-23,0

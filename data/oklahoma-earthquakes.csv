@@ -4,7 +4,7 @@
 # y: count
 # note: count of earthquakes per month at mid-month (decimal year); at most a few a year until 2008, then a surge to 80–116 a month in late 2015 and January 2016, linked to the disposal of wastewater by deep injection, and a decline after injection was cut back in 2016; counts, so the spread grows with the level
 # intro: Oklahoma earthquakes of magnitude 3 or more, per month, 1990–2025
-# outro: The surge has been linked to deep injection of wastewater, which was cut back in 2016
+# outro: Linked to deep wastewater injection, which was cut back in 2016
 year,count,month
 1990.0417,0,1990-01
 1990.125,0,1990-02

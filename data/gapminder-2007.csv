@@ -4,7 +4,7 @@
 # y: life_expectancy
 # note: 142 countries; GDP per capita in inflation-adjusted US dollars, x its base-10 log; life expectancy at birth, years; rises steeply at low incomes and levels off above about $20,000 (4.3), with low outliers mostly in southern Africa (HIV)
 # intro: Life expectancy and income, 142 countries in 2007
-# outro: The low outliers are mostly in southern Africa, where HIV cut life expectancy
+# outro: Low outliers are mostly in southern Africa, where HIV cut life expectancy
 log10_gdp,life_expectancy,gdp_per_capita,country,continent
 2.4433,46.462,277.6,Congo Dem. Rep.,Africa
 2.6175,45.678,414.5,Liberia,Africa
