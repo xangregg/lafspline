@@ -491,8 +491,11 @@ export function createControls(container, state, onChange, examples = [], local 
     ]);
     const logKappa = numberInput('logKappa', { min: LOG_KAPPA_RANGE[0], max: LOG_KAPPA_RANGE[1], step: 0.5 });
     const logEpsilon = numberInput('logEpsilon', { min: LOG_EPSILON_RANGE[0], max: LOG_EPSILON_RANGE[1], step: 0.5 });
+    // Shaped bends' knobs are rarely changed from their defaults, so they sit here rather than beside the penalty.
     const advanced = el('details', {}, [
         el('summary', { text: 'Advanced' }),
+        bendLengthField,
+        shapeCosts,
         el('div', { class: 'row' }, [field('log₁₀ κ', logKappa, TIPS.kappa),
             field('log₁₀ ε', logEpsilon, TIPS.epsilon)]),
     ]);
@@ -524,9 +527,7 @@ export function createControls(container, state, onChange, examples = [], local 
         field('ambition penalty', penalty, TIPS.penalty),
         field('ambition (decades from a*)', el('div', {}, [ambition.row, ambitionEnds]), ambitionInfo),
         flatField,
-        bendLengthField,
         powerField,
-        shapeCosts,
         advanced,
         heading('Display', TIPS.displayHead),
         toggle('showData', 'data points'),
