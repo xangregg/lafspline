@@ -476,6 +476,7 @@ export function createControls(container, state, onChange, examples = [], local 
         diffField,
         field('segments', nsegInput, nsegInfo),
         calibrateField,
+        alphaField,
         tauField,
     ]);
 
@@ -528,7 +529,6 @@ export function createControls(container, state, onChange, examples = [], local 
         userBox,
         heading('Region', TIPS.regionHead),
         field('region', regionKind, TIPS.region),
-        alphaField,
         anBox,
         bandBox,
         regionAdvanced,
