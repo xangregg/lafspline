@@ -240,7 +240,7 @@ wanted, is κ → ∞ in the iteration (violations shrink like 1/κ).
   *Done (phase 2):* the slider is log₁₀(a/a*), from −8 to +4, default 0, and a share θ of a goes toward flat
   (open question 1 has the normalization).
 - **region:** coverage α, undersmoothing, and the phase-1 λ (GCV or manual), the region's own long-term versus
-  short-term choice.
+  short-term choice. *Since:* λ by feature scale is the default (open question 7).
 - **advanced:** κ (how hard the region is), ε (center pull), the check-grid density.
 
 ### 1.4 Sparse ambition (optional)
@@ -552,6 +552,11 @@ the default fit, toward straight, is a line.
    close to GCV's), blood levels 35.7% (half-width 0.18), methane growth (n = 42) 23.8%, the Montana annual rate
    (44) 22.7%, chess recall (50) 20%; dog ages (94) 10.6% still has a wide band (ED 17.5, half-width 25 against
    9.6), as its x is uneven: points per period is an average. From n = 100 up, 10% is not raised.
+   *Default (2026-11-06): λ by feature scale, 10%,* in place of GCV × 1/4, so that the band (and with it the fit)
+   follows features of the same relative length on every data set. GCV × 1/4, AIC, the rules and a given λ remain.
+   The bands' claims still cite coverage simulated with GCV, and say it was not simulated for λ by feature scale;
+   a coverage run at fixed scales (tools/sim-band.mjs) is still to do. A cost seen at the default: fuel economy's
+   fit ticks up at the high-horsepower end, as its data do (a few light sports cars).
 8. **Local σ:** a band from a constant-σ smoother is too wide where the noise is small and too narrow where it is
    large (the earlier project's dog-ages example). A variance model (P-spline on log squared residuals) would give a
    heteroscedastic band.

@@ -102,10 +102,12 @@
                 the smoothness of f.</li>
         </ul>
         <p>
-            The bands' λ is chosen by GCV and then divided by 4 (undersmoothing), so that the band follows bends
-            closely enough to cover them; AIC, two rules of thumb and a given λ are there for comparison. Each region
-            states what it covers, with what probability and under which assumptions; the coverage figures are from
-            simulations, and the readouts say which apply.
+            The bands' λ comes from a feature scale: the shortest features of interest, as a share of the x range
+            (10% by default, raised for small data sets so that a feature spans at least 10 observations). λ is set
+            so that a sine of that period keeps half its amplitude, so the same scale means the same on every data
+            set. GCV (divided by 4, undersmoothing), AIC, two rules of thumb and a given λ are the alternatives.
+            Each region states what it covers, with what probability and under which assumptions; the coverage
+            figures are from simulations, and the readouts say which apply.
         </p>
         <h3>Phase 2: the fit</h3>
         <p>

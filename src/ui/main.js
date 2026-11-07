@@ -103,7 +103,7 @@ const state = {
     alpha: 0.95, // coverage: the band's, and Aₙ's when calibrated
     covariance: 'bayes', // 'bayes' | 'sandwich'
     bootWeights: 'matched', // bootstrap band: 'matched' (like resampled counts) | 'dirichlet' (Bayesian bootstrap)
-    lambdaMode: 'gcv', // 'gcv' | 'aic' | 'silverman' | 'rot' (rules of thumb, core/thumb.js) | 'scale' | 'given'
+    lambdaMode: 'scale', // 'gcv' | 'aic' | 'silverman' | 'rot' (rules of thumb, core/thumb.js) | 'scale' | 'given'
     logLambda: 0, // natural log, when lambdaMode is 'given'
     featureScale: FEATURE_SCALE_START, // lambdaMode 'scale': the shortest features of interest, share of the x range
     undersmooth: 1 / 4, // multiplier on the chosen λ
