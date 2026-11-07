@@ -117,3 +117,5 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/chart.js`: `createMainChart(container, {height})` sets the plot's height (the animated export's 16:9
   frames); the box spec's `ticks: false` draws Aₙ's boxes alone, with no ticks and no violations marked; a fit's
   `afterBand` puts its legend item after the band's.
+- `src/ui/chart.js`: the grid lines are in an SVG layer of their own under the canvases, and first in the exported
+  SVG, so they are behind the points and boxes (they were drawn over the points).

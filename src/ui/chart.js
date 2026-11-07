@@ -109,12 +109,14 @@ export function createMainChart(container, opts = {}) {
     // a compact chart's legend is drawn once for the gallery (drawLegend), not above each chart
     const legend = d3.select(container).append('div').attr('class', 'legend').attr('hidden', compact ? '' : null);
     const plot = d3.select(container).append('div').attr('class', 'plot').style('height', `${H}px`);
+    // grid lines in an SVG layer of their own under the canvases, so they are behind the points and boxes
+    const gridSvg = plot.append('svg').attr('class', 'grid-layer').attr('height', H);
     const canvas = plot.append('canvas').node();
     const boxCanvas = plot.append('canvas').node(); // Aₙ boxes: above the points, below the lines
     const svg = plot.append('svg').attr('height', H);
     const clipId = `plot-clip-${Math.random().toString(36).slice(2)}`;
     const clipRect = svg.append('clipPath').attr('id', clipId).append('rect');
-    const gGrid = svg.append('g').attr('class', 'grid');
+    const gGrid = gridSvg.append('g').attr('class', 'grid');
     const gBand = svg.append('g').attr('class', 'band').attr('clip-path', `url(#${clipId})`);
     const gHighlight = svg.append('rect').attr('class', 'interval-highlight').attr('visibility', 'hidden');
     const gGaps = svg.append('g').attr('class', 'gap-connectors').attr('clip-path', `url(#${clipId})`);
@@ -246,6 +248,7 @@ export function createMainChart(container, opts = {}) {
         sy = d3.scaleLinear().domain([lo, hi]).nice().range([H - M.bottom, M.top]);
 
         svg.attr('width', width);
+        gridSvg.attr('width', width);
         clipRect.attr('x', M.left).attr('y', M.top)
             .attr('width', width - M.left - M.right).attr('height', H - M.top - M.bottom);
         overlay.attr('x', M.left).attr('width', width - M.left - M.right);
@@ -541,6 +544,9 @@ export function createMainChart(container, opts = {}) {
 
         const plotG = svgEl('g', { transform: `translate(0,${top})` });
         out.append(plotG);
+        const grid = gGrid.node().cloneNode(true);
+        inlineStyles(gGrid.node(), grid);
+        plotG.append(grid);
         const hidden = model.hidden ?? new Set();
         if (!hidden.has('data')) {
             const points = svgEl('g', paint('fill', colors.muted, POINT_ALPHA));

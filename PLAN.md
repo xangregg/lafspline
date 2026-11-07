@@ -688,7 +688,7 @@ the default fit, toward straight, is a line.
       and legend leave; a checkbox chooses looping or playing once. The GIF encoder (`src/core/gif.js`, no
       dependency: an exact palette up to 256 colors, else median cut; LZW) is tested against an independent decoder,
       and Chrome decodes the exports frame by frame; the animated SVG is CSS keyframes, no script, and shows the
-      last step where SVG does not animate. Open: a dark-theme export follows the page's theme.
+      last step where SVG does not animate. The frames follow the page's theme, light or dark, by choice.
 - [ ] GitHub Pages, live-site check (waiting for the repository).
 
 ## 4. What to copy from the earlier project
