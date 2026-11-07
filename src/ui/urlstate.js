@@ -29,6 +29,8 @@ export const BOX_VIEWS = ['tightest', 'all', 'off']; // Aₙ boxes drawn on the 
 export const AN_MAX_SEGMENTS = 100; // phase-2 basis for Aₙ: its long intervals make the Newton system dense
 export const TAU_RANGE = [0.1, 20];
 export const REGIONS = ['band', 'boot', 'An']; // P-spline band, bootstrap band, Aₙ
+export const VIEWS = ['single', 'gallery']; // one chart with its readouts, or several data sets at once
+export const PANE_COUNTS = [4, 6, 8]; // gallery panes, two per row
 
 const MAX_COLUMN = 10000; // column index sanity cap
 const USER = 'user';
@@ -70,11 +72,24 @@ export function signalDefaults(source) {
 // bundled data sets (data/) and local ones (localdata/, this machine only); the app checks the id exists
 const EXAMPLE = /^(example|local):[a-z0-9][a-z0-9-]*$/;
 
+const isSource = s => Boolean(SIGNALS[s]) || s === USER || EXAMPLE.test(s);
+
 // Every persisted state key with its codec. Ranges match the inputs in controls.js.
 const FIELDS = {
     source: {
         write: v => v,
-        read: s => (SIGNALS[s] || s === USER || EXAMPLE.test(s) ? s : undefined),
+        read: s => (isSource(s) ? s : undefined),
+    },
+    view: enumOf(VIEWS),
+    // the gallery's data sets, comma-separated: simulated signals and data files (pasted data has one slot, the
+    // single view's)
+    panes: {
+        write: v => v.join(','),
+        read: s => {
+            const list = s.split(',');
+            return PANE_COUNTS.includes(list.length) && list.every(p => isSource(p) && p !== USER) ? list
+                : undefined;
+        },
     },
     n: int(3, MAX_N),
     sigma: num(0),
@@ -123,6 +138,8 @@ const FIELDS = {
 };
 const USER_ONLY = new Set(['xCol', 'yCol']);
 const SIMULATED_ONLY = new Set(['n', 'sigma', 'seed', 'showTruth']);
+const GALLERY_ONLY = new Set(['panes']);
+const GALLERY_SIMULATED = new Set(['seed', 'showTruth']);
 
 // n and σ default to the chosen signal's starting values, so a link names them only when changed.
 function defaultFor(key, st, defaults) {
@@ -183,13 +200,19 @@ export async function stateToHash(st, defaults) {
     const params = new URLSearchParams();
     const isUser = st.source === USER;
     const isSimulated = Boolean(SIGNALS[st.source]);
+    const isGallery = st.view === 'gallery';
     for (const [key, codec] of Object.entries(FIELDS)) {
-        if ((USER_ONLY.has(key) && !isUser) || (SIMULATED_ONLY.has(key) && !isSimulated))
+        // the gallery's simulated panes use the seed and show their true f, whatever the single view's source
+        const forGallery = isGallery && GALLERY_SIMULATED.has(key);
+        if ((USER_ONLY.has(key) && !isUser) || (SIMULATED_ONLY.has(key) && !isSimulated && !forGallery)
+            || (GALLERY_ONLY.has(key) && !isGallery))
             continue;
         const value = st[key];
         if (value === undefined || (value === null && key !== 'nseg'))
             continue;
-        if (value !== defaultFor(key, st, defaults))
+        // compared as written, so a list (panes) equal to its default is left out too
+        const def = defaultFor(key, st, defaults);
+        if (def === undefined || def === null ? value !== def : codec.write(value) !== codec.write(def))
             params.set(key, codec.write(value));
     }
     let dataOmitted = 0;

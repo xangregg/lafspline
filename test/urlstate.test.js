@@ -10,6 +10,7 @@ const DEFAULTS = {
     alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
     nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, bendLength: 0.05, extremumCost: 2,
     inflectionCost: 1, logKappa: 4, logEpsilon: -2, showData: true, showCenter: true, showBand: true, showFit: true,
+    view: 'single', panes: ['example:nile-flow', 'sine', 'box', 'step', 'example:ozone', 'ramp'],
 };
 
 test('defaults give an empty hash and an empty hash gives the defaults', async () => {
@@ -144,4 +145,29 @@ test('local data sets are kept in links by id, as bundled ones are', async () =>
     const { hash } = await stateToHash(st, DEFAULTS);
     assert.equal(hash, '#source=local%3Akyoto-cherry-blossom');
     assert.equal((await hashToState(hash, DEFAULTS)).state.source, 'local:kyoto-cherry-blossom');
+});
+
+test('the gallery round-trips with its panes; the panes stay out of a single-view link', async () => {
+    const panes = ['example:nile-flow', 'local:kyoto-cherry-blossom', 'heavisine', 'step'];
+    const st = { ...DEFAULTS, source: 'example:ozone', view: 'gallery', panes, seed: 7 };
+    const { hash } = await stateToHash(st, DEFAULTS);
+    // the seed is written for the gallery's simulated panes although the single view's source is a data file
+    assert.equal(hash, `#source=example%3Aozone&view=gallery&panes=${encodeURIComponent(panes.join(','))}&seed=7`);
+    const back = await hashToState(hash, DEFAULTS);
+    assert.deepEqual(back.state, st);
+    assert.deepEqual(back.rejected, []);
+    assert.equal((await stateToHash({ ...st, view: 'single' }, DEFAULTS)).hash, '#source=example%3Aozone');
+    // the default panes, compared as written, are left out
+    assert.equal((await stateToHash({ ...DEFAULTS, view: 'gallery', panes: [...DEFAULTS.panes] }, DEFAULTS)).hash,
+        '#view=gallery');
+});
+
+test('a pane list with pasted data, an unknown source or an unsupported count is rejected', async () => {
+    for (const list of ['sine,user,box,step', 'sine,nosuch,box,step', 'sine,box,step', 'sine,box,step,ramp,line']) {
+        const { state, rejected } = await hashToState(`#view=gallery&panes=${encodeURIComponent(list)}`, DEFAULTS);
+        assert.deepEqual(rejected, ['panes'], list);
+        assert.deepEqual(state.panes, DEFAULTS.panes, list);
+        assert.equal(state.view, 'gallery');
+    }
+    assert.deepEqual((await hashToState('#view=grid', DEFAULTS)).rejected, ['view']);
 });

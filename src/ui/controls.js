@@ -227,6 +227,34 @@ function debounce(fn, ms) {
 }
 
 /**
+ * A select of the data sources: the example data sets, the local ones, the simulated signals and, unless
+ * opts.user is false, the user's pasted data. Values are 'example:id', 'local:id', a SIGNALS key or 'user'.
+ *
+ * @param {{id: string, label: string}[]} examples
+ * @param {{id: string, label: string}[]} local
+ * @param {{user?: boolean}} [opts]
+ * @returns {HTMLSelectElement}
+ */
+export function sourceSelect(examples, local, opts = {}) {
+    const source = el('select');
+    if (examples.length) {
+        source.append(el('optgroup', { label: 'Examples' },
+            examples.map(e => el('option', { value: `example:${e.id}`, text: e.label }))));
+    }
+    if (local.length) {
+        source.append(el('optgroup', { label: 'Local data (not published)' },
+            local.map(e => el('option', { value: `local:${e.id}`, text: e.label }))));
+    }
+    const sim = el('optgroup', { label: 'Simulated' });
+    for (const [key, spec] of Object.entries(SIGNALS))
+        sim.append(el('option', { value: key, text: spec.label }));
+    source.append(sim);
+    if (opts.user ?? true)
+        source.append(el('option', { value: USER, text: 'Your data (paste or drop CSV)' }));
+    return source;
+}
+
+/**
  * Build the controls.
  *
  * @param {HTMLElement} container
@@ -273,19 +301,8 @@ export function createControls(container, state, onChange, examples = [], local 
     };
 
     // --- data
-    const source = el('select', { id: 'source' });
-    if (examples.length) {
-        source.append(el('optgroup', { label: 'Examples' },
-            examples.map(e => el('option', { value: `example:${e.id}`, text: e.label }))));
-    }
-    if (local.length) {
-        source.append(el('optgroup', { label: 'Local data (not published)' },
-            local.map(e => el('option', { value: `local:${e.id}`, text: e.label }))));
-    }
-    const sim = el('optgroup', { label: 'Simulated' });
-    for (const [key, spec] of Object.entries(SIGNALS))
-        sim.append(el('option', { value: key, text: spec.label }));
-    source.append(sim, el('option', { value: USER, text: 'Your data (paste or drop CSV)' }));
+    const source = sourceSelect(examples, local);
+    source.id = 'source';
     source.value = state.source;
     source.addEventListener('change', () => {
         const patch = { source: source.value };
@@ -307,10 +324,15 @@ export function createControls(container, state, onChange, examples = [], local 
         seedInput.value = String(seed);
         onChange({ seed });
     });
+    const sizeRow = el('div', { class: 'row' }, [field('n', nInput, TIPS.n), field('noise σ', sigmaInput, TIPS.sigma)]);
     const simBox = el('div', { class: 'group' }, [
-        el('div', { class: 'row' }, [field('n', nInput, TIPS.n), field('noise σ', sigmaInput, TIPS.sigma)]),
+        sizeRow,
         el('div', { class: 'row' }, [field('seed', seedInput, TIPS.seed), newSeed]),
     ]);
+    const sourceField = field('source', source, TIPS.source);
+    const galleryNote = el('p', { class: 'field-hint gallery-note',
+        text: 'Each pane chooses its data set above its chart. Simulated signals use their own n and σ and this '
+            + 'seed; the other settings apply to every pane.' });
 
     const text = el('textarea', {
         rows: 6, spellcheck: false,
@@ -439,7 +461,8 @@ export function createControls(container, state, onChange, examples = [], local 
 
     container.append(
         el('h2', { text: 'Data' }),
-        field('source', source, TIPS.source),
+        sourceField,
+        galleryNote,
         simBox,
         userBox,
         heading('Region', TIPS.regionHead),
@@ -468,9 +491,14 @@ export function createControls(container, state, onChange, examples = [], local 
     let lastColumns = null;
     function sync(st, { columns = [], nsegAuto = null, lambdaChosen = null, lambdaUsed: used = null,
         ambition: amb = null }) {
-        simBox.hidden = !SIGNALS[st.source];
-        truthToggle.hidden = !SIGNALS[st.source];
-        userBox.hidden = st.source !== USER;
+        // the gallery's panes choose their own data; the seed and true f apply to its simulated ones
+        const gallery = st.view === 'gallery';
+        sourceField.hidden = gallery;
+        galleryNote.hidden = !gallery;
+        simBox.hidden = !gallery && !SIGNALS[st.source];
+        sizeRow.hidden = gallery;
+        truthToggle.hidden = !gallery && !SIGNALS[st.source];
+        userBox.hidden = gallery || st.source !== USER;
         const key = columns.join('\u0000');
         if (key !== lastColumns) {
             lastColumns = key;

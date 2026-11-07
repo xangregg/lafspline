@@ -30,11 +30,11 @@ import { lambdaSourceName } from '../core/thumb.js';
 import { familyIntervals, familyLevels } from '../core/intervals.js';
 import { tauFromSample } from '../core/calibrate.js';
 import { constraintBoxes } from '../core/region.js';
-import { createControls } from './controls.js';
+import { createControls, sourceSelect } from './controls.js';
 import { infoIcon } from './info.js';
-import { stateToHash, hashToState, AN_MAX_SEGMENTS } from './urlstate.js';
+import { stateToHash, hashToState, AN_MAX_SEGMENTS, MAX_N, PANE_COUNTS } from './urlstate.js';
 import { fmtExp } from './format.js';
-import { createMainChart } from './chart.js';
+import { createMainChart, drawLegend } from './chart.js';
 import { cellEdges } from './layout.js';
 import { onThemeChange } from './theme.js';
 import { toCsv, fitTables } from './export.js';
@@ -76,8 +76,16 @@ const LOCAL_INDEX = 'index.json'; // in LOCAL_DIR: a JSON array of CSV file name
 const LOCAL_PROBE = 'README.md'; // in LOCAL_DIR, committed, so it is always there to ask
 const LISTING_SERVER = /^SimpleHTTP\//; // the Server header of Python's http.server, which lists directories
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+// The gallery's data sets, in order: the first PANE_COUNTS[1] are its default, and a larger count takes the next.
+// Real data with different features (level stretches, a step, a spike, leveling off, a hump), then two signals.
+const GALLERY_SOURCES = ['example:gistemp-global', 'example:arctic-sea-ice-september',
+    'example:colorado-lees-ferry-peaks', 'example:oklahoma-earthquakes', 'example:auto-mpg-horsepower',
+    'example:bike-sharing-temperature', 'box', 'step'];
+const DEFAULT_PANES = PANE_COUNTS[1];
 
 const state = {
+    view: 'single', // 'single' (one chart with its readouts) | 'gallery' (several data sets, the settings shared)
+    panes: GALLERY_SOURCES.slice(0, DEFAULT_PANES), // the gallery's sources
     source: 'ramp',
     n: SIGNALS.ramp.n,
     sigma: SIGNALS.ramp.sigma,
@@ -116,6 +124,7 @@ const state = {
 };
 // Settings that change only what the chart draws: a change to them redraws without refitting.
 const DISPLAY_KEYS = new Set(['showTruth', 'showData', 'showCenter', 'showBand', 'showFit', 'boxes']);
+const PANE_SUMMARY_SEP = ' · ';
 const DEFAULTS = structuredClone(state);
 
 let tableCache = { text: null, table: null };
@@ -1064,6 +1073,25 @@ async function rasterize(svg, type, scale) {
     }
 }
 
+/** ', 3 flat pieces, 4 straight pieces' for a sparse fit; '' for the others. */
+function piecesText(fit) {
+    if (!fit.sparse)
+        return '';
+    return fit.pieces.orders.map(o => `, ${fmtInt(o.pieces)} ${o.order === 2 ? 'straight' : 'flat'} `
+        + `piece${o.pieces === 1 ? '' : 's'}`).join('');
+}
+
+/**
+ * Sources for the gallery that this page has: a data file missing here (a local one, or one from another version)
+ * is replaced by a default source not already shown. missing: how many were replaced.
+ */
+function availablePanes(list, examples) {
+    const has = src => Boolean(SIGNALS[src]) || examples.has(src);
+    const spare = [...GALLERY_SOURCES, ...Object.keys(SIGNALS)].filter(src => has(src) && !list.includes(src));
+    const panes = list.map(src => (has(src) ? src : spare.shift()));
+    return { panes, missing: list.filter(src => !has(src)).length };
+}
+
 function rejectedNote(rejected) {
     return rejected.length ? `Ignored invalid link setting(s): ${rejected.join(', ')}.` : null;
 }
@@ -1086,19 +1114,28 @@ async function startup() {
             : `The link's example data set '${name}' is not in this version; showing the default.`;
         Object.assign(state, { source: DEFAULTS.source, n: DEFAULTS.n, sigma: DEFAULTS.sigma });
     }
+    const checkedPanes = availablePanes(state.panes, examples);
+    state.panes = checkedPanes.panes;
+    if (checkedPanes.missing) {
+        linkNote = `${linkNote ? `${linkNote} ` : ''}${checkedPanes.missing} of the gallery's data sets `
+            + `${checkedPanes.missing === 1 ? 'is' : 'are'} not here; showing others.`;
+    }
     const exampleTexts = new Map(localList.map(e => [LOCAL_PREFIX + e.id, e.text])); // source → text, or {error}
     const status = d3.select('#status');
     const readouts = document.getElementById('readouts');
     const chart = createMainChart(document.getElementById('main-chart'));
+    const mainChartEl = document.getElementById('main-chart');
+    const galleryEl = document.getElementById('gallery');
     const regionCache = new Map();
     const starCache = new Map();
     const nullCache = new Map(); // Aₙ calibration samples, by design and interval family
-    let current = null; // {data, result, phase2} drawn
+    const fetching = new Map(); // data file id → its pending fetch
+    let current = null; // {data, result, phase2, truthCheck} drawn in the single view
 
     const controlsEl = document.getElementById('controls');
     const onChange = patch => {
         Object.assign(state, patch);
-        if (current && Object.keys(patch).every(key => DISPLAY_KEYS.has(key)))
+        if ((current || state.view === 'gallery') && Object.keys(patch).every(key => DISPLAY_KEYS.has(key)))
             draw();
         else
             update();
@@ -1110,10 +1147,72 @@ async function startup() {
         controls = createControls(controlsEl, state, onChange, exampleList, localList);
     }
 
-    function draw() {
-        if (!current)
-            return;
-        const { data, result, phase2 } = current;
+    /** A data file's text, fetched once; resolves when exampleTexts holds it (the text, or {error}). */
+    function ensureText(id) {
+        if (exampleTexts.get(id) !== undefined)
+            return Promise.resolve();
+        if (!fetching.has(id)) {
+            exampleTexts.set(id, undefined);
+            fetching.set(id, fetch(examples.get(id).path)
+                .then(r => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
+                .then(text => exampleTexts.set(id, text))
+                .catch(err => exampleTexts.set(id, { error: err.message ?? String(err) }))
+                .finally(() => fetching.delete(id)));
+        }
+        return fetching.get(id);
+    }
+
+    /**
+     * Data, region, a* and fit for a state, from the caches where they hold them: {data} alone while a data file
+     * loads or when there is nothing to fit, else {data, result, phase2, truthCheck} (phase2 null when the region
+     * failed: result.error).
+     */
+    function computeView(st) {
+        const data = deriveData(st, exampleTexts, examples);
+        if (data.pending || data.error)
+            return { data };
+        const key = regionKey(st, data);
+        let result = regionCache.get(key);
+        if (!result) {
+            result = st.region === 'An' ? computeAn(st, data, nullCache) : computeBand(st, data);
+            remember(regionCache, key, result);
+        }
+        const region = result.region;
+        const an = region?.kind === 'An';
+        let phase2 = null;
+        if (region) {
+            if (!an)
+                region.dataAt ??= dataPositions(region.grid, data.x);
+            region.ladder ??= ladder(region);
+            const sk = starKey(st, data);
+            let star = starCache.get(sk);
+            if (!star) {
+                const opts = phase2Options(st);
+                star = leavingAmbition({ ...regionSpec(region, { ...opts, ambition: 0 }), shape: opts.shape,
+                    q: opts.q }, { sparse: st.penalty === 'sparse', shaped: st.penalty === 'shaped',
+                    power: st.penalty === 'power' });
+                remember(starCache, sk, star);
+            }
+            const fit = computeFit(st, region, star);
+            // the curve drawn: a band's fit is already on its check grid; Aₙ's boxes are interval means
+            let curve = { x: region.grid, g: fit.g };
+            if (an) {
+                region.drawGrid ??= checkGrid(data.x, region.params.xl, region.params.xr, region.params.nseg);
+                curve = { x: region.drawGrid, g: splineValues(fit.beta, region.drawGrid, region.params) };
+            }
+            phase2 = { star, fit, curve };
+        }
+        let truthCheck = null;
+        if (region && data.fAt) {
+            truthCheck = an ? checkFit(result.an, data.x.map(data.fAt), 0)
+                : checkBand(region, region.grid.map(data.fAt));
+        }
+        return { data, result, phase2, truthCheck };
+    }
+
+    /** The chart model and Aₙ boxes for a computed view, with the display settings' hidden layers. */
+    function chartModel(view) {
+        const { data, result, phase2 } = view;
         const region = result.region;
         const an = region?.kind === 'An';
         const fits = [];
@@ -1140,8 +1239,7 @@ async function startup() {
             hidden.add('band');
         if (!state.showFit)
             hidden.add('fit');
-        chart.setBoxes(null);
-        chart.render({
+        const model = {
             x: data.x,
             y: data.y,
             f: data.fAt ? data.x.map(data.fAt) : null,
@@ -1151,8 +1249,26 @@ async function startup() {
             band: region && !an ? { lb: region.lower, ub: region.upper, label: region.label, x: region.grid } : null,
             boxesLabel: boxes ? boxes.label : null,
             hidden,
-        });
-        chart.setBoxes(boxes);
+        };
+        return { model, boxes };
+    }
+
+    function drawInto(target, view) {
+        const { model, boxes } = chartModel(view);
+        target.setBoxes(null);
+        target.render(model);
+        target.setBoxes(boxes);
+    }
+
+    function draw() {
+        if (state.view === 'gallery') {
+            for (const pane of panes)
+                drawPane(pane);
+            drawGalleryLegend();
+            return;
+        }
+        if (current)
+            drawInto(chart, current);
     }
 
     /**
@@ -1178,19 +1294,31 @@ async function startup() {
                 + 'fit\'s mean (tick) must lie in each box' };
     }
 
+    /** Show the single view or the gallery: the readouts and the main chart, or the panes. */
+    function showView() {
+        const gallery = state.view === 'gallery';
+        document.body.classList.toggle('gallery', gallery);
+        readouts.hidden = gallery;
+        mainChartEl.hidden = gallery;
+        galleryEl.hidden = !gallery;
+        for (const button of document.querySelectorAll('#view-toggle [data-view]'))
+            button.setAttribute('aria-pressed', String(button.dataset.view === state.view));
+    }
+
     function update() {
-        const data = deriveData(state, exampleTexts, examples);
+        showView();
+        if (state.view === 'gallery') {
+            current = null;
+            updateGallery();
+            return;
+        }
+        galleryRun++; // a gallery still computing stops
+        const view = computeView(state);
+        const { data } = view;
         if (data.pending) {
             status.classed('error', false).text(`Loading ${data.label}…`);
             controls.sync(state, { columns: data.columns });
-            if (!exampleTexts.has(data.id)) {
-                exampleTexts.set(data.id, undefined);
-                fetch(examples.get(data.id).path)
-                    .then(r => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
-                    .then(text => exampleTexts.set(data.id, text))
-                    .catch(err => exampleTexts.set(data.id, { error: err.message ?? String(err) }))
-                    .finally(update);
-            }
+            ensureText(data.id).then(update);
             return;
         }
         if (data.error) {
@@ -1199,43 +1327,10 @@ async function startup() {
             d3.select(readouts).selectAll('*').remove();
             return;
         }
-        const key = regionKey(state, data);
-        let result = regionCache.get(key);
-        if (!result) {
-            result = state.region === 'An' ? computeAn(state, data, nullCache) : computeBand(state, data);
-            remember(regionCache, key, result);
-        }
+        current = view;
+        const { result, phase2, truthCheck } = view;
         const region = result.region;
         const an = region?.kind === 'An';
-        let phase2 = null;
-        if (region) {
-            if (!an)
-                region.dataAt ??= dataPositions(region.grid, data.x);
-            region.ladder ??= ladder(region);
-            const sk = starKey(state, data);
-            let star = starCache.get(sk);
-            if (!star) {
-                const opts = phase2Options(state);
-                star = leavingAmbition({ ...regionSpec(region, { ...opts, ambition: 0 }), shape: opts.shape,
-                    q: opts.q }, { sparse: state.penalty === 'sparse', shaped: state.penalty === 'shaped',
-                    power: state.penalty === 'power' });
-                remember(starCache, sk, star);
-            }
-            const fit = computeFit(state, region, star);
-            // the curve drawn: a band's fit is already on its check grid; Aₙ's boxes are interval means
-            let curve = { x: region.grid, g: fit.g };
-            if (an) {
-                region.drawGrid ??= checkGrid(data.x, region.params.xl, region.params.xr, region.params.nseg);
-                curve = { x: region.drawGrid, g: splineValues(fit.beta, region.drawGrid, region.params) };
-            }
-            phase2 = { star, fit, curve };
-        }
-        current = { data, result, phase2 };
-        let truthCheck = null;
-        if (region && data.fAt) {
-            truthCheck = an ? checkFit(result.an, data.x.map(data.fAt), 0)
-                : checkBand(region, region.grid.map(data.fAt));
-        }
         controls.sync(state, {
             columns: data.columns,
             nsegAuto: defaultSegments(data.m),
@@ -1252,13 +1347,180 @@ async function startup() {
                 + `(${result.error})${note}`);
         }
         else {
-            const pieces = phase2.fit.sparse
-                ? phase2.fit.pieces.orders.map(o => `, ${fmtInt(o.pieces)} ${o.order === 2 ? 'straight' : 'flat'} `
-                    + `piece${o.pieces === 1 ? '' : 's'}`).join('')
-                : '';
             status.classed('error', Boolean(linkNote)).text(`${data.label}: n = ${fmtInt(data.n)}; ${region.label}; `
-                + `fit ED ${fmt(phase2.fit.ed)}${pieces}.${note}`);
+                + `fit ED ${fmt(phase2.fit.ed)}${piecesText(phase2.fit)}.${note}`);
         }
+        document.body.dataset.ready = 'true';
+    }
+
+    // --- gallery: several data sets with the same settings, a compact chart each and one legend.
+    const galleryLegend = document.getElementById('gallery-legend');
+    const galleryGrid = document.getElementById('gallery-grid');
+    const paneCount = document.getElementById('pane-count');
+    paneCount.replaceChildren(...PANE_COUNTS.map(k => new Option(`${k} panes`, String(k))));
+    paneCount.addEventListener('change', () => {
+        const k = Number(paneCount.value);
+        const next = state.panes.slice(0, k);
+        // more panes take the default sources not shown yet, then simulated signals
+        for (const s of [...GALLERY_SOURCES, ...Object.keys(SIGNALS)]) {
+            if (next.length < k && !next.includes(s) && (examples.has(s) || SIGNALS[s]))
+                next.push(s);
+        }
+        onChange({ panes: next });
+    });
+    let panes = []; // {source, root, chartEl, chart, summary, select, view}
+    let galleryRun = 0;
+
+    /** A pane's state: the shared settings with its source (a signal at its own n and σ). */
+    function paneState(source) {
+        const spec = SIGNALS[source];
+        return { ...state, source, xCol: null, yCol: null,
+            ...(spec ? { n: Math.min(spec.n, MAX_N), sigma: spec.sigma } : {}) };
+    }
+
+    function buildPanes() {
+        if (panes.length !== state.panes.length) {
+            galleryGrid.replaceChildren();
+            panes = state.panes.map((source, i) => {
+                const root = document.createElement('div');
+                root.className = 'pane';
+                const head = document.createElement('div');
+                head.className = 'pane-head';
+                const select = sourceSelect(exampleList, localList, { user: false });
+                select.setAttribute('aria-label', `Data set in pane ${i + 1}`);
+                select.addEventListener('change', () => {
+                    const next = [...state.panes];
+                    next[i] = select.value;
+                    onChange({ panes: next });
+                });
+                const open = document.createElement('button');
+                open.type = 'button';
+                open.className = 'pane-open';
+                open.textContent = '↗';
+                open.title = 'Open this data set in the single view, with its readouts';
+                open.setAttribute('aria-label', `Open pane ${i + 1} in the single view`);
+                open.addEventListener('click', () => openPane(i));
+                head.append(select, open);
+                const chartEl = document.createElement('div');
+                const summary = document.createElement('p');
+                summary.className = 'pane-summary';
+                root.append(head, chartEl, summary);
+                galleryGrid.append(root);
+                return { source, root, chartEl, chart: createMainChart(chartEl, { compact: true }), summary, select,
+                    view: null };
+            });
+        }
+        panes.forEach((pane, i) => {
+            pane.source = state.panes[i];
+            pane.select.value = pane.source;
+        });
+        paneCount.value = String(state.panes.length);
+    }
+
+    function openPane(i) {
+        const source = state.panes[i];
+        const spec = SIGNALS[source];
+        Object.assign(state, { view: 'single', source, xCol: null, yCol: null,
+            ...(spec ? { n: Math.min(spec.n, MAX_N), sigma: spec.sigma } : {}) });
+        rebuildControls();
+        update();
+        scheduleHash();
+    }
+
+    /** One line under a pane: its data, region and fit, and whether the fit stays inside the region. */
+    function paneSummary(view) {
+        const { data, result, phase2, truthCheck } = view;
+        const region = result.region;
+        const an = region.kind === 'An';
+        const fit = phase2.fit;
+        const where = an ? 'Aₙ' : 'the band';
+        const inside = fit.leaving === 0 ? `inside ${where}`
+            : `leaves ${where} at ${fmtInt(fit.leaving)} ${an ? 'intervals' : 'check-grid points'} (largest `
+                + `|g − c|/h = ${fmt(fit.maxRatio)})`;
+        const parts = [`n = ${fmtInt(data.n)}`, region.label, `fit ED ${fmt(fit.ed)}${piecesText(fit)}, ${inside}`];
+        if (truthCheck) {
+            const symbol = an ? 'Aₙ' : 'band';
+            parts.push(truthCheck.ok ? `true f ∈ ${symbol}`
+                : `true f ∉ ${symbol} at ${fmtInt(truthCheck.outside)} ${an ? 'intervals' : 'points'}`);
+        }
+        return parts.join(PANE_SUMMARY_SEP);
+    }
+
+    function drawPane(pane) {
+        const view = pane.view;
+        if (!view)
+            return;
+        pane.root.classList.remove('stale');
+        pane.select.title = view.data.label ?? '';
+        const problem = view.data.error ?? (view.result.error
+            ? `No ${state.region === 'An' ? 'Aₙ' : 'band'}: ${view.result.error}` : null);
+        pane.chartEl.hidden = Boolean(problem);
+        pane.summary.classList.toggle('error', Boolean(problem));
+        if (problem) {
+            pane.summary.textContent = problem;
+            pane.summary.title = '';
+            return;
+        }
+        drawInto(pane.chart, view);
+        pane.summary.textContent = paneSummary(view);
+        pane.summary.title = view.data.notes.join('\n');
+    }
+
+    /**
+     * One legend for the gallery: every pane's items once. A band's label names its ED and Aₙ's boxes their
+     * interval length, which differ by pane: the panes' summaries give them, the legend the kind.
+     */
+    function drawGalleryLegend() {
+        const items = new Map();
+        for (const pane of panes) {
+            if (!pane.view?.phase2 || pane.chartEl.hidden)
+                continue;
+            for (const item of pane.chart.legendItems()) {
+                let label = item.label;
+                if (item.box)
+                    label = label.replace(/,\s*ED [^)]*\)/, ')');
+                else if (item.glyph === '▭')
+                    label = label.replace(/\s*\([^)]*\)/, '');
+                if (!items.has(label))
+                    items.set(label, { ...item, label });
+            }
+        }
+        // the data and true f first, as in a single chart's legend, whichever pane has them
+        const first = ['data', 'true f'];
+        const rank = item => (first.includes(item.label) ? first.indexOf(item.label) : first.length);
+        drawLegend(galleryLegend, [...items.values()].sort((a, b) => rank(a) - rank(b)));
+    }
+
+    async function updateGallery() {
+        const run = ++galleryRun;
+        document.body.dataset.ready = 'false';
+        controls.sync(state, {});
+        buildPanes();
+        for (const pane of panes)
+            pane.root.classList.add('stale');
+        for (let i = 0; i < panes.length; i++) {
+            const pane = panes[i];
+            status.classed('error', false).text(`Gallery: computing ${pane.select.selectedOptions[0]?.text ?? ''} `
+                + `(${i + 1} of ${panes.length})…`);
+            // let the page paint the panes done so far before the next (a band can take a second)
+            await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+            if (run !== galleryRun)
+                return;
+            const st = paneState(pane.source);
+            let view = computeView(st);
+            if (view.data.pending) {
+                await ensureText(view.data.id);
+                if (run !== galleryRun)
+                    return;
+                view = computeView(st);
+            }
+            pane.view = view;
+            drawPane(pane);
+        }
+        drawGalleryLegend();
+        const note = linkNote ? ` ${linkNote}` : '';
+        status.classed('error', Boolean(linkNote)).text(`Gallery of ${panes.length} data sets, each with the settings `
+            + `on the left; hover a chart for its values, or open it (↗) for its readouts.${note}`);
         document.body.dataset.ready = 'true';
     }
 
@@ -1292,6 +1554,7 @@ async function startup() {
         writtenHash = location.hash;
         linkNote = rejectedNote(next.rejected);
         Object.assign(state, next.state);
+        state.panes = availablePanes(state.panes, examples).panes;
         rebuildControls();
         update();
     });
@@ -1322,6 +1585,10 @@ async function startup() {
 
     const exportMenu = document.getElementById('export-menu');
     async function exportAs(kind) {
+        if (state.view === 'gallery') {
+            say('Export works in the single view: open a pane there with ↗.');
+            return;
+        }
         if (!current?.phase2) {
             say('Nothing to export until there is a fit.');
             return;
@@ -1370,6 +1637,12 @@ async function startup() {
             exportMenu.querySelector('summary').focus();
         }
     });
+    for (const button of document.querySelectorAll('#view-toggle [data-view]')) {
+        button.addEventListener('click', () => {
+            if (state.view !== button.dataset.view)
+                onChange({ view: button.dataset.view });
+        });
+    }
     const about = document.getElementById('about');
     document.getElementById('about-open').addEventListener('click', () => about.showModal());
 

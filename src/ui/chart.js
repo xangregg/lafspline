@@ -8,6 +8,8 @@ import { themeColors, cssColor } from './theme.js';
 import { showTooltip, hideTooltip } from './tooltip.js';
 
 const HEIGHT = 340; // px
+const COMPACT_HEIGHT = 190; // px, a gallery pane's plot
+const COMPACT_MARGIN = { top: 6, right: 6, bottom: 6, left: 6 }; // px: no axes
 const POINT_ALPHA = 0.55;
 const MARK_ROW = 9; // px above the x axis for extreme-plateau marks
 const MARK_SIZE = 42; // d3.symbol area, px²
@@ -86,17 +88,25 @@ function tickFormat(scale, count) {
 
 /**
  * @param {HTMLElement} container
+ * @param {{compact?: boolean}} [opts]  compact: a gallery pane, shorter, with no axes, grid lines or legend of its own
+ *     (legendItems gives the items for drawLegend)
  * @returns {{render: function(ChartModel): void, highlight: function({lo: number, hi: number}|null): void,
  *     setBoxes: function(BoxesSpec|null): void, toSvg: function({title?: string}=): ({text: string, width: number,
- *     height: number}|null)}}
+ *     height: number}|null), legendItems: function(): object[]}}
  */
-export function createMainChart(container) {
+export function createMainChart(container, opts = {}) {
+    const compact = opts.compact ?? false;
+    const H = compact ? COMPACT_HEIGHT : HEIGHT;
+    const M = compact ? COMPACT_MARGIN : MARGIN;
     container.classList.add('chart');
-    const legend = d3.select(container).append('div').attr('class', 'legend');
-    const plot = d3.select(container).append('div').attr('class', 'plot').style('height', `${HEIGHT}px`);
+    if (compact)
+        container.classList.add('compact');
+    // a compact chart's legend is drawn once for the gallery (drawLegend), not above each chart
+    const legend = d3.select(container).append('div').attr('class', 'legend').attr('hidden', compact ? '' : null);
+    const plot = d3.select(container).append('div').attr('class', 'plot').style('height', `${H}px`);
     const canvas = plot.append('canvas').node();
     const boxCanvas = plot.append('canvas').node(); // Aₙ boxes: above the points, below the lines
-    const svg = plot.append('svg').attr('height', HEIGHT);
+    const svg = plot.append('svg').attr('height', H);
     const clipId = `plot-clip-${Math.random().toString(36).slice(2)}`;
     const clipRect = svg.append('clipPath').attr('id', clipId).append('rect');
     const gGrid = svg.append('g').attr('class', 'grid');
@@ -109,10 +119,10 @@ export function createMainChart(container) {
     const gAxisX = svg.append('g').attr('class', 'axis');
     const gAxisY = svg.append('g').attr('class', 'axis');
     const cross = svg.append('g').attr('class', 'crosshair').attr('visibility', 'hidden');
-    cross.append('line').attr('y1', MARGIN.top).attr('y2', HEIGHT - MARGIN.bottom);
+    cross.append('line').attr('y1', M.top).attr('y2', H - M.bottom);
     const crossDot = cross.append('circle').attr('r', 4);
     const overlay = svg.append('rect').attr('class', 'overlay')
-        .attr('y', MARGIN.top).attr('height', HEIGHT - MARGIN.top - MARGIN.bottom);
+        .attr('y', M.top).attr('height', H - M.top - M.bottom);
 
     let model = null;
     let sx = null;
@@ -158,14 +168,14 @@ export function createMainChart(container) {
     }
 
     function drawBoxes() {
-        const ctx = sizeCanvas(boxCanvas, width, HEIGHT);
-        ctx.clearRect(0, 0, width, HEIGHT);
+        const ctx = sizeCanvas(boxCanvas, width, H);
+        ctx.clearRect(0, 0, width, H);
         const shapes = boxShapes();
         if (!shapes.length)
             return;
         ctx.save();
         ctx.beginPath();
-        ctx.rect(MARGIN.left, MARGIN.top, width - MARGIN.left - MARGIN.right, HEIGHT - MARGIN.top - MARGIN.bottom);
+        ctx.rect(M.left, M.top, width - M.left - M.right, H - M.top - M.bottom);
         ctx.clip();
         for (const b of shapes) {
             ctx.globalAlpha = b.fillAlpha;
@@ -209,7 +219,7 @@ export function createMainChart(container) {
         const { x, y, f, edges } = m;
         const n = x.length;
         const hidden = m.hidden ?? new Set();
-        sx = xScale(edges, width);
+        sx = xScale(edges, width, M);
         let lo = d3.min(y);
         let hi = d3.max(y);
         if (f) {
@@ -227,22 +237,25 @@ export function createMainChart(container) {
                 hi = Math.max(hi, d3.max(v.filter(Number.isFinite)));
             }
         }
-        sy = d3.scaleLinear().domain([lo, hi]).nice().range([HEIGHT - MARGIN.bottom, MARGIN.top]);
+        sy = d3.scaleLinear().domain([lo, hi]).nice().range([H - M.bottom, M.top]);
 
         svg.attr('width', width);
-        clipRect.attr('x', MARGIN.left).attr('y', MARGIN.top)
-            .attr('width', width - MARGIN.left - MARGIN.right).attr('height', HEIGHT - MARGIN.top - MARGIN.bottom);
-        overlay.attr('x', MARGIN.left).attr('width', width - MARGIN.left - MARGIN.right);
-        gAxisX.attr('transform', `translate(0,${HEIGHT - MARGIN.bottom})`)
-            .call(d3.axisBottom(sx).ticks(width / 90).tickFormat(tickFormat(sx, width / 90)).tickSizeOuter(0));
-        gAxisY.attr('transform', `translate(${MARGIN.left},0)`)
-            .call(d3.axisLeft(sy).ticks(HEIGHT / 50).tickFormat(tickFormat(sy, HEIGHT / 50)).tickSizeOuter(0));
-        gGrid.selectAll('line').data(sy.ticks(HEIGHT / 50)).join('line')
-            .attr('x1', MARGIN.left).attr('x2', width - MARGIN.right)
-            .attr('y1', d => sy(d)).attr('y2', d => sy(d));
+        clipRect.attr('x', M.left).attr('y', M.top)
+            .attr('width', width - M.left - M.right).attr('height', H - M.top - M.bottom);
+        overlay.attr('x', M.left).attr('width', width - M.left - M.right);
+        // a compact chart has no axes or grid lines: its values are in the tooltip
+        if (!compact) {
+            gAxisX.attr('transform', `translate(0,${H - M.bottom})`)
+                .call(d3.axisBottom(sx).ticks(width / 90).tickFormat(tickFormat(sx, width / 90)).tickSizeOuter(0));
+            gAxisY.attr('transform', `translate(${M.left},0)`)
+                .call(d3.axisLeft(sy).ticks(H / 50).tickFormat(tickFormat(sy, H / 50)).tickSizeOuter(0));
+            gGrid.selectAll('line').data(sy.ticks(H / 50)).join('line')
+                .attr('x1', M.left).attr('x2', width - M.right)
+                .attr('y1', d => sy(d)).attr('y2', d => sy(d));
+        }
 
-        const ctx = sizeCanvas(canvas, width, HEIGHT);
-        ctx.clearRect(0, 0, width, HEIGHT);
+        const ctx = sizeCanvas(canvas, width, H);
+        ctx.clearRect(0, 0, width, H);
         ctx.fillStyle = colors.muted;
         ctx.globalAlpha = POINT_ALPHA;
         const r = pointRadius(n);
@@ -395,7 +408,7 @@ export function createMainChart(container) {
             .attr('stroke', primaryFit ? cssColor(primaryFit.colorVar) : colors.ink)
             .attr('stroke-width', 1.5);
 
-        const markY = HEIGHT - MARGIN.bottom - MARK_ROW;
+        const markY = H - M.bottom - MARK_ROW;
         const shown = m.extremes.length <= MAX_MARKS ? m.extremes : [];
         const marks = gMarks.selectAll('g.mark').data(shown).join(enter => {
             const e = enter.append('g').attr('class', 'mark');
@@ -448,20 +461,7 @@ export function createMainChart(container) {
             items.push({ label: 'local max / min plateau', color: colors.ink, glyph: '▲▼' });
         else if (m.extremes.length)
             items.push({ label: `${m.extremes.length} local extremes (marks hidden)`, color: colors.ink, glyph: '▲▼' });
-        legend.selectAll('span.item').data(items, d => d.label).join(enter => {
-            const s = enter.append('span').attr('class', 'item');
-            s.append('span').attr('class', 'key');
-            s.append('span').attr('class', 'label');
-            return s;
-        })
-            .call(s => s.select('.key')
-                .classed('box', d => Boolean(d.box))
-                .classed('dot', d => Boolean(d.dot))
-                .classed('glyph', d => Boolean(d.glyph))
-                .text(d => d.glyph ?? '')
-                .style('background', d => (d.glyph ? 'none' : d.color))
-                .style('color', d => d.color))
-            .call(s => s.select('.label').text(d => d.label));
+        drawLegend(legend.node(), items);
         legendItems = items;
         drawBoxes();
     }
@@ -526,7 +526,7 @@ export function createMainChart(container) {
             lx = lines.length > 1 ? width : lx + itemWidth + LEGEND_ITEM_GAP;
         }
         top += legendItems.length ? (row + 1) * lineHeight + parseFloat(legendStyle.marginBottom) : 0;
-        const height = Math.ceil(top + HEIGHT);
+        const height = Math.ceil(top + H);
         out.setAttribute('height', height);
         out.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
@@ -578,7 +578,7 @@ export function createMainChart(container) {
         const x1 = sx(model.edges[interval.hi + 1]);
         gHighlight.attr('visibility', 'visible')
             .attr('x', x0).attr('width', Math.max(1, x1 - x0))
-            .attr('y', MARGIN.top).attr('height', HEIGHT - MARGIN.top - MARGIN.bottom);
+            .attr('y', M.top).attr('height', H - M.top - M.bottom);
     }
 
     // Index into a series given at its own abscissae xs (which include every data x) for observation i; with no
@@ -642,7 +642,30 @@ export function createMainChart(container) {
         hideTooltip();
     });
 
-    return { render, highlight, setBoxes, toSvg };
+    return { render, highlight, setBoxes, toSvg, legendItems: () => legendItems };
+}
+
+/**
+ * Legend items (as a chart's legendItems) drawn into a container: a key and a label each.
+ *
+ * @param {HTMLElement} container
+ * @param {{label: string, color: string, dot?: boolean, box?: boolean, glyph?: string}[]} items
+ */
+export function drawLegend(container, items) {
+    d3.select(container).selectAll('span.item').data(items, d => d.label).join(enter => {
+        const s = enter.append('span').attr('class', 'item');
+        s.append('span').attr('class', 'key');
+        s.append('span').attr('class', 'label');
+        return s;
+    })
+        .call(s => s.select('.key')
+            .classed('box', d => Boolean(d.box))
+            .classed('dot', d => Boolean(d.dot))
+            .classed('glyph', d => Boolean(d.glyph))
+            .text(d => d.glyph ?? '')
+            .style('background', d => (d.glyph ? 'none' : d.color))
+            .style('color', d => d.color))
+        .call(s => s.select('.label').text(d => d.label));
 }
 
 /** Point radius for n points, px: smaller when dense. */

@@ -31,12 +31,13 @@ export function cellEdges(x) {
  *
  * @param {Float64Array} edges  from cellEdges
  * @param {number} width        outer width, px
+ * @param {{left: number, right: number}} [margin]  MARGIN by default
  * @returns {d3.ScaleLinear<number, number>}
  */
-export function xScale(edges, width) {
+export function xScale(edges, width, margin = MARGIN) {
     return d3.scaleLinear()
         .domain([edges[0], edges[edges.length - 1]])
-        .range([MARGIN.left, width - MARGIN.right]);
+        .range([margin.left, width - margin.right]);
 }
 
 /**

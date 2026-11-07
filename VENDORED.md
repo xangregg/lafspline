@@ -29,8 +29,8 @@ lafspline's own.
 
 ## src/ui
 
-`layout.js`, `theme.js`, `tooltip.js`: unchanged.
-`chart.js`: changed (see below).
+`theme.js`, `tooltip.js`: unchanged.
+`chart.js`, `layout.js`: changed (see below).
 `export.js` (+ test): `toCsv` and `exportColumns` unchanged; `atObservations` and `fitTables` added (see below).
 `lp.js`: trimmed (see below).
 `urlstate.js` (+ test): copied in phase 2 with the field table rewritten (see below).
@@ -77,8 +77,10 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   `region`, `family`, `calibrate` and `tau` as the earlier project's, and `boxes` (phase 4: which Aₙ boxes are drawn);
   `region` also takes `boot` (the bootstrap band), with `bootWeights` for its weights. `penalty` also takes `shaped`
   (rounded bends), with `bendLength`, `extremumCost` and `inflectionCost`. `source` also takes `local:<id>`, a data
-  set in `localdata/` (main.js lists them when the app runs from this machine). The hash and data packing code is
-  unchanged. `test/urlstate.test.js` is the earlier project's with the lafspline fields.
+  set in `localdata/` (main.js lists them when the app runs from this machine). `view` (`single` or `gallery`) and
+  `panes` (the gallery's sources, comma-separated, 4, 6 or 8 of them, never pasted data; written only in the gallery,
+  with the seed and true-f toggle for its simulated panes) are added; a setting is compared with its default as
+  written, so a list equal to its default is left out. The hash and data packing code is unchanged. `test/urlstate.test.js` is the earlier project's with the lafspline fields.
 - `styles.css`: slider and Advanced-panel rules appended.
 - `src/core/regions.js`: trimmed to Aₙ. The earlier project's smoother band (`bandRegion`, `bandClaim`, which need its
   `smoother.js`) and LP framing (`standardRows`, for its `lp-build.js`) are removed, since lafspline's band is
@@ -92,3 +94,7 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/export.js`: `atObservations` (grid values at the observations, ties sharing their x's value) and
   `fitTables` (lafspline's per-observation and per-grid-point tables) added; `test/export.test.js` has tests for
   both.
+- `src/ui/chart.js`: `createMainChart(container, {compact})` draws a gallery pane: shorter (190 px), no axes, grid
+  lines or legend of its own, small margins; the tooltip is unchanged. The legend is drawn by `drawLegend`, exported
+  so the gallery draws one legend for all its panes from each chart's `legendItems()`.
+- `src/ui/layout.js`: `xScale(edges, width, margin)` takes the margins (the compact chart's), `MARGIN` by default.

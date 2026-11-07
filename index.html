@@ -24,6 +24,10 @@
         </div>
         <nav class="toolbar" aria-label="Page actions">
             <span id="toolbar-message" role="status"></span>
+            <div class="view-toggle" id="view-toggle" role="group" aria-label="View">
+                <button type="button" data-view="single" aria-pressed="true" title="One data set, with its readouts">Single</button>
+                <button type="button" data-view="gallery" aria-pressed="false" title="Several data sets at once, two per row, with the same settings">Gallery</button>
+            </div>
             <button type="button" id="copy-link" title="Copy a link to this view: data source, settings and, if small enough, your pasted data">Copy link</button>
             <details class="menu" id="export-menu">
                 <summary>Export</summary>
@@ -42,6 +46,13 @@
         <aside id="controls" aria-label="Controls"></aside>
         <section id="charts" aria-label="Charts">
             <div id="main-chart"></div>
+            <div id="gallery" hidden>
+                <div class="gallery-bar">
+                    <div class="legend" id="gallery-legend"></div>
+                    <select id="pane-count" aria-label="Number of panes"></select>
+                </div>
+                <div class="gallery-grid" id="gallery-grid"></div>
+            </div>
         </section>
         <aside id="readouts" aria-label="Readouts"></aside>
     </main>
@@ -103,6 +114,8 @@
         <ul>
             <li>Choose an example, a simulated signal, or paste or drop CSV data. Hover the chart for exact values,
                 and the ⓘ icons for what each setting and readout means.</li>
+            <li><em>Gallery</em> shows several data sets at once with the same settings, each chosen above its
+                chart; a pane's ↗ opens it in the single view with its readouts.</li>
             <li>The address bar holds the current settings, so reloading keeps them and <em>Copy link</em> shares
                 them. Pasted data is included when it compresses to a short enough link.</li>
             <li><em>Export</em> saves the data and fits as CSV, at the observations or on the check grid, and the
