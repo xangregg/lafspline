@@ -6,7 +6,7 @@
 
 import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
-import { lambdaSourceName } from '../core/thumb.js';
+import { lambdaSourceName, MIN_POINTS_PER_PERIOD } from '../core/thumb.js';
 import {
     MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
     BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_RANGE, FEATURE_SCALE_START,
@@ -128,7 +128,8 @@ const TIPS = {
         + 'f were the quartic fitted to the data, from that quartic\'s residual σ and curvature.\n'
         + '- **By feature scale**: the λ at which a sine whose period is the given share of the x range keeps half '
         + 'its amplitude: features longer than that are followed, shorter ones smoothed away. From x alone, so a '
-        + 'scale means the same on every data set; no undersmoothing.\n'
+        + 'scale means the same on every data set, except that a period must span at least '
+        + `${MIN_POINTS_PER_PERIOD} observations; no undersmoothing.\n`
         + '- **Given**: set with the slider.\n'
         + 'The rules give a kernel width, and λ is the one whose P-spline has the same effective dimension as a '
         + 'Gaussian local linear smoother of that width. They are here for comparison: the bands\' coverage was '
@@ -136,7 +137,9 @@ const TIPS = {
     logLambda: `Natural log of λ, over the range GCV searches (${LOG_LAMBDA_RANGE[0]} to ${LOG_LAMBDA_RANGE[1]}).`,
     featureScale: 'The shortest features of interest, as a share of the x range: λ is set so that a sine of this '
         + 'period keeps half its amplitude in the band\'s P-spline. Smaller follows more detail, with a wider band. '
-        + 'Below about three knot spacings (7.5% with 40 segments) the basis cannot follow it.',
+        + `It is raised to span at least ${MIN_POINTS_PER_PERIOD} observations (${MIN_POINTS_PER_PERIOD}/n of the `
+        + 'range), since shorter waves are noise to the P-spline. Below about three knot spacings (7.5% with 40 '
+        + 'segments) the basis cannot follow it.',
     undersmooth: 'Multiplies the chosen λ. A smaller λ follows bends more closely, so the band covers them too, at '
         + 'the cost of a wider band; with 1/4 or 1/16 the P-spline band contained smooth test signals in 94–98.5% of '
         + 'simulations.',
@@ -272,10 +275,11 @@ export function sourceSelect(examples, local, opts = {}) {
  * @param {Array<{id: string, label: string}>} [examples]  bundled data sets (data/index.json)
  * @param {Array<{id: string, label: string}>} [local]  data sets in localdata/ (this machine only)
  * @returns {{sync: function(object, {columns: string[], nsegAuto: number|null, lambdaChosen: number|null,
- *     lambdaUsed: number|null, ambition: {a: number, star: number, capped: boolean,
- *     clamped: boolean,
+ *     lambdaUsed: number|null, scaleRaised: {scale: number, minPoints: number, n: number}|null,
+ *     ambition: {a: number, star: number, capped: boolean, clamped: boolean,
  *     sparse: boolean}|null}): void}}  sync refreshes the parts that depend on state or data; lambdaChosen is the
- *     λ GCV or AIC chose, lambdaUsed the band's λ (after undersmoothing)
+ *     λ GCV or AIC chose, lambdaUsed the band's λ (after undersmoothing), scaleRaised the feature scale used when
+ *     the n-based floor raised it (scaleLambda)
  */
 export function createControls(container, state, onChange, examples = [], local = []) {
     const later = debounce(onChange, DEBOUNCE);
@@ -419,7 +423,9 @@ export function createControls(container, state, onChange, examples = [], local 
     const undersmoothField = field('undersmoothing', undersmooth, TIPS.undersmooth);
     const featureScale = slider('featureScale', FEATURE_SCALE_MIN, FEATURE_SCALE_RANGE[1], FEATURE_SCALE_STEP,
         v => `${Math.round(100 * v)}%`);
+    const featureScaleHint = el('span', { class: 'field-hint' });
     const featureScaleField = field('feature scale (share of the x range)', featureScale.row, TIPS.featureScale);
+    featureScaleField.append(featureScaleHint);
     const diff = select('diff', DIFF_OPTIONS, Number);
     const bandBox = el('div', { class: 'group' }, [
         covarianceField,
@@ -509,7 +515,7 @@ export function createControls(container, state, onChange, examples = [], local 
 
     let lastColumns = null;
     function sync(st, { columns = [], nsegAuto = null, lambdaChosen = null, lambdaUsed: used = null,
-        ambition: amb = null }) {
+        scaleRaised = null, ambition: amb = null }) {
         // the gallery's panes choose their own data; the seed and true f apply to its simulated ones
         const gallery = st.view === 'gallery';
         sourceField.hidden = gallery;
@@ -533,6 +539,12 @@ export function createControls(container, state, onChange, examples = [], local 
         const byScale = st.lambdaMode === 'scale';
         logLambdaField.hidden = !given;
         featureScaleField.hidden = !byScale;
+        // the band uses a larger scale than the slider's when the data have too few points for it
+        featureScaleHint.hidden = !scaleRaised;
+        if (scaleRaised) {
+            featureScaleHint.textContent = `Raised to ${+(100 * scaleRaised.scale).toPrecision(3)}% for these data: `
+                + `a period spans at least ${scaleRaised.minPoints} of the ${scaleRaised.n} observations.`;
+        }
         undersmoothField.hidden = given || byScale;
         const chosen = lambdaChosen !== null
             ? `\n${lambdaSourceName(st.lambdaMode)} chose λ = ${fmtExp(lambdaChosen)} (log λ = `

@@ -542,6 +542,16 @@ the default fit, toward straight, is a line.
    smallest λ at 40 segments), and Step's jumps fall outside a 10% band (true f outside at 31 points). Open: a
    default (GCV with the scale as a floor, or the scale alone), and the coverage of a band at a fixed scale, which
    was simulated only with GCV.
+   *Floor by n (kept):* a fixed scale ignores n, and on small data sets a 10% period is a few points long, so the
+   band follows the noise and widens and the fit is free to do almost anything. Antarctic ozone (n = 46) at 10%:
+   band ED 21.2, half-width 42 DU against 17.5 with GCV ÷ 4, and the fit dropped 15 DU a year to a flat at 123 by
+   1987, against the data's 9 a year to about 1991 (the flat share makes the drop as short as the band allows; with
+   no flat share it is gradual). Blood levels by age (n = 28): half-width 1.10 against 0.11. So the scale is raised
+   to span at least 10 observations (10/n of the range; scaleLambda's minPoints); the slider keeps the scale asked
+   for, and a hint under it, the λ note and the band's claim give the one used. At 10%: ozone 21.7% (ED 10.9, a fit
+   close to GCV's), blood levels 35.7% (half-width 0.18), methane growth (n = 42) 23.8%, the Montana annual rate
+   (44) 22.7%, chess recall (50) 20%; dog ages (94) 10.6% still has a wide band (ED 17.5, half-width 25 against
+   9.6), as its x is uneven: points per period is an average. From n = 100 up, 10% is not raised.
 8. **Local σ:** a band from a constant-σ smoother is too wide where the noise is small and too narrow where it is
    large (the earlier project's dog-ages example). A variance model (P-spline on log squared residuals) would give a
    heteroscedastic band.

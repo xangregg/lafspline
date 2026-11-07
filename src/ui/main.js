@@ -911,6 +911,11 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
         let lambdaNote;
         if (p.lambdaSource === 'given')
             lambdaNote = 'given';
+        else if (p.lambdaSource === 'scale' && p.rule.scale > p.rule.asked) {
+            lambdaNote = `for features longer than ${fmtShort3(100 * p.rule.scale)}% of the x range, raised from `
+                + `${fmtShort3(100 * p.rule.asked)}% so that a period spans ${p.rule.minPoints} of the `
+                + `${fmtInt(data.x.length)} observations`;
+        }
         else if (p.lambdaSource === 'scale')
             lambdaNote = `for features longer than ${fmtShort3(100 * p.rule.scale)}% of the x range`;
         else if (p.undersmooth === 1)
@@ -1377,6 +1382,10 @@ async function startup() {
             nsegAuto: defaultSegments(data.m),
             lambdaChosen: region && !an && region.params.lambdaSource !== 'given' ? region.params.lambdaChosen : null,
             lambdaUsed: region && !an ? region.params.lambda : null,
+            scaleRaised: region && !an && region.params.lambdaSource === 'scale'
+                && region.params.rule.scale > region.params.rule.asked
+                ? { scale: region.params.rule.scale, minPoints: region.params.rule.minPoints, n: data.x.length }
+                : null,
             ambition: phase2 ? { a: phase2.fit.a, star: phase2.star.ambition, capped: phase2.star.capped,
                 clamped: phase2.fit.clamped, sparse: phase2.fit.sparse } : null,
         });

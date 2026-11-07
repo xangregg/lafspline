@@ -196,8 +196,11 @@ export function lambdaHowText(p) {
     if (p.lambdaSource === 'given')
         return 'λ given';
     if (p.lambdaSource === 'scale') {
+        const raised = p.rule.scale > p.rule.asked
+            ? `, raised from ${round(100 * p.rule.asked)}% so that a period spans ${p.rule.minPoints} observations`
+            : '';
         return `λ for features longer than ${round(100 * p.rule.scale)}% of the x range (a sine of that period keeps `
-            + 'half its amplitude)';
+            + `half its amplitude${raised})`;
     }
     if (p.undersmooth !== 1)
         return `λ chosen by ${criterion} × ${round(p.undersmooth)} (undersmoothing)`;

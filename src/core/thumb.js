@@ -23,7 +23,10 @@
 // The feature scale (scaleLambda) is not a rule of thumb but the reader's choice: the length, as a share of the x
 // range, of the shortest features of interest. λ is set so that a sine of that period keeps half its amplitude: a
 // longer feature is followed, a shorter one smoothed away. It depends on x only (the design and the basis), not on
-// y, so a scale means the same on every data set (PLAN open question 7).
+// y, so a scale means the same on every data set (PLAN open question 7). One exception: a period must span at least
+// MIN_POINTS_PER_PERIOD observations, so a scale below that many n-ths of the range is raised to it. A sine a few
+// points long is noise to a P-spline: the band follows it, widens, and leaves the fit free to do almost anything
+// (Antarctic ozone, 46 years, at 10%: band ED 21 and a drop far steeper than the data's).
 
 import {
     pSplineSystem, fitSystem, weightedCrossProducts, addDifferencePenalty, choleskyBanded, solveCholesky,
@@ -42,6 +45,7 @@ const SCALE_GAIN = 0.5; // feature scale: a sine of that period keeps this share
 // line, a constant) more than the sine, whatever λ
 const GAIN_MIDDLE = [0.25, 0.75];
 const LOG_PERIOD_TOL = 1e-4; // lambdaScale's bisection width in log period
+export const MIN_POINTS_PER_PERIOD = 10; // observations: the feature scale is at least this many n-ths of the x range
 
 /** Linear-interpolation quantile (R type 7) of sorted values. */
 function quantileSorted(sorted, p) {
@@ -336,20 +340,25 @@ export function sineGain(system, lambda, period) {
 
 /**
  * λ from a feature scale: the λ at which a sine whose period is `scale` of the x range keeps half its amplitude
- * (sineGain), by bisection on log λ (the gain falls as λ grows). From x alone; the fit returned is the P-spline of y
- * at that λ.
+ * (sineGain), by bisection on log λ (the gain falls as λ grows). From x alone, except that the scale is raised to
+ * span at least minPoints of the n observations; the fit returned is the P-spline of y at that λ.
  *
  * @param {ArrayLike<number>} x
  * @param {ArrayLike<number>} y
- * @param {{scale: number, nseg?: number, deg?: number, diff?: number, w?: ArrayLike<number>}} opts  scale in (0, 1]
- * @returns {{criterion: 'scale', lambda: number, fit: object, atEdge: boolean, rule: {scale: number,
- *     period: number}}}  atEdge: the scale is beyond the λ range (shorter than the basis can follow takes the
- *     smallest λ, longer than the largest λ smooths away takes the largest); period in units of x
+ * @param {{scale: number, minPoints?: number, nseg?: number, deg?: number, diff?: number, w?: ArrayLike<number>}} opts
+ *     scale in (0, 1]; minPoints: observations a period must span (MIN_POINTS_PER_PERIOD)
+ * @returns {{criterion: 'scale', lambda: number, fit: object, atEdge: boolean, rule: {scale: number, asked: number,
+ *     floor: number, minPoints: number, period: number}}}  atEdge: the scale is beyond the λ range (shorter than the
+ *     basis can follow takes the smallest λ, longer than the largest λ smooths away takes the largest); rule.scale
+ *     the scale used, max(asked, floor), with floor = min(1, minPoints/n); period in units of x
  */
 export function scaleLambda(x, y, opts) {
-    const scale = opts.scale;
-    if (!(scale > 0 && scale <= 1))
+    const asked = opts.scale;
+    if (!(asked > 0 && asked <= 1))
         throw new RangeError('scaleLambda: scale in (0, 1] required');
+    const minPoints = opts.minPoints ?? MIN_POINTS_PER_PERIOD;
+    const floor = Math.min(1, minPoints / x.length);
+    const scale = Math.max(asked, floor);
     const system = pSplineSystem(x, y, opts);
     const period = scale * (system.basis.xr - system.basis.xl);
     const passes = t => sineGain(system, Math.exp(t), period) >= SCALE_GAIN; // NaN (too small a λ) does not
@@ -378,7 +387,8 @@ export function scaleLambda(x, y, opts) {
         logLambda = lo;
     }
     const lambda = Math.exp(logLambda);
-    return { criterion: 'scale', lambda, fit: fitSystem(system, lambda), atEdge, rule: { scale, period } };
+    return { criterion: 'scale', lambda, fit: fitSystem(system, lambda), atEdge,
+        rule: { scale, asked, floor, minPoints, period } };
 }
 
 /**

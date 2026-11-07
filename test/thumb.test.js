@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     silvermanWidth, ruleOfThumbWidth, localLinearTrace, ruleLambda, lambdaSourceName, scaleLambda, lambdaScale, sineGain,
+    MIN_POINTS_PER_PERIOD,
 } from '../src/core/thumb.js';
 import { fitPSpline, pSplineSystem, LOG_LAMBDA_RANGE } from '../src/core/pspline.js';
 import { bandRegion } from '../src/core/band.js';
@@ -125,10 +126,32 @@ test('feature scale: λ from x alone, in any units; finer than the basis takes t
     assert.equal(a.lambda, b.lambda); // y does not enter
     const years = scaleLambda(x.map(v => 1900 + 120 * v), x.map(v => v), { scale: 0.15, nseg: 30 });
     assert.ok(Math.abs(Math.log(years.lambda / a.lambda)) < 1e-9, `${years.lambda} vs ${a.lambda}`);
-    // 30 segments: knots 3.3% of the range apart, so 1% is beyond the basis
-    const fine = scaleLambda(x, x, { scale: 0.01, nseg: 30 });
+    // 30 segments: knots 3.3% of the range apart, so 1% is beyond the basis (no floor by n, which would raise it)
+    const fine = scaleLambda(x, x, { scale: 0.01, nseg: 30, minPoints: 0 });
     assert.equal(fine.atEdge, true);
     assert.equal(Math.log(fine.lambda), LOG_LAMBDA_RANGE[0]);
+});
+
+test('feature scale: a period spans at least MIN_POINTS_PER_PERIOD observations', () => {
+    const n = 46;
+    const x = grid(n);
+    const e = normals(n, createRng(3));
+    const y = x.map((v, i) => 1 - v + 0.2 * e[i]);
+    const floor = MIN_POINTS_PER_PERIOD / n;
+    const low = scaleLambda(x, y, { scale: 0.1 });
+    assert.equal(low.rule.asked, 0.1);
+    assert.equal(low.rule.scale, floor);
+    assert.equal(low.lambda, scaleLambda(x, y, { scale: floor }).lambda);
+    // above the floor the scale is used as asked
+    const high = scaleLambda(x, y, { scale: 0.3 });
+    assert.equal(high.rule.scale, 0.3);
+    // fewer observations than a period needs: the whole range
+    assert.equal(scaleLambda(x.slice(0, 8), y.slice(0, 8), { scale: 0.1, nseg: 5 }).rule.scale, 1);
+    // the band's claim says the scale was raised
+    const region = bandRegion(x, y, { criterion: 'scale', scale: 0.1, B: 200 });
+    assert.ok(region.claim.includes(`raised from 10% so that a period spans ${MIN_POINTS_PER_PERIOD} observations`),
+        region.claim);
+    assert.ok(region.claim.includes(`features longer than ${+(100 * floor).toPrecision(3)}%`), region.claim);
 });
 
 test('a band with λ by feature scale says so, with no undersmoothing', () => {
