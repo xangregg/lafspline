@@ -9,7 +9,7 @@ import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import { lambdaSourceName } from '../core/thumb.js';
 import {
     MAX_N, MAX_SEGMENTS, AMBITION_RANGE, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
-    BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE,
+    BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_RANGE, FEATURE_SCALE_START,
 } from './urlstate.js';
 import { fmtExp } from './format.js';
 import { infoIcon, setInfo } from './info.js';
@@ -21,6 +21,8 @@ const FLAT_STEP = 0.05;
 const BEND_LENGTH_STEP = 0.005; // fraction of the x range
 const POWER_STEP = 0.05; // the power penalty's q
 const LOG_LAMBDA_STEP = 0.1; // natural log units on the given-λ slider
+const FEATURE_SCALE_STEP = 0.01; // share of the x range on the feature-scale slider
+const FEATURE_SCALE_MIN = 0.02; // the slider's low end: finer than a few knot spacings the basis cannot follow
 const UNDERSMOOTH_OPTIONS = [
     [1, 'none: λ as chosen'],
     [1 / 4, 'λ × 1/4 (default)'],
@@ -32,6 +34,7 @@ const LAMBDA_OPTIONS = [
     ['aic', 'chosen by AIC'],
     ['silverman', 'Silverman\'s rule (x spread)'],
     ['rot', 'Fan & Gijbels\' rule of thumb'],
+    ['scale', 'by feature scale'],
     ['given', 'given (slider)'],
 ];
 const COVARIANCE_OPTIONS = [
@@ -123,11 +126,17 @@ const TIPS = {
         + 'spread of x and n alone; it knows nothing of y.\n'
         + '- **Fan & Gijbels\' rule of thumb**: the kernel width that would be best for local linear regression if '
         + 'f were the quartic fitted to the data, from that quartic\'s residual σ and curvature.\n'
+        + '- **By feature scale**: the λ at which a sine whose period is the given share of the x range keeps half '
+        + 'its amplitude: features longer than that are followed, shorter ones smoothed away. From x alone, so a '
+        + 'scale means the same on every data set; no undersmoothing.\n'
         + '- **Given**: set with the slider.\n'
         + 'The rules give a kernel width, and λ is the one whose P-spline has the same effective dimension as a '
         + 'Gaussian local linear smoother of that width. They are here for comparison: the bands\' coverage was '
         + 'simulated with GCV.',
     logLambda: `Natural log of λ, over the range GCV searches (${LOG_LAMBDA_RANGE[0]} to ${LOG_LAMBDA_RANGE[1]}).`,
+    featureScale: 'The shortest features of interest, as a share of the x range: λ is set so that a sine of this '
+        + 'period keeps half its amplitude in the band\'s P-spline. Smaller follows more detail, with a wider band. '
+        + 'Below about three knot spacings (7.5% with 40 segments) the basis cannot follow it.',
     undersmooth: 'Multiplies the chosen λ. A smaller λ follows bends more closely, so the band covers them too, at '
         + 'the cost of a wider band; with 1/4 or 1/16 the P-spline band contained smooth test signals in 94–98.5% of '
         + 'simulations.',
@@ -263,7 +272,8 @@ export function sourceSelect(examples, local, opts = {}) {
  * @param {Array<{id: string, label: string}>} [examples]  bundled data sets (data/index.json)
  * @param {Array<{id: string, label: string}>} [local]  data sets in localdata/ (this machine only)
  * @returns {{sync: function(object, {columns: string[], nsegAuto: number|null, lambdaChosen: number|null,
- *     lambdaUsed: number|null, ambition: {a: number, star: number, capped: boolean, clamped: boolean,
+ *     lambdaUsed: number|null, ambition: {a: number, star: number, capped: boolean,
+ *     clamped: boolean,
  *     sparse: boolean}|null}): void}}  sync refreshes the parts that depend on state or data; lambdaChosen is the
  *     λ GCV or AIC chose, lambdaUsed the band's λ (after undersmoothing)
  */
@@ -394,6 +404,11 @@ export function createControls(container, state, onChange, examples = [], local 
             patch.logLambda = Number(Math.min(LOG_LAMBDA_RANGE[1], Math.max(LOG_LAMBDA_RANGE[0], v)).toFixed(1));
             logLambda.set(patch.logLambda);
         }
+        // a fixed start, not the scale the current λ amounts to, so the same setting means the same on every data set
+        if (lambdaMode.value === 'scale') {
+            patch.featureScale = FEATURE_SCALE_START;
+            featureScale.set(patch.featureScale);
+        }
         onChange(patch);
     });
     const lambdaInfo = infoIcon(TIPS.lambda, 'λ');
@@ -402,12 +417,16 @@ export function createControls(container, state, onChange, examples = [], local 
     const logLambdaInfo = infoIcon(TIPS.logLambda, 'log λ');
     const logLambdaField = field('log λ', logLambda.row, logLambdaInfo);
     const undersmoothField = field('undersmoothing', undersmooth, TIPS.undersmooth);
+    const featureScale = slider('featureScale', FEATURE_SCALE_MIN, FEATURE_SCALE_RANGE[1], FEATURE_SCALE_STEP,
+        v => `${Math.round(100 * v)}%`);
+    const featureScaleField = field('feature scale (share of the x range)', featureScale.row, TIPS.featureScale);
     const diff = select('diff', DIFF_OPTIONS, Number);
     const bandBox = el('div', { class: 'group' }, [
         covarianceField,
         weightsField,
         field('λ', lambdaMode, lambdaInfo),
         logLambdaField,
+        featureScaleField,
         undersmoothField,
         field('penalty order', diff, TIPS.diff),
     ]);
@@ -511,8 +530,10 @@ export function createControls(container, state, onChange, examples = [], local 
         if (used !== null)
             lambdaUsed = used;
         const given = st.lambdaMode === 'given';
+        const byScale = st.lambdaMode === 'scale';
         logLambdaField.hidden = !given;
-        undersmoothField.hidden = given;
+        featureScaleField.hidden = !byScale;
+        undersmoothField.hidden = given || byScale;
         const chosen = lambdaChosen !== null
             ? `\n${lambdaSourceName(st.lambdaMode)} chose λ = ${fmtExp(lambdaChosen)} (log λ = `
                 + `${Math.log(lambdaChosen).toFixed(2)}) for these data.`

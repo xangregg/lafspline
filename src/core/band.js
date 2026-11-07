@@ -18,7 +18,7 @@
 import { selectLambda, fitPSpline, bsplineBasis, evaluate, standardErrors, DEFAULT_DEGREE, DEFAULT_DIFF }
     from './pspline.js';
 import { createRng } from './rng.js';
-import { ruleLambda, lambdaSourceName, RULES } from './thumb.js';
+import { ruleLambda, scaleLambda, lambdaSourceName, RULES } from './thumb.js';
 
 export const DEFAULT_ALPHA = 0.95;
 const DEFAULT_B = 1000; // Monte Carlo draws for the critical value
@@ -185,11 +185,30 @@ function round(v) {
     return Number(v.toPrecision(3));
 }
 
+/**
+ * How a band's λ was set, for its claim.
+ *
+ * @param {object} p  a band's params
+ * @returns {string}
+ */
+export function lambdaHowText(p) {
+    const criterion = lambdaSourceName(p.lambdaSource);
+    if (p.lambdaSource === 'given')
+        return 'λ given';
+    if (p.lambdaSource === 'scale') {
+        return `λ for features longer than ${round(100 * p.rule.scale)}% of the x range (a sine of that period keeps `
+            + 'half its amplitude)';
+    }
+    if (p.undersmooth !== 1)
+        return `λ chosen by ${criterion} × ${round(p.undersmooth)} (undersmoothing)`;
+    return `λ chosen by ${criterion}`;
+}
+
 function bandClaim(p) {
     const criterion = lambdaSourceName(p.lambdaSource);
     let lambdaHow = `λ chosen by ${criterion}`;
-    if (p.lambdaSource === 'given')
-        lambdaHow = 'λ given';
+    if (p.lambdaSource === 'given' || p.lambdaSource === 'scale')
+        lambdaHow = lambdaHowText(p);
     else if (p.undersmooth !== 1)
         lambdaHow = `λ chosen by ${criterion} × ${round(p.undersmooth)} (undersmoothing)`;
     const basis = `${DEGREE_NAMES[p.deg] ?? `degree-${p.deg}`} B-splines on ${p.nseg} segments, `
@@ -231,6 +250,12 @@ export function bandFit(x, y, opts = {}) {
         return { fit, lambdaSource: 'given', lambdaChosen: NaN, atEdge: false, undersmooth: 1, deg, diff, rule: null };
     }
     const criterion = opts.criterion ?? 'gcv';
+    if (criterion === 'scale') {
+        // the reader's feature scale sets λ itself: no undersmoothing on top
+        const choice = scaleLambda(x, y, { ...basisOpts, scale: opts.scale });
+        return { fit: choice.fit, lambdaSource: 'scale', lambdaChosen: choice.lambda, atEdge: choice.atEdge,
+            undersmooth: 1, deg, diff, rule: choice.rule };
+    }
     const choice = RULES.includes(criterion)
         ? ruleLambda(x, y, { ...basisOpts, rule: criterion })
         : selectLambda(x, y, { ...basisOpts, criterion });
@@ -251,8 +276,9 @@ export function bandFit(x, y, opts = {}) {
  * @param {number} [opts.alpha]        coverage level (0.95)
  * @param {'bayes'|'sandwich'} [opts.covariance]
  * @param {number} [opts.lambda]       given λ (no selection, no undersmoothing)
- * @param {string} [opts.criterion]  λ criterion when λ is not given: 'gcv' (default), 'aic', or a rule of thumb
- *     ('silverman', 'rot'; thumb.js)
+ * @param {string} [opts.criterion]  λ criterion when λ is not given: 'gcv' (default), 'aic', a rule of thumb
+ *     ('silverman', 'rot'; thumb.js), or 'scale' (thumb.js scaleLambda, with opts.scale)
+ * @param {number} [opts.scale]        the feature scale, a share of the x range in (0, 1], for criterion 'scale'
  * @param {number} [opts.undersmooth]  multiplier on the chosen λ (1)
  * @param {number} [opts.nseg]         segments (default from the number of distinct x)
  * @param {number} [opts.deg]          B-spline degree (3)

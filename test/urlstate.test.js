@@ -10,7 +10,7 @@ const DEFAULTS = {
     alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
     nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, bendLength: 0.05, extremumCost: 2,
     inflectionCost: 1, logKappa: 4, logEpsilon: -2, showData: true, showCenter: true, showBand: true, showFit: true,
-    view: 'single', panes: ['example:nile-flow', 'sine', 'box', 'step', 'example:ozone', 'ramp'],
+    featureScale: 0.1, view: 'single', panes: ['example:nile-flow', 'sine', 'box', 'step', 'example:ozone', 'ramp'],
 };
 
 test('defaults give an empty hash and an empty hash gives the defaults', async () => {
@@ -170,4 +170,13 @@ test('a pane list with pasted data, an unknown source or an unsupported count is
         assert.equal(state.view, 'gallery');
     }
     assert.deepEqual((await hashToState('#view=grid', DEFAULTS)).rejected, ['view']);
+});
+
+test('λ by feature scale round-trips; a scale out of range is rejected', async () => {
+    const st = { ...DEFAULTS, lambdaMode: 'scale', featureScale: 0.15 };
+    const { hash } = await stateToHash(st, DEFAULTS);
+    assert.equal(hash, '#lambdaMode=scale&featureScale=0.15');
+    assert.deepEqual((await hashToState(hash, DEFAULTS)).state, st);
+    for (const bad of ['0', '1.5', 'x'])
+        assert.deepEqual((await hashToState(`#featureScale=${bad}`, DEFAULTS)).rejected, ['featureScale']);
 });

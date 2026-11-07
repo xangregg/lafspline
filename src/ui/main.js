@@ -26,13 +26,13 @@ import { ladder } from '../core/ladder.js';
 import { anRegion, calibrateTau, checkFit } from '../core/regions.js';
 import { anBoxes } from '../core/an.js';
 import { checkNoise } from '../core/noisecheck.js';
-import { lambdaSourceName } from '../core/thumb.js';
+import { lambdaSourceName, lambdaScale } from '../core/thumb.js';
 import { familyIntervals, familyLevels } from '../core/intervals.js';
 import { tauFromSample } from '../core/calibrate.js';
 import { constraintBoxes } from '../core/region.js';
 import { createControls, sourceSelect } from './controls.js';
 import { infoIcon } from './info.js';
-import { stateToHash, hashToState, AN_MAX_SEGMENTS, MAX_N, PANE_COUNTS } from './urlstate.js';
+import { stateToHash, hashToState, AN_MAX_SEGMENTS, MAX_N, PANE_COUNTS, FEATURE_SCALE_START } from './urlstate.js';
 import { fmtExp } from './format.js';
 import { createMainChart, drawLegend } from './chart.js';
 import { cellEdges } from './layout.js';
@@ -103,8 +103,9 @@ const state = {
     alpha: 0.95, // coverage: the band's, and Aₙ's when calibrated
     covariance: 'bayes', // 'bayes' | 'sandwich'
     bootWeights: 'matched', // bootstrap band: 'matched' (like resampled counts) | 'dirichlet' (Bayesian bootstrap)
-    lambdaMode: 'gcv', // 'gcv' | 'aic' | 'silverman' | 'rot' (rules of thumb, core/thumb.js) | 'given'
+    lambdaMode: 'gcv', // 'gcv' | 'aic' | 'silverman' | 'rot' (rules of thumb, core/thumb.js) | 'scale' | 'given'
     logLambda: 0, // natural log, when lambdaMode is 'given'
+    featureScale: FEATURE_SCALE_START, // lambdaMode 'scale': the shortest features of interest, share of the x range
     undersmooth: 1 / 4, // multiplier on the chosen λ
     nseg: null, // null = auto (pspline.defaultSegments)
     diff: 2, // penalty order
@@ -243,7 +244,11 @@ function deriveData(st, exampleTexts, examples) {
 }
 
 function bandKey(st, data) {
-    const lambda = st.lambdaMode === 'given' ? `given:${st.logLambda}` : `${st.lambdaMode}:${st.undersmooth}`;
+    let lambda = `${st.lambdaMode}:${st.undersmooth}`;
+    if (st.lambdaMode === 'given')
+        lambda = `given:${st.logLambda}`;
+    else if (st.lambdaMode === 'scale')
+        lambda = `scale:${st.featureScale}`;
     const kind = st.region === 'boot' ? `boot:${st.bootWeights}` : st.covariance;
     return [data.dataKey, st.alpha, kind, lambda, st.nseg ?? 'auto', st.diff].join('|');
 }
@@ -329,6 +334,10 @@ function computeBand(st, data) {
         opts.nseg = st.nseg;
     if (st.lambdaMode === 'given') {
         opts.lambda = Math.exp(st.logLambda);
+    }
+    else if (st.lambdaMode === 'scale') {
+        opts.criterion = 'scale';
+        opts.scale = st.featureScale;
     }
     else {
         opts.criterion = st.lambdaMode;
@@ -872,7 +881,15 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
                     + `|f − c|/h = ${fmt(truthCheck.maxRatio)}, at x = ${fmt(region.grid[truthCheck.argMax])}).`);
         }
         appendClaim(sel, shortClaim(result), region.claim);
-        if (p.atEdge && p.rule) {
+        if (p.atEdge && p.lambdaSource === 'scale') {
+            const finer = Math.log(p.lambdaChosen) < 0;
+            sel.append('p').attr('class', 'warning').text(finer
+                ? `A feature scale of ${fmtShort3(100 * p.rule.scale)}% of the x range is finer than this basis `
+                    + `follows (its knots are ${fmtShort3(100 / p.nseg)}% apart); λ is the smallest searched.`
+                : `Even the largest λ searched keeps features of ${fmtShort3(100 * p.rule.scale)}% of the x range; `
+                    + 'λ is the largest searched.');
+        }
+        else if (p.atEdge && p.rule) {
             const below = Math.log(p.lambdaChosen) > 0;
             sel.append('p').attr('class', 'warning').text(`${lambdaSourceName(p.lambdaSource)} asks for ED `
                 + `${fmt(p.rule.ed)}, ${below ? `no more than the penalty's polynomial of degree ${p.diff - 1}`
@@ -894,6 +911,8 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
         let lambdaNote;
         if (p.lambdaSource === 'given')
             lambdaNote = 'given';
+        else if (p.lambdaSource === 'scale')
+            lambdaNote = `for features longer than ${fmtShort3(100 * p.rule.scale)}% of the x range`;
         else if (p.undersmooth === 1)
             lambdaNote = `chosen by ${lambdaSourceName(p.lambdaSource)}`;
         else
@@ -902,8 +921,15 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
         add('λ', `${fmt(p.lambda)} (log ${p.lambda > 0 ? Math.log(p.lambda).toFixed(2) : '−∞'})`, lambdaNote,
             'The smoothing parameter of the band\'s P-spline: the weight on the squared differences of its '
             + 'coefficients. Larger is smoother, with a narrower band; log is natural.');
-        if (p.rule)
+        if (p.rule && p.lambdaSource !== 'scale')
             addRuleRow(add, p);
+        // the feature scale this λ amounts to, whatever chose it (from x alone, cached on the region)
+        p.featureScale ??= lambdaScale(data.x, p.lambda, { nseg: p.nseg, deg: p.deg, diff: p.diff });
+        add('feature scale', `${fmtShort3(100 * p.featureScale)}% of the x range`, 'a sine of this period keeps half '
+            + 'its amplitude in the band\'s P-spline: longer features are followed, shorter ones smoothed away',
+        'The length of the shortest features the band\'s λ follows, as a share of the x range. It depends on λ, '
+            + 'the basis and the x values, not on y, so it compares λs across data sets. "By feature scale" (λ) '
+            + 'sets λ from it.');
         rows.push({ label: 'ED', value: fmt(p.ed), tip: 'Effective dimension, the trace of the P-spline\'s hat '
             + 'matrix: the number of parameters its fit spends, between the penalty order (λ → ∞, a polynomial) and '
             + 'the number of coefficients (λ = 0).' });

@@ -35,7 +35,7 @@
 // that run high say f̂ may itself have run high, so the band reaches further below it. Like the sandwich band it
 // measures the variability of f̂ at a fixed λ, so it is a band for E f̂ (f smoothed by the penalty).
 
-import { bandFit, checkGrid, gammaDraw, DEFAULT_ALPHA } from './band.js';
+import { bandFit, checkGrid, gammaDraw, lambdaHowText, DEFAULT_ALPHA } from './band.js';
 import {
     bsplineBasis, weightedCrossProducts, addDifferencePenalty, choleskyBanded, solveCholesky, evaluate,
     standardErrors,
@@ -329,8 +329,8 @@ function simulated(undersmooth) {
 
 function bootstrapClaim(p) {
     let lambdaHow = `λ chosen by ${lambdaSourceName(p.lambdaSource)}`;
-    if (p.lambdaSource === 'given')
-        lambdaHow = 'λ given';
+    if (p.lambdaSource === 'given' || p.lambdaSource === 'scale')
+        lambdaHow = lambdaHowText(p);
     else if (p.undersmooth !== 1)
         lambdaHow = `${lambdaHow} × ${round(p.undersmooth)} (undersmoothing)`;
     const basis = `${DEGREE_NAMES[p.deg] ?? `degree-${p.deg}`} B-splines on ${p.nseg} segments, ${lambdaHow}; `

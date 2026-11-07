@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { silvermanWidth, ruleOfThumbWidth, localLinearTrace, ruleLambda, lambdaSourceName } from '../src/core/thumb.js';
-import { fitPSpline, LOG_LAMBDA_RANGE } from '../src/core/pspline.js';
+import {
+    silvermanWidth, ruleOfThumbWidth, localLinearTrace, ruleLambda, lambdaSourceName, scaleLambda, lambdaScale, sineGain,
+} from '../src/core/thumb.js';
+import { fitPSpline, pSplineSystem, LOG_LAMBDA_RANGE } from '../src/core/pspline.js';
 import { bandRegion } from '../src/core/band.js';
 import { createRng, normals } from '../src/core/rng.js';
 
@@ -85,4 +87,57 @@ test('a band with λ by a rule of thumb names the rule and keeps its width', () 
     assert.ok(region.params.rule.h > 0);
     assert.ok(region.claim.includes(lambdaSourceName('silverman')), region.claim);
     assert.equal(bandRegion(x, y, { B: 200 }).params.rule, null);
+});
+
+test('feature scale: λ keeps half a sine of that period, and the scale λ implies is the one asked for', () => {
+    const n = 400;
+    const x = grid(n);
+    const e = normals(n, createRng(5));
+    const y = x.map((v, i) => Math.sin(6 * v) + 0.3 * e[i]);
+    const SCALE_TOL = 0.01; // relative: bisections to 1e-4 in log λ and log period
+    let prev = null;
+    for (const scale of [0.1, 0.2, 0.4]) {
+        const choice = scaleLambda(x, y, { scale, nseg: 40 });
+        assert.equal(choice.atEdge, false, `${scale}`);
+        assert.equal(choice.rule.period, scale); // x spans [0, 1]
+        const gain = sineGain(pSplineSystem(x, y, { nseg: 40 }), choice.lambda, scale);
+        assert.ok(Math.abs(gain - 0.5) < 1e-3, `${scale}: gain ${gain}`);
+        const back = lambdaScale(x, choice.lambda, { nseg: 40 });
+        assert.ok(Math.abs(back / scale - 1) < SCALE_TOL, `${scale}: ${back}`);
+        // a longer scale: a larger λ and a smoother fit
+        if (prev) {
+            assert.ok(choice.lambda > prev.lambda && choice.fit.ed < prev.fit.ed, `${scale}`);
+        }
+        prev = choice;
+    }
+    // a long sine passes, a short one does not
+    const system = pSplineSystem(x, y, { nseg: 40 });
+    assert.ok(sineGain(system, prev.lambda, 1) > 0.9 && sineGain(system, prev.lambda, 0.1) < 0.05);
+    assert.throws(() => scaleLambda(x, y, { scale: 0 }), RangeError);
+    assert.throws(() => scaleLambda(x, y, { scale: 1.5 }), RangeError);
+});
+
+test('feature scale: λ from x alone, in any units; finer than the basis takes the smallest λ', () => {
+    const x = Float64Array.from({ length: 150 }, (_, i) => (i / 149) ** 1.5); // uneven spacing
+    const e = normals(150, createRng(8));
+    const a = scaleLambda(x, x.map((_, i) => e[i]), { scale: 0.15, nseg: 30 });
+    const b = scaleLambda(x, x.map(v => 5 * Math.cos(9 * v)), { scale: 0.15, nseg: 30 });
+    assert.equal(a.lambda, b.lambda); // y does not enter
+    const years = scaleLambda(x.map(v => 1900 + 120 * v), x.map(v => v), { scale: 0.15, nseg: 30 });
+    assert.ok(Math.abs(Math.log(years.lambda / a.lambda)) < 1e-9, `${years.lambda} vs ${a.lambda}`);
+    // 30 segments: knots 3.3% of the range apart, so 1% is beyond the basis
+    const fine = scaleLambda(x, x, { scale: 0.01, nseg: 30 });
+    assert.equal(fine.atEdge, true);
+    assert.equal(Math.log(fine.lambda), LOG_LAMBDA_RANGE[0]);
+});
+
+test('a band with λ by feature scale says so, with no undersmoothing', () => {
+    const x = grid(200);
+    const e = normals(200, createRng(12));
+    const y = x.map((v, i) => Math.sin(4 * v) + 0.2 * e[i]);
+    const region = bandRegion(x, y, { criterion: 'scale', scale: 0.15, B: 200, undersmooth: 0.25 });
+    assert.equal(region.params.lambdaSource, 'scale');
+    assert.equal(region.params.undersmooth, 1);
+    assert.equal(region.params.lambda, scaleLambda(x, y, { scale: 0.15 }).lambda);
+    assert.ok(region.claim.includes('features longer than 15% of the x range'), region.claim);
 });

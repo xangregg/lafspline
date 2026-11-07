@@ -30,6 +30,8 @@ export const AN_MAX_SEGMENTS = 100; // phase-2 basis for Aₙ: its long interval
 export const TAU_RANGE = [0.1, 20];
 export const REGIONS = ['band', 'boot', 'An']; // P-spline band, bootstrap band, Aₙ
 export const VIEWS = ['single', 'gallery']; // one chart with its readouts, or several data sets at once
+export const FEATURE_SCALE_RANGE = [0.01, 1]; // λ by feature scale: a share of the x range (thumb.js scaleLambda)
+export const FEATURE_SCALE_START = 0.1; // share of the x range: the scale on choosing λ by feature scale, always
 export const PANE_COUNTS = [4, 6, 8]; // gallery panes, two per row
 
 const MAX_COLUMN = 10000; // column index sanity cap
@@ -105,8 +107,9 @@ const FIELDS = {
     alpha: num(0.5, 0.999),
     covariance: enumOf(['bayes', 'sandwich']),
     bootWeights: enumOf(WEIGHTS),
-    lambdaMode: enumOf(['gcv', 'aic', 'silverman', 'rot', 'given']),
+    lambdaMode: enumOf(['gcv', 'aic', 'silverman', 'rot', 'scale', 'given']),
     logLambda: num(...LOG_LAMBDA_RANGE),
+    featureScale: num(...FEATURE_SCALE_RANGE),
     // written as the divisor (16 for λ × 1/16): a slash would be percent-encoded in the link
     undersmooth: {
         write: v => String(Math.round(1 / v)),

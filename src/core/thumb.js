@@ -19,8 +19,16 @@
 // local linear smoother's trace at h, computed exactly on these x, then λ by bisection on log λ, since the
 // P-spline's ED falls monotonically as λ grows. That needs no equivalent-kernel constant and holds for any penalty
 // order, at the price of comparing the smoothers' overall flexibility rather than their local shape.
+//
+// The feature scale (scaleLambda) is not a rule of thumb but the reader's choice: the length, as a share of the x
+// range, of the shortest features of interest. λ is set so that a sine of that period keeps half its amplitude: a
+// longer feature is followed, a shorter one smoothed away. It depends on x only (the design and the basis), not on
+// y, so a scale means the same on every data set (PLAN open question 7).
 
-import { pSplineSystem, fitSystem, LOG_LAMBDA_RANGE } from './pspline.js';
+import {
+    pSplineSystem, fitSystem, weightedCrossProducts, addDifferencePenalty, choleskyBanded, solveCholesky,
+    LOG_LAMBDA_RANGE,
+} from './pspline.js';
 
 export const RULES = ['silverman', 'rot'];
 const SILVERMAN_FACTOR = 0.9; // Silverman (1986) eq. 3.31
@@ -29,6 +37,11 @@ const GAUSS_ROUGHNESS = 1 / (2 * Math.sqrt(Math.PI)); // R(K) = ∫K² for the s
 const PILOT_DEGREE = 4; // Fan & Gijbels' pilot polynomial
 const KERNEL_REACH = 5; // Gaussian weights beyond 5h (below 4e-6 of the peak) are dropped from the trace
 const LOG_LAMBDA_TOL = 1e-4; // bisection stopping width in log λ (as the GCV search's)
+const SCALE_GAIN = 0.5; // feature scale: a sine of that period keeps this share of its amplitude
+// the gain is measured over the middle half of the x range: near the ends the fit follows the penalty's own limit (a
+// line, a constant) more than the sine, whatever λ
+const GAIN_MIDDLE = [0.25, 0.75];
+const LOG_PERIOD_TOL = 1e-4; // lambdaScale's bisection width in log period
 
 /** Linear-interpolation quantile (R type 7) of sorted values. */
 function quantileSorted(sorted, p) {
@@ -270,6 +283,125 @@ export function ruleLambda(x, y, opts) {
  */
 export function lambdaSourceName(source) {
     const names = { gcv: 'GCV', aic: 'AIC', given: 'given', silverman: 'Silverman\'s rule',
-        rot: 'Fan & Gijbels\' rule of thumb' };
+        rot: 'Fan & Gijbels\' rule of thumb', scale: 'the feature scale' };
     return names[source] ?? source;
 }
+
+/**
+ * The share of a sine's amplitude that a P-spline at λ keeps, for sines of a given period on the system's x: the
+ * least-squares coefficient of the fit on the sine over the middle half of the x range, averaged over the sine and
+ * the cosine so the phase does not matter. 1 for a long period (the fit follows it), toward 0 for a short one.
+ *
+ * @param {ReturnType<typeof pSplineSystem>} system  its y is not used
+ * @param {number} lambda
+ * @param {number} period  units of x
+ * @returns {number}  NaN when the penalized system is not positive definite (λ too small for this basis)
+ */
+export function sineGain(system, lambda, period) {
+    const { basis, W, G, x, w } = system;
+    const nb = basis.nb;
+    const A = Float64Array.from(G);
+    addDifferencePenalty(A, nb, W, system.diff, lambda);
+    let L;
+    try {
+        L = choleskyBanded(A, nb, W);
+    }
+    catch (err) {
+        if (err instanceof RangeError)
+            return NaN;
+        throw err;
+    }
+    const span = basis.xr - basis.xl;
+    const [from, to] = GAIN_MIDDLE.map(u => basis.xl + u * span);
+    const bw = basis.deg + 1;
+    let gain = 0;
+    for (const phase of [0, Math.PI / 2]) {
+        const wave = x.map(v => Math.sin(2 * Math.PI * (v - basis.xl) / period + phase));
+        const alpha = solveCholesky(L, nb, W, weightedCrossProducts(basis, w, wave, W).rhs);
+        let num = 0;
+        let den = 0;
+        for (let i = 0; i < x.length; i++) {
+            if (x[i] < from || x[i] > to)
+                continue;
+            let f = 0;
+            for (let r = 0; r < bw; r++)
+                f += basis.values[i * bw + r] * alpha[basis.first[i] + r];
+            num += w[i] * f * wave[i];
+            den += w[i] * wave[i] * wave[i];
+        }
+        gain += den > 0 ? num / den / 2 : NaN;
+    }
+    return gain;
+}
+
+/**
+ * λ from a feature scale: the λ at which a sine whose period is `scale` of the x range keeps half its amplitude
+ * (sineGain), by bisection on log λ (the gain falls as λ grows). From x alone; the fit returned is the P-spline of y
+ * at that λ.
+ *
+ * @param {ArrayLike<number>} x
+ * @param {ArrayLike<number>} y
+ * @param {{scale: number, nseg?: number, deg?: number, diff?: number, w?: ArrayLike<number>}} opts  scale in (0, 1]
+ * @returns {{criterion: 'scale', lambda: number, fit: object, atEdge: boolean, rule: {scale: number,
+ *     period: number}}}  atEdge: the scale is beyond the λ range (shorter than the basis can follow takes the
+ *     smallest λ, longer than the largest λ smooths away takes the largest); period in units of x
+ */
+export function scaleLambda(x, y, opts) {
+    const scale = opts.scale;
+    if (!(scale > 0 && scale <= 1))
+        throw new RangeError('scaleLambda: scale in (0, 1] required');
+    const system = pSplineSystem(x, y, opts);
+    const period = scale * (system.basis.xr - system.basis.xl);
+    const passes = t => sineGain(system, Math.exp(t), period) >= SCALE_GAIN; // NaN (too small a λ) does not
+    let [lo, hi] = LOG_LAMBDA_RANGE;
+    let atEdge = false;
+    let logLambda;
+    if (passes(hi)) {
+        logLambda = hi;
+        atEdge = true;
+    }
+    else if (!passes(lo)) {
+        // even the smallest λ smooths it away, or is not positive definite: the smallest usable λ
+        logLambda = lo;
+        while (!Number.isFinite(sineGain(system, Math.exp(logLambda), period)) && logLambda < hi)
+            logLambda += 1;
+        atEdge = true;
+    }
+    else {
+        while (hi - lo > LOG_LAMBDA_TOL) {
+            const mid = (lo + hi) / 2;
+            if (passes(mid))
+                lo = mid;
+            else
+                hi = mid;
+        }
+        logLambda = lo;
+    }
+    const lambda = Math.exp(logLambda);
+    return { criterion: 'scale', lambda, fit: fitSystem(system, lambda), atEdge, rule: { scale, period } };
+}
+
+/**
+ * The feature scale a λ implies: the period, as a share of the x range, of the sine a P-spline at λ keeps half of
+ * (sineGain = 1/2), by bisection on log period between one knot spacing and twice the range.
+ *
+ * @param {ArrayLike<number>} x
+ * @param {number} lambda
+ * @param {{nseg?: number, deg?: number, diff?: number, w?: ArrayLike<number>}} [opts]
+ * @returns {number}  a share of the x range; at the search's end when λ keeps (or removes) every period in it
+ */
+export function lambdaScale(x, lambda, opts = {}) {
+    const system = pSplineSystem(x, new Float64Array(x.length), opts);
+    const span = system.basis.xr - system.basis.xl;
+    let lo = Math.log(span / system.basis.nseg);
+    let hi = Math.log(2 * span);
+    while (hi - lo > LOG_PERIOD_TOL) {
+        const mid = (lo + hi) / 2;
+        if (sineGain(system, lambda, Math.exp(mid)) >= SCALE_GAIN)
+            hi = mid;
+        else
+            lo = mid;
+    }
+    return Math.exp(hi) / span;
+}
+

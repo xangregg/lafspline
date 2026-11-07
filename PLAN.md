@@ -529,6 +529,19 @@ the default fit, toward straight, is a line.
    unless it would follow features shorter than T. Either way the band covers f smoothed at that scale, as the
    claim already says, and the readout gives T and the λ it implies. Not done for now: a given λ does the same,
    if less readably.
+   *Prototype (λ "by feature scale", thumb.js scaleLambda):* T as a share of the x range, so it is unitless; the
+   gain is measured over the middle half of x, averaged over sine and cosine; no undersmoothing. Every band's
+   readouts also give the feature scale its λ amounts to (lambdaScale). GCV × 1/4 amounts to very different scales:
+   5% (monthly Montana, narrow box, Step, HeaviSine), 8–9% (GISTEMP, Nile), 13–18% (sine, fuel economy, bike
+   rentals), 38% (ozone), 52% (dog ages), 81% (Gapminder: band ED 3.1). At a fixed scale the band's ED is about the
+   same on every data set (about 22 at 10% and 12 at 20% with 40 segments). At 10% the two flat-ends cases level
+   off: Gapminder's right slope (over the outer 10% of x, relative to the overall slope) 1.00 → 0.00, fuel
+   economy's left 2.23 → 0.19; monthly Montana gives the long-term fit (2 flat, 3 straight pieces). At 20%
+   Gapminder still levels (0.05), fuel economy does not (2.15). GISTEMP and HeaviSine simplify at 10% (9 straight
+   pieces → 4). A scale below about three knot spacings cannot be followed by the basis (5% often took the
+   smallest λ at 40 segments), and Step's jumps fall outside a 10% band (true f outside at 31 points). Open: a
+   default (GCV with the scale as a floor, or the scale alone), and the coverage of a band at a fixed scale, which
+   was simulated only with GCV.
 8. **Local σ:** a band from a constant-σ smoother is too wide where the noise is small and too narrow where it is
    large (the earlier project's dog-ages example). A variance model (P-spline on log squared residuals) would give a
    heteroscedastic band.

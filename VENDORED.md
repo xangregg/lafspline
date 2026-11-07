@@ -77,7 +77,8 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   `region`, `family`, `calibrate` and `tau` as the earlier project's, and `boxes` (phase 4: which Aₙ boxes are drawn);
   `region` also takes `boot` (the bootstrap band), with `bootWeights` for its weights. `penalty` also takes `shaped`
   (rounded bends), with `bendLength`, `extremumCost` and `inflectionCost`. `source` also takes `local:<id>`, a data
-  set in `localdata/` (main.js lists them when the app runs from this machine). `view` (`single` or `gallery`) and
+  set in `localdata/` (main.js lists them when the app runs from this machine). `lambdaMode` also takes `scale`,
+  with `featureScale` (a share of the x range). `view` (`single` or `gallery`) and
   `panes` (the gallery's sources, comma-separated, 4, 6 or 8 of them, never pasted data; written only in the gallery,
   with the seed and true-f toggle for its simulated panes) are added; a setting is compared with its default as
   written, so a list equal to its default is left out. The hash and data packing code is unchanged. `test/urlstate.test.js` is the earlier project's with the lafspline fields.
