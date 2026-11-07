@@ -112,12 +112,12 @@ const state = {
     nseg: null, // null = auto (pspline.defaultSegments)
     diff: 2, // penalty order
     penalty: 'shaped', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number) |
-    // 'shaped' (the number of bends, rounded) | 'power' (Σ|second differences|^q)
+    // 'shaped' (shaped bends: the number, plus rounding, extrema, inflections) | 'power' (Σ|second differences|^q)
     q: 1, // power penalty's exponent: 2 is 'quadratic', 1 is ℓ₁ trend filtering, toward 0 the count
     ambition: -3.4, // decades from a*, the largest ambition before the fit leaves the region
     flat: 0.15, // share of the ambition toward flat (D₁) rather than straight (D₂)
-    bendLength: SHAPE_DEFAULTS.length, // rounded bends: fraction of the x range (fit.js fitShaped)
-    extremumCost: SHAPE_DEFAULTS.extremum, // rounded bends: extra cost of an extremum, in plain bends
+    bendLength: SHAPE_DEFAULTS.length, // shaped bends: fraction of the x range (fit.js fitShaped)
+    extremumCost: SHAPE_DEFAULTS.extremum, // shaped bends: extra cost of an extremum, in plain bends
     inflectionCost: SHAPE_DEFAULTS.inflection, // and of an inflection
     logKappa: 4, // log₁₀ κ
     logEpsilon: -2, // log₁₀ ε
@@ -541,7 +541,7 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     else if (fit.shaped && st.flat === 1)
         penaltyName = 'count of steps';
     else if (fit.shaped)
-        penaltyName = st.flat === 0 ? 'count of bends, rounded' : 'count of bends, rounded, and steps';
+        penaltyName = st.flat === 0 ? 'shaped bends' : 'shaped bends and count of steps';
     else if (fit.sparse)
         penaltyName = `count of ${counted}`;
     let rounding = '';
@@ -549,10 +549,12 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         rounding = '. Entirely toward flat there are no bends to round: this is the count of steps';
     }
     else if (fit.shaped) {
-        rounding = '. Each bend also pays for the square of its second differences, which spreads a large turn over '
-            + `a wider, rounder bend; that cost levels off at ${SHAPE_DEFAULTS.roundingLimit} of the center's range `
-            + 'squared, so a turn the region forces to be sharp (a spike narrower than the bend length) costs at most '
-            + 'about that much' + (st.flat > 0 ? '. Steps (free first differences, the share toward flat) are '
+        rounding = '. Shaped bends: the count of bends plus three costs on the shape of the fit. Each bend pays for '
+            + 'the square of its second differences, which spreads a large turn over a wider, rounder bend; that '
+            + `cost levels off at ${SHAPE_DEFAULTS.roundingLimit} of the center's range squared, so a turn the region `
+            + 'forces to be sharp (a spike narrower than the bend length) costs at most about that much. Each '
+            + 'extremum and inflection costs extra (rows below), and stretches kept monotone or bending one way are '
+            + 'searched' + (st.flat > 0 ? '. Steps (free first differences, the share toward flat) are '
             + 'counted plainly, and the corners on either side of a step no wider than the bend length are not '
             + 'rounded; longer slopes are, at their bends' : '');
     }
@@ -607,8 +609,8 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
             + `${fit.reweights === 1 ? '' : 's'}; ${fit.settled ? 'the joins settled' : 'the joins had not settled'}; `
             + `${fit.pruned} dropped by backward `
             + `elimination; the final fit is ${fit.converged ? 'the exact minimizer for its joins' : 'not converged'}`
-            + (fit.countStart ? '; the reweighting was the plain count\'s: its joins, refit with rounded bends, '
-                + 'gave a lower objective than the rounded search\'s own' : ''));
+            + (fit.countStart ? '; the reweighting was the plain count\'s: its joins, refit with shaped bends, '
+                + 'gave a lower objective than the shaped search\'s own' : ''));
     }
     else {
         const shortened = fit.damped ? `; ${fit.damped} step${fit.damped === 1 ? '' : 's'} shortened by the line `
@@ -638,7 +640,7 @@ function addRuleRow(add, p) {
         + 'kinds.');
 }
 
-/** Rows for rounded bends: the bend length, the widest bend, and the extremes and inflections the bends make. */
+/** Rows for shaped bends: the bend length, the widest bend, and the extremes and inflections the bends make. */
 function addShapeRows(add, fit, st) {
     const widest = fit.bends.reduce((a, b) => Math.max(a, b.to - b.from + 1), 0);
     add('bend length', st.bendLength.toFixed(3), `a bend leaves its tangent by one median half-width over this `

@@ -72,7 +72,7 @@ const BOX_OPTIONS = [
 const PENALTY_OPTIONS = [
     ['quadratic', 'squared differences'],
     ['sparse', 'number of bends or steps'],
-    ['shaped', 'number of bends, rounded'],
+    ['shaped', 'shaped bends'],
     ['power', '|second differences|^q'],
 ];
 
@@ -172,10 +172,14 @@ const TIPS = {
         + 'center, and for ambition: pressure toward straight (or flat) lines.',
     penalty: 'What ambition penalizes:\n'
         + '- **Squared differences**: the fit gets straighter (or flatter) everywhere, smoothly.\n'
-        + '- **Number of bends or steps**: straight (or flat) pieces joined by short bends (or steps), by the adaptive '
-        + 'ridge, which approximates the count.\n'
-        + '- **Rounded**: straight pieces whose bends also pay for their sharpness, so a large turn (the top of a '
-        + 'wave) spreads into a rounded bend while a small one stays short.\n'
+        + '- **Number of bends or steps**: every bend (or step) costs the same, whatever its size or direction, so '
+        + 'the cheapest turn is one sharp corner: straight (or flat) pieces joined by short bends (or steps). By the '
+        + 'adaptive ridge, which approximates the count.\n'
+        + '- **Shaped bends**: the same count, plus three costs on the shape of the fit, each with its knob below. '
+        + 'A bend pays for its sharpness, so a large turn (the top of a wave) spreads into a rounded bend while a '
+        + 'small one stays short (bend length); each local maximum or minimum costs extra (per extremum), and so does '
+        + 'each change of bending direction (per inflection), so the fit rises and levels off where the region lets '
+        + 'it. With all three at 0 it is the number of bends.\n'
         + '- **|Second differences|^q**: their sizes to a power q between 0 and 2, toward straight (and toward flat '
         + 'with the first differences\' share).',
     q: 'The power on the size of each second difference:\n'
@@ -185,11 +189,11 @@ const TIPS = {
         + 'A smaller q concentrates the turning into fewer, sharper bends; a larger one spreads it out. Below 1 the '
         + 'fit is a local optimum. With a share toward flat, the first differences get the same power: flat pieces '
         + 'and steps.',
-    bendLength: 'How round the bends of the rounded penalty are: a bend curves so that it leaves its tangent line by '
-        + 'one half-width of the region (its median) over this fraction of the x range. 0 gives the sharp bends of '
-        + 'the plain count. A bend\'s width grows with how far it turns, and the region limits it. Rounding\'s cost '
-        + 'levels off for a turn the region forces to be sharp, such as a spike narrower than this length, so such a '
-        + 'turn does not dominate the fit.',
+    bendLength: 'How round shaped bends are: a bend curves so that it leaves its tangent line by one half-width of '
+        + 'the region (its median) over this fraction of the x range. 0 gives the sharp bends of the plain count. A '
+        + 'bend\'s width grows with how far it turns, and the region limits it. Rounding\'s cost levels off for a '
+        + 'turn the region forces to be sharp, such as a spike narrower than this length, so such a turn does not '
+        + 'dominate the fit.',
     extremumCost: 'Extra cost of each local maximum or minimum, in plain bends. The fit tries stretches forced '
         + 'monotone and keeps one when the whole cost falls, so a fit that can rise and level off inside the region '
         + 'does so instead of peaking and falling back. 0: extremes cost nothing extra.',
@@ -199,7 +203,7 @@ const TIPS = {
         + 'half-width. 0 is the simplest fit inside; below it the fit follows more detail, above it the fit '
         + 'leaves the region.',
     flat: 'Share of the ambition on first differences (toward flat) rather than second (toward straight). With '
-        + 'rounded bends, the steps are counted plainly and their corners are not rounded; the bends of longer '
+        + 'shaped bends, the steps are counted plainly and their corners are not rounded; the bends of longer '
         + 'slopes are.',
     kappa: 'Weight on the squared distance outside the region, per squared half-width: larger makes the region '
         + 'harder.',
