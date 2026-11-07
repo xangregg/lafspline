@@ -28,7 +28,10 @@ const STEP_SECONDS = 3.5; // s each step is shown
 const LAST_SECONDS = 7; // s the finished fit is shown before the loop starts over
 const MAX_FINE_BOXES = 64; // Aₙ's first boxes: the first level of the paper's blocks with at most this many
 const FIT_COLOR = 'series-1'; // the phase-2 fit's color (main.js), for Aₙ's ticks
-const GIF_SCALE = 2; // GIF pixels per CSS pixel of the chart, as the PNG export
+const FRAME_WIDTH = 800; // px, CSS: a frame is 16:9, whatever the page's width
+const FRAME_HEIGHT = 450; // px, CSS
+const MIN_PLOT_HEIGHT = 160; // px: the plot's least height, should the banner and legend take more than their share
+const GIF_SCALE = 1.6; // GIF pixels per CSS pixel: 1280 × 720
 const GIF_COLORS = 256;
 const ALL_LAYERS = ['data', 'truth', 'center', 'band', 'fit'];
 
@@ -41,6 +44,7 @@ const fmtInt = d3.format(',');
  * @property {number} seconds  how long the frame is shown
  * @property {string} headline
  * @property {string} detail
+ * @property {boolean} [keepDetail]  drawn even without detail lines (the data's outro)
  * @property {string[]} show  the chart layers drawn ('data', 'center', 'band', 'fit')
  * @property {object|null} [boxes]  Aₙ boxes to draw (chart.js BoxesSpec, with its legend label)
  */
@@ -72,6 +76,7 @@ export function storySteps(view, st) {
         headline: 'The least ambitious fit',
         detail: story.outro ?? `${pieces ? `${capitalize(pieces)}, ` : ''}${fit.leaving > 0 ? 'mostly ' : ''}`
             + `inside ${result.an ? 'Aₙ' : `the ${Math.round(100 * result.region.params.alpha)}% band`}`,
+        keepDetail: Boolean(story.outro),
         show: ['data', 'fit'],
     };
     const frames = [first, ...middle, last];
@@ -143,8 +148,7 @@ function anSteps(view, st) {
             + `σ̂·√(τ log n) = ${fmt(c)} from the noise σ̂ = ${fmt(p.sigma)} and ${tau}`
             + `${share > 0 ? '; the paper\'s blocks, before the shortest interval merges them' : ''}${skipped}`,
         show: ['data'],
-        boxes: spec([raw[fine]], { label: `Aₙ, ${levelCounts(raw[fine], 'blocks')}${share > 0 ? ', before merging'
-            : ''}` }),
+        boxes: spec([raw[fine]], { label: 'Aₙ blocks' }),
     }];
     const count = `${fmtInt(result.intervals.length)} intervals in all`;
     if (share > 0) {
@@ -154,7 +158,7 @@ function anSteps(view, st) {
                 + `${count}. `
                 + capitalize(anPhrase(p, share)),
             show: ['data'],
-            boxes: spec([levels[0]], { label: `Aₙ, finest level (${levelCounts(levels[0], 'blocks')})` }),
+            boxes: spec([levels[0]], { label: 'Aₙ blocks, merged' }),
         });
     }
     else {
@@ -163,7 +167,7 @@ function anSteps(view, st) {
             detail: `Aₙ checks the blocks and their unions at every coarser scale, ${count}. `
                 + capitalize(anPhrase(p, share)),
             show: ['data'],
-            boxes: spec(levels.slice(fine), { faint: true, label: `Aₙ boxes, ${levels.length - fine} levels drawn` }),
+            boxes: spec(levels.slice(fine), { faint: true, label: 'Aₙ blocks, every level' }),
         });
     }
     const fit = phase2.fit;
@@ -181,7 +185,7 @@ function anSteps(view, st) {
         show: ['data', 'fit'],
         boxes: { limit: 1 + LEAVE_TOL, fitColorVar: FIT_COLOR, faint: false,
             levels: [{ boxes: boxesOf(tightLevel), emphasize }],
-            label: `Aₙ boxes at the tightest level (${levelCounts(tightLevel)}); ticks: the fit's means` },
+            label: 'Aₙ blocks, tightest level' },
     });
     return steps;
 }
@@ -255,25 +259,26 @@ function capitalize(s) {
 }
 
 /**
- * The frames as standalone SVG documents of one size: each step's chart, drawn off screen with only its layers,
- * under a banner. The charts are aligned at the bottom, so the plot stays put while the legend above it changes.
+ * The frames as standalone SVG documents of one size, FRAME_WIDTH × FRAME_HEIGHT (16:9): each step's chart, drawn
+ * off screen with only its layers, under a banner. The plot's height is what the banner and the tallest legend
+ * leave, and the charts are aligned at the bottom, so the plot stays put while the legend above it changes.
  *
- * @param {HTMLElement} pageChart  the page's chart container, for the width and the fonts
  * @param {object} model  the page chart's model (main.js chartModel), whose hidden layers and boxes are replaced
  *     per step
  * @param {StoryStep[]} steps
- * @param {{details?: boolean}} [opts]  details: draw the detail line (default true)
+ * @param {{details?: boolean}} [opts]  details: draw the detail lines (default true); a step's keepDetail (the
+ *     data's outro) is drawn either way
  * @returns {{frames: {svg: SVGSVGElement, text: string}[], width: number, height: number}}
  */
-export function storyFrames(pageChart, model, steps, opts = {}) {
+export function storyFrames(model, steps, opts = {}) {
     const details = opts.details ?? true;
-    const width = pageChart.clientWidth;
+    const width = FRAME_WIDTH;
+    const height = FRAME_HEIGHT;
     const host = document.createElement('div');
     host.style.cssText = `position: absolute; left: -100000px; top: 0; width: ${width}px;`;
     document.body.append(host);
     try {
-        const chart = createMainChart(host);
-        const charts = steps.map((step, k) => {
+        const draw = chart => steps.map((step, k) => {
             chart.setBoxes(null);
             chart.render({ ...model, hidden: new Set(ALL_LAYERS.filter(l => !step.show.includes(l))),
                 boxesLabel: step.boxes?.label ?? null });
@@ -283,6 +288,10 @@ export function storyFrames(pageChart, model, steps, opts = {}) {
             const text = svg.text.replace(/plot-clip-[a-z0-9]+/g, m => `${m}-f${k}`);
             return { ...svg, node: new DOMParser().parseFromString(text, 'image/svg+xml').documentElement };
         });
+        // a first pass at the default height measures the legends (their height does not depend on the plot's)
+        const probe = createMainChart(host);
+        const probeHeight = host.querySelector('.plot').clientHeight;
+        const legendHeight = Math.max(...draw(probe).map(c => c.height - probeHeight));
         const legend = getComputedStyle(host.querySelector('.legend'));
         const font = legend.fontFamily;
         const base = parseFloat(legend.fontSize);
@@ -301,22 +310,23 @@ export function storyFrames(pageChart, model, steps, opts = {}) {
         const wrapped = steps.map(step => ({
             head: wrapLines(step.headline, room - counterWidth - BANNER_PAD, measure(headSize, '600'),
                 MAX_HEADLINE_LINES),
-            detail: details && step.detail ? wrapLines(step.detail, room, measure(detailSize, 'normal'),
-                MAX_DETAIL_LINES) : [],
+            detail: (details || step.keepDetail) && step.detail ? wrapLines(step.detail, room,
+                measure(detailSize, 'normal'), MAX_DETAIL_LINES) : [],
         }));
         const headLines = Math.max(...wrapped.map(w => w.head.length));
         const detailLines = Math.max(...wrapped.map(w => w.detail.length));
         const bannerHeight = 2 * BANNER_PAD + headLines * headSize * BANNER_LINE
             + detailLines * detailSize * BANNER_LINE;
-        const chartHeight = Math.max(...charts.map(c => c.height));
-        const height = Math.ceil(bannerHeight + BANNER_GAP + chartHeight);
+        const plotHeight = Math.max(MIN_PLOT_HEIGHT, Math.floor(height - bannerHeight - BANNER_GAP - legendHeight));
+        host.replaceChildren();
+        const charts = draw(createMainChart(host, { height: plotHeight }));
         const frames = charts.map((c, k) => {
             const svg = svgEl('svg', { xmlns: SVG_NS, width, height, viewBox: `0 0 ${width} ${height}`,
                 'font-family': font });
             svg.append(svgEl('rect', { width: '100%', height: '100%', fill: colors.surface }));
             svg.append(banner(wrapped[k], counterText(k), { width, bannerHeight, headSize, detailSize, colors }));
             c.node.setAttribute('x', 0);
-            c.node.setAttribute('y', bannerHeight + BANNER_GAP + chartHeight - c.height);
+            c.node.setAttribute('y', height - c.height);
             svg.append(document.importNode(c.node, true));
             return { svg, text: new XMLSerializer().serializeToString(svg) };
         });
@@ -374,19 +384,23 @@ function wrapLines(text, room, measure, maxLines) {
 }
 
 /**
- * One SVG document that plays the frames in a loop, by CSS keyframes switching each frame's opacity (step-end, so
- * no fades), with no script. A viewer that does not animate SVG shows the last frame, the finished fit.
+ * One SVG document that plays the frames, by CSS keyframes switching each frame's opacity (step-end, so no fades),
+ * with no script: in a loop, or once, ending on the last frame. A viewer that does not animate SVG shows the last
+ * frame, the finished fit.
  *
  * @param {{frames: {svg: SVGSVGElement}[], width: number, height: number}} story  from storyFrames
  * @param {number[]} durations  s per frame
+ * @param {{loop?: boolean}} [opts]  loop: repeat forever (default true)
  * @returns {string}
  */
-export function animatedSvg(story, durations) {
+export function animatedSvg(story, durations, opts = {}) {
+    const loop = opts.loop ?? true;
     const { frames, width, height } = story;
     const total = durations.reduce((a, b) => a + b, 0);
     const out = svgEl('svg', { xmlns: SVG_NS, width, height, viewBox: `0 0 ${width} ${height}` });
     const pct = t => `${(100 * t / total).toFixed(4)}%`;
-    let css = `.frame { opacity: 0; animation: ${total}s step-end infinite; }\n.frame.last { opacity: 1; }\n`;
+    const repeat = loop ? 'infinite' : '1 forwards';
+    let css = `.frame { opacity: 0; animation: ${total}s step-end ${repeat}; }\n.frame.last { opacity: 1; }\n`;
     let t = 0;
     frames.forEach((frame, k) => {
         const from = t;
@@ -415,13 +429,15 @@ export function animatedSvg(story, durations) {
 }
 
 /**
- * The frames as an animated GIF, looping, at GIF_SCALE pixels per CSS pixel over one palette.
+ * The frames as an animated GIF at GIF_SCALE pixels per CSS pixel over one palette, looping or played once (then
+ * it stays on the last frame).
  *
  * @param {{frames: {text: string}[], width: number, height: number}} story  from storyFrames
  * @param {number[]} durations  s per frame
+ * @param {{loop?: boolean}} [opts]  loop: repeat forever (default true)
  * @returns {Promise<{blob: Blob, width: number, height: number, colors: number}>}
  */
-export async function animatedGif(story, durations) {
+export async function animatedGif(story, durations, opts = {}) {
     const w = Math.round(story.width * GIF_SCALE);
     const h = Math.round(story.height * GIF_SCALE);
     const pixels = [];
@@ -430,7 +446,7 @@ export async function animatedGif(story, durations) {
     const palette = gifPalette(pixels, GIF_COLORS);
     const cache = new Map();
     const frames = pixels.map((rgba, k) => ({ indices: indexPixels(rgba, palette, cache), delay: durations[k] }));
-    const bytes = encodeGif({ width: w, height: h, palette, frames });
+    const bytes = encodeGif({ width: w, height: h, palette, frames, loop: (opts.loop ?? true) ? 0 : null });
     return { blob: new Blob([bytes], { type: 'image/gif' }), width: w, height: h, colors: palette.length / 3 };
 }
 

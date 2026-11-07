@@ -1760,23 +1760,24 @@ async function startup() {
             return;
         }
         const details = document.getElementById('export-details').checked;
+        const loop = document.getElementById('export-loop').checked;
+        const plays = loop ? 'looping' : 'played once';
         try {
-            const story = storyFrames(document.getElementById('main-chart'), chartModel(current).model, steps,
-                { details });
+            const story = storyFrames(chartModel(current).model, steps, { details });
             const durations = steps.map(step => step.seconds);
             const seconds = durations.reduce((a, b) => a + b, 0);
             if (kind === 'anim-svg') {
                 const name = `${base}-steps.svg`;
-                download(new Blob([animatedSvg(story, durations)], { type: 'image/svg+xml' }), name);
-                say(`Saved ${name} (${story.frames.length} frames, ${fmt(seconds)} s, looping).`);
+                download(new Blob([animatedSvg(story, durations, { loop })], { type: 'image/svg+xml' }), name);
+                say(`Saved ${name} (${story.frames.length} frames, ${fmt(seconds)} s, ${plays}).`);
                 return;
             }
             say('Making the GIF…');
-            const gif = await animatedGif(story, durations);
+            const gif = await animatedGif(story, durations, { loop });
             const name = `${base}-steps.gif`;
             download(gif.blob, name);
             say(`Saved ${name} (${gif.width} × ${gif.height} px, ${story.frames.length} frames, ${fmt(seconds)} s, `
-                + `${gif.colors} colors, ${fmtInt(Math.round(gif.blob.size / 1024))} KB).`);
+                + `${plays}, ${gif.colors} colors, ${fmtInt(Math.round(gif.blob.size / 1024))} KB).`);
         }
         catch (err) {
             say(`Could not make the animation: ${err.message}`);

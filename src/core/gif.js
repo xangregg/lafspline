@@ -4,7 +4,7 @@
 // areas to gain little at the edges.
 //
 // Format: the GIF89a specification (CompuServe, 1990); LZW as there, with variable code sizes up to 12 bits and a
-// clear code when the table is full. The looping is Netscape's application extension.
+// clear code when the table is full. The looping is Netscape's application extension; without it a GIF plays once.
 
 const MAX_CODES = 4096; // GIF's LZW table size (12-bit codes)
 const HIST_BITS = 5; // bits per channel of the median cut's histogram
@@ -164,12 +164,13 @@ export function indexPixels(rgba, palette, cache = new Map()) {
 }
 
 /**
- * An animated GIF: every frame the whole image, over one global palette, shown for its delay and looped.
+ * An animated GIF: every frame the whole image, over one global palette, shown for its delay, looped or once.
  *
  * @param {{width: number, height: number, palette: Uint8Array, frames: {indices: Uint8Array, delay: number}[],
  *     loop?: number}} spec  width, height in pixels (1 to 65535); palette RGB triples (1 to 256 colors); each
  *     frame's indices into it, width·height of them, and its delay in seconds (kept to 0.01 s, GIF's unit);
- *     loop: times to repeat, 0 (default) forever
+ *     loop: times to repeat, 0 (default) forever; null: no looping extension, so the GIF plays once and stops on
+ *     its last frame
  * @returns {Uint8Array}  the file
  */
 export function encodeGif({ width, height, palette, frames, loop = 0 }) {
@@ -196,11 +197,13 @@ export function encodeGif({ width, height, palette, frames, loop = 0 }) {
         for (let ch = 0; ch < 3; ch++)
             out.byte(j < colors ? palette[3 * j + ch] : 0);
     }
-    out.bytes([0x21, 0xff, 0x0b]);
-    out.text('NETSCAPE2.0');
-    out.bytes([0x03, 0x01]);
-    out.u16(loop);
-    out.byte(0);
+    if (loop !== null) {
+        out.bytes([0x21, 0xff, 0x0b]);
+        out.text('NETSCAPE2.0');
+        out.bytes([0x03, 0x01]);
+        out.u16(loop);
+        out.byte(0);
+    }
     const minCode = Math.max(2, bits);
     for (const frame of frames) {
         if (frame.indices.length !== width * height)

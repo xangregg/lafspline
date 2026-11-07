@@ -676,6 +676,19 @@ the default fit, toward straight, is a line.
 - [x] Gallery view: several data sets at once with the same settings, two per row (4, 6 or 8 panes), each chosen
       above its compact chart (no axes; the tooltip has the values), one legend, a line per pane saying whether its
       fit stays inside its region, ↗ to open a pane in the single view; in the link as `view` and `panes`.
+- [x] Animated export (Export → Steps as animated GIF or SVG; `src/ui/story.js`): the fit built up step by step,
+      each step the chart with only its layers under a banner (a headline, and a detail line that a menu checkbox
+      leaves out, as for social media). Bands: the data, the P-spline, its band, the fit inside the band, the fit
+      alone. Aₙ: the data, the paper's blocks at a fine level (at most 64 boxes) before the shortest interval merges
+      them, the region's merged finest level (or every level, with no shortest interval), the fit with the boxes and
+      ticks of its tightest level, the fit alone. The banner text follows the claims (what the region covers, under
+      which assumptions; a fit that leaves the region says so). A data file's `intro` replaces the label as the first
+      headline and its `outro` is the last detail, kept even without detail lines (ozone: the Montreal Protocol;
+      Montana: the speed limits). Frames are 16:9, 800 × 450 (the GIF 1280 × 720), the plot as tall as the banner
+      and legend leave; a checkbox chooses looping or playing once. The GIF encoder (`src/core/gif.js`, no
+      dependency: an exact palette up to 256 colors, else median cut; LZW) is tested against an independent decoder,
+      and Chrome decodes the exports frame by frame; the animated SVG is CSS keyframes, no script, and shows the
+      last step where SVG does not animate. Open: a dark-theme export follows the page's theme.
 - [ ] GitHub Pages, live-site check (waiting for the repository).
 
 ## 4. What to copy from the earlier project

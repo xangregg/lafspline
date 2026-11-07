@@ -92,15 +92,16 @@ function tickFormat(scale, count) {
 
 /**
  * @param {HTMLElement} container
- * @param {{compact?: boolean}} [opts]  compact: a gallery pane, shorter, with no axes, grid lines or legend of its own
- *     (legendItems gives the items for drawLegend)
+ * @param {{compact?: boolean, height?: number}} [opts]  compact: a gallery pane, shorter, with no axes, grid lines or
+ *     legend of its own (legendItems gives the items for drawLegend); height: the plot's height in px, for a frame of
+ *     a given size (the animated export), instead of the default
  * @returns {{render: function(ChartModel): void, highlight: function({lo: number, hi: number}|null): void,
  *     setBoxes: function(BoxesSpec|null): void, toSvg: function({title?: string}=): ({text: string, width: number,
  *     height: number}|null), legendItems: function(): object[]}}
  */
 export function createMainChart(container, opts = {}) {
     const compact = opts.compact ?? false;
-    const H = compact ? COMPACT_HEIGHT : HEIGHT;
+    const H = opts.height ?? (compact ? COMPACT_HEIGHT : HEIGHT);
     const M = compact ? COMPACT_MARGIN : MARGIN;
     container.classList.add('chart');
     if (compact)

@@ -114,3 +114,6 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/layout.js`: `xScale(edges, width, margin)` takes the margins (the compact chart's), `MARGIN` by default.
 - `src/core/datasets.js`: two optional metadata keys, `intro` and `outro`, the first and last steps' text in the
   animated export (src/ui/story.js); they are not in the index.
+- `src/ui/chart.js`: `createMainChart(container, {height})` sets the plot's height (the animated export's 16:9
+  frames); the box spec's `ticks: false` draws Aₙ's boxes alone, with no ticks and no violations marked; a fit's
+  `afterBand` puts its legend item after the band's.

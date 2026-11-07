@@ -179,6 +179,15 @@ test('two colors use the minimum code size; one pixel encodes', () => {
     assert.deepEqual([...decodeGif(one).frames[0].indices], [1]);
 });
 
+test('loop: null leaves out the looping extension, so the GIF plays once', () => {
+    const palette = Uint8Array.from([0, 0, 0, 255, 255, 255]);
+    const frames = [{ indices: Uint8Array.of(0, 1), delay: 1 }, { indices: Uint8Array.of(1, 0), delay: 2 }];
+    const once = decodeGif(encodeGif({ width: 2, height: 1, palette, frames, loop: null }));
+    assert.equal(once.loop, null);
+    assert.equal(once.frames.length, 2);
+    assert.equal(decodeGif(encodeGif({ width: 2, height: 1, palette, frames })).loop, 0, 'default: forever');
+});
+
 test('more than 256 colors: median cut keeps a few-pixel line color distinct from the background', () => {
     // a gradient background (thousands of colors) with a thin pure-blue line: the line's pixels must map to a color
     // within 8 per channel of it (the histogram's 5-bit cells are 8 wide), not to a background gray

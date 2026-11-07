@@ -191,6 +191,11 @@ button:disabled {
     border-top: 1px solid var(--border);
 }
 
+.menu-check-next {
+    border-top: none;
+    padding-top: 0;
+}
+
 /* --- about dialog */
 #about {
     max-width: min(44rem, calc(100vw - 2rem));
