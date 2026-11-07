@@ -40,7 +40,7 @@ import { cellEdges } from './layout.js';
 import { onThemeChange } from './theme.js';
 import { toCsv, fitTables } from './export.js';
 import { createHistory } from './history.js';
-import { animatedGif, animatedSvg, storyDurations, storyFrames, storySteps } from './story.js';
+import { animatedGif, animatedSvg, storyFrames, storySteps } from './story.js';
 
 const fmt = d3.format('.4~g');
 const fmtInt = d3.format(',');
@@ -1346,11 +1346,16 @@ async function startup() {
             : `intervals of ${fmtInt(lo)}–${fmtInt(hi)} observations`;
     }
 
+    /** Aₙ's levels of intervals and the fit at the data x, computed once per view (boxes, animated steps). */
+    function anLevels(result, phase2, data) {
+        result.levels ??= familyLevels(data.x, result.family);
+        phase2.atData ??= splineValues(phase2.fit.beta, data.x, result.region.params);
+    }
+
     function anBoxSpec(result, phase2, data) {
         if (state.boxes === 'off')
             return null;
-        result.levels ??= familyLevels(data.x, result.family);
-        phase2.atData ??= splineValues(phase2.fit.beta, data.x, result.region.params);
+        anLevels(result, phase2, data);
         const boxesOf = level => constraintBoxes(data.y, phase2.atData, level, result.an.scale);
         const common = { limit: 1 + LEAVE_TOL, fitColorVar: FIT_COLOR };
         if (state.boxes === 'all') {
@@ -1747,6 +1752,8 @@ async function startup() {
     }
     /** The fit built up step by step (story.js), as an animated GIF or SVG. */
     async function exportStory(kind, base) {
+        if (current.result.an && current.phase2)
+            anLevels(current.result, current.phase2, current.data);
         const { steps, error } = storySteps(current, state);
         if (error) {
             say(error);
@@ -1756,19 +1763,19 @@ async function startup() {
         try {
             const story = storyFrames(document.getElementById('main-chart'), chartModel(current).model, steps,
                 { details });
-            const durations = storyDurations(steps.length);
+            const durations = steps.map(step => step.seconds);
             const seconds = durations.reduce((a, b) => a + b, 0);
             if (kind === 'anim-svg') {
                 const name = `${base}-steps.svg`;
                 download(new Blob([animatedSvg(story, durations)], { type: 'image/svg+xml' }), name);
-                say(`Saved ${name} (${steps.length} steps, ${fmt(seconds)} s, looping).`);
+                say(`Saved ${name} (${story.frames.length} frames, ${fmt(seconds)} s, looping).`);
                 return;
             }
             say('Making the GIF…');
             const gif = await animatedGif(story, durations);
             const name = `${base}-steps.gif`;
             download(gif.blob, name);
-            say(`Saved ${name} (${gif.width} × ${gif.height} px, ${steps.length} steps, ${fmt(seconds)} s, `
+            say(`Saved ${name} (${gif.width} × ${gif.height} px, ${story.frames.length} frames, ${fmt(seconds)} s, `
                 + `${gif.colors} colors, ${fmtInt(Math.round(gif.blob.size / 1024))} KB).`);
         }
         catch (err) {

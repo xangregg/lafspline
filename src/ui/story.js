@@ -1,7 +1,8 @@
 // The animated export: the fit built up step by step (the data, the P-spline, its band, the fit inside the band,
 // the fit alone), each step the chart with only its layers and a banner saying what the step adds. Written as an
 // animated GIF (core/gif.js), which plays almost anywhere, or an animated SVG (CSS keyframes, no script), sharp at
-// any size where SVG animates (browsers, GitHub). Prototype: the bands only, not Aₙ.
+// any size where SVG animates (browsers, GitHub). For Aₙ the band's steps become its boxes: the paper's blocks at a
+// fine level, the region's own blocks (merged to the shortest interval), then the fit at its tightest level.
 //
 // The frames are drawn by a second chart off screen, so the page's chart is not touched; it has the page chart's
 // width, so the frames look as the page does. The banner text follows the readouts' claims, shortened: the band
@@ -11,6 +12,9 @@ import * as d3 from 'd3';
 import { createMainChart } from './chart.js';
 import { encodeGif, gifPalette, indexPixels } from '../core/gif.js';
 import { lambdaSourceName } from '../core/thumb.js';
+import { constraintBoxes } from '../core/region.js';
+import { familyLevels } from '../core/intervals.js';
+import { LEAVE_TOL } from '../core/fit.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const HEADLINE_SIZE = 1.5; // banner headline font size, in the legend's font sizes
@@ -22,6 +26,8 @@ const MAX_HEADLINE_LINES = 2; // longer headlines are cut with an ellipsis
 const MAX_DETAIL_LINES = 3;
 const STEP_SECONDS = 3.5; // s each step is shown
 const LAST_SECONDS = 7; // s the finished fit is shown before the loop starts over
+const MAX_FINE_BOXES = 64; // Aₙ's first boxes: the first level of the paper's blocks with at most this many
+const FIT_COLOR = 'series-1'; // the phase-2 fit's color (main.js), for Aₙ's ticks
 const GIF_SCALE = 2; // GIF pixels per CSS pixel of the chart, as the PNG export
 const GIF_COLORS = 256;
 const ALL_LAYERS = ['data', 'truth', 'center', 'band', 'fit'];
@@ -30,38 +36,62 @@ const fmt = d3.format('.3~g');
 const fmtInt = d3.format(',');
 
 /**
- * The steps of the animation for a computed view: each a headline, a detail line and the layers shown.
+ * @typedef {object} StoryStep  one step of the animation, one frame
+ * @property {number} number  from 1
+ * @property {number} seconds  how long the frame is shown
+ * @property {string} headline
+ * @property {string} detail
+ * @property {string[]} show  the chart layers drawn ('data', 'center', 'band', 'fit')
+ * @property {object|null} [boxes]  Aₙ boxes to draw (chart.js BoxesSpec, with its legend label)
+ */
+
+/**
+ * The frames of the animation for a computed view.
  *
- * @param {{data: object, result: object, phase2: object}} view  as main.js computes it
+ * @param {{data: object, result: object, phase2: object}} view  as main.js computes it; for Aₙ with result.levels
+ *     and phase2.atData set (main.js anLevels)
  * @param {object} st  the settings (for the ambition penalty)
- * @returns {{steps?: {headline: string, detail: string, show: string[]}[], error?: string}}
+ * @returns {{steps?: StoryStep[], error?: string}}
  */
 export function storySteps(view, st) {
     const { data, result, phase2 } = view;
-    if (result.an)
-        return { error: 'The animation is a prototype for the bands; Aₙ is not supported yet.' };
     if (!result.region || !phase2)
         return { error: 'Nothing to animate until there is a fit.' };
+    const story = data.story ?? {};
+    const xy = data.columns.length >= 2 ? ` of ${data.columns[1]} against ${data.columns[0]}` : '';
+    const first = {
+        headline: story.intro ?? data.label,
+        detail: [story.intro ? data.label : '', `${fmtInt(data.n)} observations${xy}`,
+            data.fAt ? `simulated: ${data.notes[0]}` : ''].filter(Boolean).join('; '),
+        show: ['data'],
+    };
+    const middle = result.an ? anSteps(view, st) : bandSteps(view, st);
+    const fit = phase2.fit;
+    const pieces = piecesPhrase(fit);
+    const last = {
+        headline: 'The least ambitious fit',
+        detail: story.outro ?? `${pieces ? `${capitalize(pieces)}, ` : ''}${fit.leaving > 0 ? 'mostly ' : ''}`
+            + `inside ${result.an ? 'Aₙ' : `the ${Math.round(100 * result.region.params.alpha)}% band`}`,
+        show: ['data', 'fit'],
+    };
+    const frames = [first, ...middle, last];
+    const steps = frames.map((frame, k) => ({ number: k + 1,
+        seconds: k === frames.length - 1 ? LAST_SECONDS : STEP_SECONDS, ...frame }));
+    return { steps };
+}
+
+function bandSteps(view, st) {
+    const { result, phase2 } = view;
     const p = result.region.params;
     const boot = p.covariance === 'bootstrap';
     const pct = `${Math.round(100 * p.alpha)}%`;
-    const story = data.story ?? {};
-    const xy = data.columns.length >= 2 ? ` of ${data.columns[1]} against ${data.columns[0]}` : '';
-    const observations = `${fmtInt(data.n)} observations${xy}`;
     const fit = phase2.fit;
     const G = result.region.grid.length;
     const leaves = fit.leaving > 0
         ? `; it leaves the band by more than 1% of its half-width at ${fmtInt(fit.leaving)} of ${fmtInt(G)} points`
         : '';
     const pieces = piecesPhrase(fit);
-    const where = fit.leaving > 0 ? 'mostly inside' : 'inside';
-    const steps = [
-        {
-            headline: story.intro ?? data.label,
-            detail: [story.intro ? data.label : '', observations, data.fAt ? `simulated: ${data.notes[0]}` : '']
-                .filter(Boolean).join('; '),
-            show: ['data'],
-        },
+    return [
         {
             headline: 'Fit a P-spline',
             detail: `A smooth curve through the data (penalized B-splines, ${lambdaPhrase(p)}; effective dimension `
@@ -79,13 +109,98 @@ export function storySteps(view, st) {
                 + `${pieces ? `: ${pieces}` : ''}${leaves}`,
             show: ['data', 'center', 'band', 'fit'],
         },
-        {
-            headline: 'The least ambitious fit',
-            detail: story.outro ?? `${pieces ? `${capitalize(pieces)}, ` : ''}${where} the ${pct} band`,
-            show: ['data', 'fit'],
-        },
     ];
-    return { steps };
+}
+
+/**
+ * Aₙ's steps: the paper's blocks at a fine level (the first with at most MAX_FINE_BOXES boxes), before any shortest
+ * interval merges them; then the region's own finest level, the blocks merged to span at least the shortest
+ * interval (or, with none, every level at once); then the fit with the boxes of its tightest level and their ticks
+ * (the fit's mean over each interval). Before the fit, the boxes have no ticks and no violations: nothing is checked
+ * yet.
+ */
+function anSteps(view, st) {
+    const { data, result, phase2 } = view;
+    const p = result.an.params;
+    const c = result.an.scale;
+    const share = result.family?.minShare ?? 0;
+    const levels = result.levels.filter(level => level.length > 0);
+    const boxesOf = level => constraintBoxes(data.y, phase2.atData, level, c);
+    const spec = (lvls, extra) => ({ limit: 1 + LEAVE_TOL, fitColorVar: FIT_COLOR, faint: false, ticks: false,
+        levels: lvls.map(level => ({ boxes: boxesOf(level), emphasize: -1 })), ...extra });
+    // the paper's blocks: the family without the shortest interval (the region's own levels when there is none)
+    const raw = share > 0 ? familyLevels(data.x, { ...result.family, minShare: 0 }).filter(level => level.length > 0)
+        : levels;
+    let fine = raw.findIndex(level => level.length <= MAX_FINE_BOXES);
+    if (fine < 0)
+        fine = raw.length - 1;
+    const skipped = fine > 0 ? `; ${fine === 1 ? 'the finer level' : `the ${fine} finer levels`} (up to `
+        + `${fmtInt(raw[0].length)} blocks) ${fine === 1 ? 'is' : 'are'} not drawn` : '';
+    const tau = p.calibration ? `τ = ${fmt(p.tau)}, calibrated` : `τ = ${fmt(p.tau)}, given`;
+    const steps = [{
+        headline: 'Average the data in small blocks',
+        detail: `Each box: the mean of y over a block (here ${levelCounts(raw[fine], 'blocks')}) ± c/√(its count), c = `
+            + `σ̂·√(τ log n) = ${fmt(c)} from the noise σ̂ = ${fmt(p.sigma)} and ${tau}`
+            + `${share > 0 ? '; the paper\'s blocks, before the shortest interval merges them' : ''}${skipped}`,
+        show: ['data'],
+        boxes: spec([raw[fine]], { label: `Aₙ, ${levelCounts(raw[fine], 'blocks')}${share > 0 ? ', before merging'
+            : ''}` }),
+    }];
+    const count = `${fmtInt(result.intervals.length)} intervals in all`;
+    if (share > 0) {
+        steps.push({
+            headline: `Merge blocks narrower than ${fmt(100 * share)}% of the x range`,
+            detail: `Aₙ checks these (${levelCounts(levels[0], 'blocks')}) and their unions at every coarser scale, `
+                + `${count}. `
+                + capitalize(anPhrase(p, share)),
+            show: ['data'],
+            boxes: spec([levels[0]], { label: `Aₙ, finest level (${levelCounts(levels[0], 'blocks')})` }),
+        });
+    }
+    else {
+        steps.push({
+            headline: 'Check every scale at once',
+            detail: `Aₙ checks the blocks and their unions at every coarser scale, ${count}. `
+                + capitalize(anPhrase(p, share)),
+            show: ['data'],
+            boxes: spec(levels.slice(fine), { faint: true, label: `Aₙ boxes, ${levels.length - fine} levels drawn` }),
+        });
+    }
+    const fit = phase2.fit;
+    const pieces = piecesPhrase(fit);
+    const tight = result.intervals[fit.argMax];
+    const tightLevel = result.levels[tight.level];
+    const emphasize = tightLevel.findIndex(iv => iv.lo === tight.lo && iv.hi === tight.hi);
+    const misses = fit.leaving > 0
+        ? `; it misses ${fmtInt(fit.leaving)} of ${fmtInt(result.intervals.length)} boxes by more than 1%` : '';
+    steps.push({
+        headline: 'Fit the simplest curve whose averages lie in every box',
+        detail: `A P-spline, penalized severely for leaving Aₙ and for ${ambitionPhrase(st)}${pieces ? `: ${pieces}`
+            : ''}${misses}. Drawn: the level where it comes closest to a box's edge (${levelCounts(tightLevel)}), each `
+            + 'tick its average over the interval',
+        show: ['data', 'fit'],
+        boxes: { limit: 1 + LEAVE_TOL, fitColorVar: FIT_COLOR, faint: false,
+            levels: [{ boxes: boxesOf(tightLevel), emphasize }],
+            label: `Aₙ boxes at the tightest level (${levelCounts(tightLevel)}); ticks: the fit's means` },
+    });
+    return steps;
+}
+
+/** What Aₙ covers, shortened from main.js shortClaim. */
+function anPhrase(p, share) {
+    const level = p.calibration
+        ? `It holds f with probability ≈ ${fmt(p.calibration.alpha)} (τ calibrated)`
+        : `τ = ${fmt(p.tau)} is given, so its coverage is not calibrated`;
+    const narrow = share > 0 ? `; features narrower than ${fmt(100 * share)}% of the x range are not checked` : '';
+    return `${level}, if the noise is independent Gaussian; no smoothness is assumed${narrow}`;
+}
+
+/** 'intervals of 24–30 observations' or '25-observation intervals' (main.js levelCounts), or of blocks. */
+function levelCounts(level, noun = 'intervals') {
+    const counts = level.map(iv => iv.hi - iv.lo + 1);
+    const lo = d3.min(counts);
+    const hi = d3.max(counts);
+    return lo === hi ? `${fmtInt(lo)}-observation ${noun}` : `${noun} of ${fmtInt(lo)}–${fmtInt(hi)} observations`;
 }
 
 function lambdaPhrase(p) {
@@ -144,8 +259,9 @@ function capitalize(s) {
  * under a banner. The charts are aligned at the bottom, so the plot stays put while the legend above it changes.
  *
  * @param {HTMLElement} pageChart  the page's chart container, for the width and the fonts
- * @param {object} model  the page chart's model (main.js chartModel), whose hidden layers are replaced per step
- * @param {{headline: string, detail: string, show: string[]}[]} steps
+ * @param {object} model  the page chart's model (main.js chartModel), whose hidden layers and boxes are replaced
+ *     per step
+ * @param {StoryStep[]} steps
  * @param {{details?: boolean}} [opts]  details: draw the detail line (default true)
  * @returns {{frames: {svg: SVGSVGElement, text: string}[], width: number, height: number}}
  */
@@ -158,7 +274,10 @@ export function storyFrames(pageChart, model, steps, opts = {}) {
     try {
         const chart = createMainChart(host);
         const charts = steps.map((step, k) => {
-            chart.render({ ...model, hidden: new Set(ALL_LAYERS.filter(l => !step.show.includes(l))) });
+            chart.setBoxes(null);
+            chart.render({ ...model, hidden: new Set(ALL_LAYERS.filter(l => !step.show.includes(l))),
+                boxesLabel: step.boxes?.label ?? null });
+            chart.setBoxes(step.boxes ?? null);
             const svg = chart.toSvg();
             // each frame's clip-path ids made unique, as the animated SVG holds them all
             const text = svg.text.replace(/plot-clip-[a-z0-9]+/g, m => `${m}-f${k}`);
@@ -175,8 +294,9 @@ export function storyFrames(pageChart, model, steps, opts = {}) {
         };
         const headSize = base * HEADLINE_SIZE;
         const detailSize = base * DETAIL_SIZE;
-        const counterText = k => `${k + 1}/${steps.length}`;
-        const counterWidth = measure(detailSize, 'normal')(counterText(steps.length - 1));
+        const total = steps[steps.length - 1].number;
+        const counterText = k => `${steps[k].number}/${total}`;
+        const counterWidth = measure(detailSize, 'normal')(`${total}/${total}`);
         const room = width - 2 * BANNER_PAD;
         const wrapped = steps.map(step => ({
             head: wrapLines(step.headline, room - counterWidth - BANNER_PAD, measure(headSize, '600'),
@@ -251,11 +371,6 @@ function wrapLines(text, room, measure, maxLines) {
         last = last.slice(0, last.lastIndexOf(' ') > 0 ? last.lastIndexOf(' ') : last.length - 1);
     kept[maxLines - 1] = `${last}…`;
     return kept;
-}
-
-/** Each step's duration in seconds: the last one held longer. */
-export function storyDurations(count) {
-    return Array.from({ length: count }, (_, k) => (k === count - 1 ? LAST_SECONDS : STEP_SECONDS));
 }
 
 /**

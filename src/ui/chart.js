@@ -67,6 +67,8 @@ function tickFormat(scale, count) {
  * @typedef {object} BoxesSpec  Aₙ constraint boxes to draw (see region.constraintBoxes)
  * @property {Array<{boxes: import('../core/region.js').ConstraintBoxes, emphasize: number}>} levels
  * @property {boolean} faint     outlines only, no fit ticks (for many levels at once)
+ * @property {boolean} [ticks]   false: the boxes alone, as Aₙ is before any fit, with no ticks and no violations
+ *                               marked (default: ticks unless faint)
  * @property {number} limit      ratio above which a box is violated
  * @property {string} fitColorVar  CSS custom property for the fit-mean ticks
  */
@@ -141,6 +143,7 @@ export function createMainChart(container, opts = {}) {
             return [];
         const colors = themeColors();
         const tickColor = cssColor(boxSpec.fitColorVar);
+        const checked = boxSpec.ticks !== false;
         const edges = model.edges;
         const shapes = [];
         for (const { boxes, emphasize } of boxSpec.levels) {
@@ -149,7 +152,7 @@ export function createMainChart(container, opts = {}) {
                 const x1 = sx(edges[boxes.hi[k] + 1]);
                 const top = sy(boxes.yMean[k] + boxes.half[k]);
                 const bottom = sy(boxes.yMean[k] - boxes.half[k]);
-                const violated = boxes.ratios[k] > boxSpec.limit;
+                const violated = checked && boxes.ratios[k] > boxSpec.limit;
                 const w = Math.max(1, x1 - x0);
                 shapes.push({
                     x: x0, y: top, w, h: bottom - top,
@@ -158,7 +161,7 @@ export function createMainChart(container, opts = {}) {
                     stroke: violated ? colors.violation : colors['ink-2'],
                     strokeAlpha: violated ? 0.9 : boxSpec.faint ? 0.12 : 0.55,
                     lineWidth: k === emphasize ? 2 : 1,
-                    tick: boxSpec.faint ? null : {
+                    tick: boxSpec.faint || !checked ? null : {
                         y: sy(boxes.gMean[k]),
                         color: violated ? colors.violation : tickColor,
                         width: k === emphasize ? 3 : 2,
