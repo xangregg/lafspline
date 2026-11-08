@@ -24,4 +24,12 @@ test('sentence: capitalizes a leading Latin letter and adds a period, but leaves
     assert.equal(sentence('λ = 2, singletons included'), 'λ = 2, singletons included.');
     assert.equal(sentence('τ = 3'), 'τ = 3.');
     assert.equal(sentence('2n LPs'), '2n LPs.');
+    // Regression: a leading Latin symbol was capitalized too (a* read A*, c/√|I| read C/√|I|).
+    assert.equal(sentence('a*, the largest ambition before the fit leaves the region'),
+        'a*, the largest ambition before the fit leaves the region.');
+    assert.equal(sentence('a·∫|g\'\'|^q: q = 2 is the squared differences'), 'a·∫|g\'\'|^q: q = 2 is the squared differences.');
+    assert.equal(sentence('c/√|I|, units of y'), 'c/√|I|, units of y.');
+    assert.equal(sentence('n = 50 observations'), 'n = 50 observations.');
+    // ... while the article "a" still starts a sentence
+    assert.equal(sentence('a sine of this period keeps half its amplitude'), 'A sine of this period keeps half its amplitude.');
 });

@@ -22,13 +22,14 @@ export function fmtExp(v) {
 }
 
 /**
- * A readout note as a sentence: a leading Latin letter capitalized and a period added. A note that starts with a
- * symbol keeps its case: capitalized, σ̂ would read Σ̂ (a sum) and λ, Λ.
+ * A readout note as a sentence: a leading word capitalized and a period added. A note that starts with a symbol
+ * keeps its case: capitalized, σ̂ would read Σ̂ (a sum), λ Λ, a* A* and c/√|I| C/√|I|. A word is two Latin letters,
+ * or the article "a" before a space; a lone letter otherwise is taken for a symbol.
  *
  * @param {string} text
  * @returns {string}
  */
 export function sentence(text) {
-    const t = /^[a-z]/.test(text) ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+    const t = /^(?:[a-z]{2}|a )/.test(text) ? text.charAt(0).toUpperCase() + text.slice(1) : text;
     return /[.!?]$/.test(t) ? t : `${t}.`;
 }
