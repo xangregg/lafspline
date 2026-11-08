@@ -1,5 +1,5 @@
 # label: US coal production data
-# source: John Tukey's Exploratory Data Analysis book
+# source: J. W. Tukey (1977), Exploratory Data Analysis, Addison-Wesley
 # x: year                                                                                                                                             
 # y: coal
 # note: sinusoidal pattern

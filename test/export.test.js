@@ -12,6 +12,12 @@ test('toCsv writes full precision, Inf for infinite bounds, and quotes awkward n
     assert.equal(csv, 'x,"a,b ""c""",u\n0.1,0.3333333333333333,Inf\n0.2,-Inf,\n');
 });
 
+test('toCsv defuses column names a spreadsheet would read as formulas', () => {
+    const csv = toCsv([{ name: '=HYPERLINK("http://x")', values: [1] }, { name: '+1', values: [2] },
+        { name: '-x', values: [3] }, { name: '@a', values: [4] }, { name: 'ok=1', values: [5] }]);
+    assert.equal(csv.split('\n')[0], `"'=HYPERLINK(""http://x"")",'+1,'-x,'@a,ok=1`);
+});
+
 test('toCsv rejects ragged columns', () => {
     assert.throws(() => toCsv([{ name: 'a', values: [1, 2] }, { name: 'b', values: [1] }]), RangeError);
 });

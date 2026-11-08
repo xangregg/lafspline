@@ -4,6 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>lafspline: least ambitious fit</title>
+    <meta name="description" content="The simplest curve the data allow: a confidence region from a P-spline, then the least ambitious fit that stays inside it, in the browser.">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="lafspline: least ambitious fit">
+    <meta property="og:description" content="The simplest curve the data allow: a confidence region from a P-spline, then the least ambitious fit that stays inside it.">
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="styles.css">
     <script type="importmap">
@@ -14,8 +18,30 @@
     }
     </script>
     <script type="module" src="src/ui/main.js"></script>
+    <script>
+        // Without import maps (Safari before 16.4, Firefox before 108) the app cannot load at all; say so.
+        if (!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'))) {
+            document.addEventListener('DOMContentLoaded', function () {
+                var p = document.getElementById('boot-error');
+                p.textContent = 'This browser cannot run lafspline: it needs import maps (Chrome or Edge 89, '
+                    + 'Firefox 108, Safari 16.4 or later).';
+                p.hidden = false;
+            });
+        }
+    </script>
+    <script type="module">
+        // d3 comes from a CDN; if it cannot be loaded, nothing else will run, so say so rather than show a blank page
+        import('d3').catch(() => {
+            const p = document.getElementById('boot-error');
+            p.textContent = 'lafspline could not load its chart library (d3, from cdn.jsdelivr.net). Check the '
+                + 'connection or any blocker, and reload.';
+            p.hidden = false;
+        });
+    </script>
 </head>
 <body>
+    <noscript><p class="warning">lafspline runs in the browser and needs JavaScript.</p></noscript>
+    <p id="boot-error" class="warning" role="alert" hidden></p>
     <header>
         <div>
             <h1>lafspline</h1>
@@ -143,7 +169,9 @@
             <li>The address bar holds the current settings, so reloading keeps them and <em>Copy link</em> shares
                 them. Pasted data is included when it compresses to a short enough link.</li>
             <li><em>Export</em> saves the data and fits as CSV, at the observations or on the check grid, and the
-                chart as SVG, PNG or JPEG, as drawn (hidden layers are left out of the image, not the tables).</li>
+                chart as SVG, PNG or JPEG, as drawn (hidden layers are left out of the image, not the tables). It
+                also saves the fit built up step by step (data, first fit, region, fit inside it) as an animated
+                GIF or SVG, 16:9, with or without the detail lines, looping or played once.</li>
             <li>The example data sets are third-party measurements, included for demonstration with their sources
                 cited (shown with each data set). They are not covered by lafspline's license.</li>
         </ul>

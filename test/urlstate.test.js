@@ -130,6 +130,16 @@ test('packText/unpackText round-trip Unicode; malformed data is rejected', async
     assert.deepEqual(rejected, ['data']);
 });
 
+test('unpackText stops at its byte limit: a small link cannot inflate without bound', async () => {
+    const bomb = await packText('0'.repeat(2 << 20)); // 2 MB of zeros packs to a few kB
+    assert.ok(bomb.length < 8000, `packed ${bomb.length} chars`);
+    await assert.rejects(unpackText(bomb), RangeError);
+    assert.equal((await unpackText(bomb, 3 << 20)).length, 2 << 20);
+    const { state, rejected } = await hashToState(`#source=user&data=${bomb}`, DEFAULTS);
+    assert.deepEqual(rejected, ['data']);
+    assert.notEqual(state.userText?.length, 2 << 20);
+});
+
 test('bundled examples are kept in links by id; simulation settings are not written for them', async () => {
     const st = { ...DEFAULTS, source: 'example:nile-flow', seed: 7, ambition: -1 };
     const { hash } = await stateToHash(st, DEFAULTS);

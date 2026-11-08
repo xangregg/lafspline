@@ -372,6 +372,7 @@ export function createControls(container, state, onChange, examples = [], local 
     const text = el('textarea', {
         rows: 6, spellcheck: false,
         placeholder: 'Paste CSV/TSV here or drop a file. A header row is optional.',
+        'aria-label': 'Your data: CSV or TSV text',
     });
     text.value = state.userText;
     text.addEventListener('input', () => later({ userText: text.value }));
@@ -386,7 +387,8 @@ export function createControls(container, state, onChange, examples = [], local 
         if (file)
             loadText(await file.text());
     });
-    const file = el('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain' });
+    const file = el('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain',
+        'aria-label': 'Your data: a CSV or TSV file' });
     file.addEventListener('change', async () => {
         if (file.files[0])
             loadText(await file.files[0].text());

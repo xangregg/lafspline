@@ -19,8 +19,11 @@ function cell(v) {
     return String(v);
 }
 
+// A name a spreadsheet would read as a formula (=, +, -, @, or a tab or carriage return first) gets a leading
+// apostrophe, so a column named in pasted data, which a shared link can carry, cannot run as one in an export.
 function quote(name) {
-    return /[",\n\r]/.test(name) ? `"${name.replace(/"/g, '""')}"` : name;
+    const safe = /^[=+\-@\t\r]/.test(name) ? `'${name}` : name;
+    return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 /**

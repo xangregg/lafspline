@@ -13,6 +13,9 @@ import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import { WEIGHTS } from '../core/bootstrap.js';
 
 const MAX_DATA_CHARS = 8000; // encoded data longer than this stays out of the link (chat apps truncate long URLs)
+// pasted data unpacked from a link, at most: far above what MAX_DATA_CHARS packs, so a crafted link cannot inflate
+// to gigabytes in the reader's tab
+const MAX_UNPACKED_BYTES = 1 << 20; // bytes
 export const MAX_N = 5000; // simulated sample size cap, used by controls.js
 export const MAX_SEGMENTS = 400; // phase-1 basis segments, used by controls.js
 export const AMBITION_RANGE = [-8, 4]; // decades of a/a* (fit.js leavingAmbition); the slider spans less
@@ -186,13 +189,35 @@ export async function packText(text) {
 }
 
 /**
- * Inverse of packText.
+ * Inverse of packText, read in chunks and stopped beyond MAX_UNPACKED_BYTES.
  *
  * @param {string} packed
- * @returns {Promise<string>}  rejects on malformed input
+ * @param {number} [maxBytes]  the most it unpacks (default MAX_UNPACKED_BYTES)
+ * @returns {Promise<string>}  rejects on malformed input or past maxBytes
  */
-export async function unpackText(packed) {
-    return new TextDecoder().decode(await pipe(fromBase64Url(packed), new DecompressionStream('deflate-raw')));
+export async function unpackText(packed, maxBytes = MAX_UNPACKED_BYTES) {
+    const reader = new Blob([fromBase64Url(packed)]).stream()
+        .pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done)
+            break;
+        total += value.length;
+        if (total > maxBytes) {
+            await reader.cancel();
+            throw new RangeError(`unpackText: more than ${maxBytes} bytes`);
+        }
+        chunks.push(value);
+    }
+    const out = new Uint8Array(total);
+    let at = 0;
+    for (const chunk of chunks) {
+        out.set(chunk, at);
+        at += chunk.length;
+    }
+    return new TextDecoder().decode(out);
 }
 
 /**
