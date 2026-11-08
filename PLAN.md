@@ -1,4 +1,4 @@
-# PLAN.md — lafspline (least ambitious fit, P-spline version)
+# PLAN.md — lafspline (Least Ambitious Fit using P-splines)
 
 ## 0. Goal
 

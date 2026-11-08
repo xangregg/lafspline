@@ -2,7 +2,7 @@
 
 ## Project
 
-**lafspline** ("least ambitious fit", P-spline version): a browser app (served from GitHub Pages) for
+**lafspline** ("Least Ambitious Fit" using P-splines): a browser app (served from GitHub Pages) for
 nonparametric regression in two phases. A P-spline fit gives a simultaneous confidence region; a second P-spline is
 then penalized severely for leaving the region, slightly for distance from its center, and for ambition (pressure
 toward flat and straight lines), with a user knob for long-term versus short-term patterns. It follows an earlier,

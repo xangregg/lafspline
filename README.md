@@ -1,4 +1,4 @@
-# lafspline: least ambitious fit, P-spline version
+# lafspline: Least Ambitious Fit using P-splines
 
 **Live:** https://xangregg.github.io/lafspline/
 
@@ -8,7 +8,7 @@ equally spaced knots with a penalty on the differences of their coefficients):
 1. **A confidence region** for the regression function, from the data alone: a bootstrap band (the default) or a
    P-spline band around a first P-spline fit, or Aₙ, the multiresolution region of Davies, Kovac & Meise, which
    bounds the residuals' sums over intervals at every scale.
-2. **The least ambitious fit**: a second P-spline, penalized severely for leaving the region, slightly for its
+2. **The Least Ambitious Fit**: a second P-spline, penalized severely for leaving the region, slightly for its
    distance from the region's center, and for *ambition*, its departure from a straight line or a constant. The
    ambition can be the squared differences, the number of bends or steps, shaped bends (that number with costs for
    rounding, extremes and inflections), or the differences' sizes to a power.

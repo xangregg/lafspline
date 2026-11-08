@@ -1,7 +1,7 @@
 {
   "name": "lafspline",
   "version": "0.0.1",
-  "description": "Least ambitious fit, P-spline version: a penalized spline that stays inside a confidence region from a first P-spline fit",
+  "description": "Least Ambitious Fit using P-splines: a penalized spline that stays inside a confidence region from a first P-spline fit",
   "type": "module",
   "license": "0BSD",
   "private": true,
