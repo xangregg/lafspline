@@ -5,11 +5,9 @@
 **lafspline** ("Least Ambitious Fit" using P-splines): a browser app (served from GitHub Pages) for
 nonparametric regression in two phases. A P-spline fit gives a simultaneous confidence region; a second P-spline is
 then penalized severely for leaving the region, slightly for distance from its center, and for ambition (pressure
-toward flat and straight lines), with a user knob for long-term versus short-term patterns. It follows an earlier,
-related project (the region as a hard constraint, fewest kinks by MIP; its name and location are in CLAUDE.local.md,
-which is not committed), which grew out of **tautfit** (../nicefit, https://github.com/xangregg/tautfit, a faithful
-Davies, Kovac & Meise implementation). lafspline is free to depart
-from both.
+toward flat and straight lines), with a user knob for long-term versus short-term patterns. It grew out of
+**tautfit** (https://github.com/xangregg/tautfit, a faithful Davies, Kovac & Meise implementation) by way of an
+earlier project that is not public (see VENDORED.md); lafspline is free to depart from both.
 
 The spec, decisions and milestones are in **PLAN.md**. Read it before starting a phase, and tick its checkboxes
 as work is completed. Code copied from the earlier project (some of it originally tautfit's) is listed in
