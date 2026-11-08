@@ -112,13 +112,13 @@
   {
     "id": "dog-ages",
     "file": "dog-ages.csv",
-    "label": "Dog vs Human ages",
+    "label": "Dog ages vs genetically closest human ages",
     "source": "https://www.biorxiv.org/content/10.1101/829192v1.full",
     "x": "dog age",
     "y": "human age",
-    "n": 94,
-    "m": 94,
-    "note": "y ascending sharply then slowly or leveling; non-decreasing; data scraped from a figure in an early preprint of the paper (bioRxiv v1), so they may not match later versions"
+    "n": 87,
+    "m": 67,
+    "note": "y ascending sharply then slowly or leveling; non-decreasing"
   },
   {
     "id": "fibers-distance",

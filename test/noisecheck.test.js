@@ -88,10 +88,11 @@ test('checkNoise: replicates that agree more closely than their x values do read
     assert.ok(c.ratio > 1.5 && c.lag1 < -0.6, `ratio ${c.ratio}, r1 ${c.lag1}`);
 });
 
-test('checkNoise: larger residuals without runs read as spread (dog ages)', () => {
-    const d = example('dog-ages');
+test('checkNoise: larger residuals without runs read as spread (Gapminder\'s low outliers)', () => {
+    // dog ages served here until its data were digitized anew (now ratio 1.47, within the limit 1.54: ok)
+    const d = example('gapminder-2007');
     const c = check(d.x, d.y, defaultSegments(d.m));
     assert.equal(c.verdict, 'spread');
-    // measured: ratio 1.59 (limit 1.51), r₁ 0.04
+    // measured: ratio 1.64 (limit 1.40), r₁ 0.03
     assert.ok(c.ratio > c.ratioLimits[1] && Math.abs(c.lag1) < 0.2, `ratio ${c.ratio}, r1 ${c.lag1}`);
 });
