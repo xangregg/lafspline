@@ -5,8 +5,11 @@ import { noiseStatistics, checkNoise } from '../src/core/noisecheck.js';
 import { selectLambda, fitPSpline, defaultSegments } from '../src/core/pspline.js';
 import { readDataset } from '../src/core/datasets.js';
 import { simulate } from '../src/core/signals.js';
+import { createRng } from '../src/core/rng.js';
 
 const UNDERSMOOTH = 0.25; // as the app's bands
+const YEARS = 47; // distinct x of the replicated example
+const REPLICATES = 25; // observations at each
 
 function example(id) {
     return readDataset(readFileSync(new URL(`../data/${id}.csv`, import.meta.url), 'utf8'));
@@ -65,11 +68,23 @@ test('checkNoise: a basis too coarse for jumps leaves residuals in runs (Blocks,
     assert.equal(check(h.x, h.y, 40).verdict, 'runs');
 });
 
-test('checkNoise: ozone\'s replicates agree more closely than its years do', () => {
-    const d = example('ozone');
-    const c = check(d.x, d.y, defaultSegments(d.m));
+test('checkNoise: replicates that agree more closely than their x values do read as between', () => {
+    // 47 "years" of 25 replicates each, every year with its own offset (sd 1) on top of replicate noise (sd 0.5),
+    // as daily values recorded at the year's x: the pattern of the daily Antarctic ozone set, since removed
+    // (measured there: ratio 1.85, r₁ −0.75)
+    const rng = createRng(1);
+    const x = [];
+    const y = [];
+    for (let k = 0; k < YEARS; k++) {
+        const offset = rng.normal();
+        for (let r = 0; r < REPLICATES; r++) {
+            x.push(k);
+            y.push(3 * Math.sin(k / 8) + offset + 0.5 * rng.normal());
+        }
+    }
+    const c = check(x, y, defaultSegments(YEARS));
     assert.equal(c.verdict, 'between');
-    // measured: ratio 1.85, r₁ −0.75
+    // measured: ratio 1.69, r₁ −0.80
     assert.ok(c.ratio > 1.5 && c.lag1 < -0.6, `ratio ${c.ratio}, r1 ${c.lag1}`);
 });
 

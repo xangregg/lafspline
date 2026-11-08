@@ -5,7 +5,7 @@
 // ED 49 of 49) leaves residuals far smaller than it; a fit that misses structure (Blocks at 40 segments) leaves
 // them larger, in runs along x. The lag-1 autocorrelation of the residuals tells these apart from heavy tails or
 // unequal variance (larger, but not in runs) and from variation between x values that the replicates within them do
-// not show (larger, alternating: ozone's years). It cannot see serially correlated noise that the criterion has
+// not show (larger, alternating: years of daily values recorded at one x). It cannot see serially correlated noise that the criterion has
 // absorbed into the fit (Nile): then the fit and the differences are fooled alike.
 //
 // Limits: quantiles under smooth curves with independent Gaussian noise, fitted as the bands fit them (λ by GCV,

@@ -187,7 +187,7 @@ undersmoothing on the examples (default segments; * the target is out of reach):
 | dog ages | 94 | 3.8 | 31.7 | 5.5 | 5.8 |
 | fibers (5 distinct x) | 45 | 4.8 | 4.8 | 3.8 | 5.0* |
 | Nile | 100 | 18.9 | 31.2 | 5.2 | 7.8 |
-| ozone | 1197 | 26.6 | 26.6 | 7.6 | 13.7 |
+| ozone (daily; since removed) | 1197 | 26.6 | 26.6 | 7.6 | 13.7 |
 | nostalgia | 106 | 11.1 | 11.4 | 5.3 | 11.8 |
 | Tukey coal | 49 | 18.4 | 26.9 | 4.7 | 8.6 |
 | xkcd | 31 | 2.7 | 7.1 | 4.2 | 6.6 |

@@ -10,7 +10,8 @@ const DEFAULTS = {
     alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
     nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, bendLength: 0.05, extremumCost: 2,
     inflectionCost: 1, logKappa: 4, logEpsilon: -2, showData: true, showCenter: true, showBand: true, showFit: true,
-    featureScale: 0.1, view: 'single', panes: ['example:nile-flow', 'sine', 'box', 'step', 'example:ozone', 'ramp'],
+    featureScale: 0.1, view: 'single',
+    panes: ['example:nile-flow', 'sine', 'box', 'step', 'example:ozone-annual', 'ramp'],
 };
 
 test('defaults give an empty hash and an empty hash gives the defaults', async () => {
@@ -149,15 +150,16 @@ test('local data sets are kept in links by id, as bundled ones are', async () =>
 
 test('the gallery round-trips with its panes; the panes stay out of a single-view link', async () => {
     const panes = ['example:nile-flow', 'local:kyoto-cherry-blossom', 'heavisine', 'step'];
-    const st = { ...DEFAULTS, source: 'example:ozone', view: 'gallery', panes, seed: 7 };
+    const st = { ...DEFAULTS, source: 'example:ozone-annual', view: 'gallery', panes, seed: 7 };
     const { hash } = await stateToHash(st, DEFAULTS);
     // the seed is written for the gallery's simulated panes although the single view's source is a data file;
     // view and panes come last, so the settings ahead of them are easy to edit by hand
-    assert.equal(hash, `#source=example%3Aozone&seed=7&view=gallery&panes=${encodeURIComponent(panes.join(','))}`);
+    assert.equal(hash,
+        `#source=example%3Aozone-annual&seed=7&view=gallery&panes=${encodeURIComponent(panes.join(','))}`);
     const back = await hashToState(hash, DEFAULTS);
     assert.deepEqual(back.state, st);
     assert.deepEqual(back.rejected, []);
-    assert.equal((await stateToHash({ ...st, view: 'single' }, DEFAULTS)).hash, '#source=example%3Aozone');
+    assert.equal((await stateToHash({ ...st, view: 'single' }, DEFAULTS)).hash, '#source=example%3Aozone-annual');
     // the default panes, compared as written, are left out
     assert.equal((await stateToHash({ ...DEFAULTS, view: 'gallery', panes: [...DEFAULTS.panes] }, DEFAULTS)).hash,
         '#view=gallery');

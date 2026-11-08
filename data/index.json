@@ -30,7 +30,7 @@
     "y": "min_ozone",
     "n": 46,
     "m": 46,
-    "note": "min_ozone: mean over 21 September–16 October of the daily minimum Southern Hemisphere total ozone (DU), the yearly means of the daily series in ozone.csv; hole_area: mean ozone hole area over 7 September–13 October (million km²); no data for 1995; year-to-year changes in the polar vortex are part of the noise"
+    "note": "min_ozone: mean over 21 September–16 October of the daily minimum Southern Hemisphere total ozone (DU), the yearly means of NASA's daily series; hole_area: mean ozone hole area over 7 September–13 October (million km²); no data for 1995; year-to-year changes in the polar vortex are part of the noise"
   },
   {
     "id": "arctic-sea-ice-september",
@@ -207,17 +207,6 @@
     "n": 432,
     "m": 432,
     "note": "count of earthquakes per month at mid-month (decimal year); at most a few a year until 2008, then a surge to 80–116 a month in late 2015 and January 2016, linked to the disposal of wastewater by deep injection, and a decline after injection was cut back in 2016; counts, so the spread grows with the level"
-  },
-  {
-    "id": "ozone",
-    "file": "ozone.csv",
-    "label": "Ozone layer",
-    "source": "https://ozonewatch.gsfc.nasa.gov/statistics/annual_data.html",
-    "x": "Year",
-    "y": "Data",
-    "n": 1197,
-    "m": 47,
-    "note": "y descending sharply then rising slowly or leveling; alt: use Day as x"
   },
   {
     "id": "nostalgia-music",
