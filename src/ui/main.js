@@ -34,7 +34,7 @@ import { createControls, sourceSelect } from './controls.js';
 import { infoIcon } from './info.js';
 import { stateToHash, hashToState, AN_MAX_SEGMENTS, MAX_N, PANE_COUNTS, FEATURE_SCALE_START, AN_SHARE_START }
     from './urlstate.js';
-import { fmtExp } from './format.js';
+import { fmtExp, sentence } from './format.js';
 import { createMainChart, drawLegend } from './chart.js';
 import { cellEdges } from './layout.js';
 import { onThemeChange } from './theme.js';
@@ -743,12 +743,6 @@ function renderAnReadouts(sel, result, truthCheck, data) {
         ? (cal ? 'the calibration sample was already computed for these x and intervals' : '')
         : `including ${fmt(result.calMs)} ms to simulate the calibration sample`);
     appendRows(sel, rows);
-}
-
-/** A note fragment ("from the residuals, ν = 69") as a sentence, for a tip. */
-function sentence(text) {
-    const t = text.charAt(0).toUpperCase() + text.slice(1);
-    return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
 /**

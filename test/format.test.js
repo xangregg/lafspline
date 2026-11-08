@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtExp } from '../src/ui/format.js';
+import { fmtExp, sentence } from '../src/ui/format.js';
 
 test('fmtExp: two significant digits, plain from 1e-3 to 1e4, a power of ten outside', () => {
     // Regression: 530 came out as 5.3e+2 (toPrecision's own exponent form).
@@ -13,4 +13,15 @@ test('fmtExp: two significant digits, plain from 1e-3 to 1e4, a power of ten out
     assert.equal(fmtExp(2.8e-8), '2.8 × 10⁻⁸');
     assert.equal(fmtExp(42000), '4.2 × 10⁴');
     assert.equal(fmtExp(0), '0');
+});
+
+test('sentence: capitalizes a leading Latin letter and adds a period, but leaves a leading symbol as it is', () => {
+    assert.equal(sentence('the fit stays inside'), 'The fit stays inside.');
+    assert.equal(sentence('Already a sentence.'), 'Already a sentence.');
+    assert.equal(sentence('is it?'), 'Is it?');
+    // Regression: σ̂ came out as Σ̂ (a sum) and λ as Λ in the readouts' tips.
+    assert.equal(sentence('σ̂ ÷ 0.12 from neighboring observations'), 'σ̂ ÷ 0.12 from neighboring observations.');
+    assert.equal(sentence('λ = 2, singletons included'), 'λ = 2, singletons included.');
+    assert.equal(sentence('τ = 3'), 'τ = 3.');
+    assert.equal(sentence('2n LPs'), '2n LPs.');
 });
