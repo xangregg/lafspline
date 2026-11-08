@@ -18,7 +18,7 @@ import { readDataset } from '../src/core/datasets.js';
 import { simulate } from '../src/core/signals.js';
 import { createRng } from '../src/core/rng.js';
 
-const DATA_SETS = ['neuroimage', 'dog-ages', 'ozone-annual'];
+const DATA_SETS = ['xkcd-curve-fitting', 'dog-ages', 'ozone-annual'];
 const SINE_SIGMA = 0.3; // noise sd of the simulated sine, units of y
 const SIM_SEED = 1; // seed of the simulated data
 const SKEW_SEED = 5; // seed of the skewed noise

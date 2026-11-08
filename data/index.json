@@ -44,17 +44,6 @@
     "note": "monthly mean extent of the September minimum, million km² (area: the ice-covered area); decline since the 1990s, the record low in 2012, and little net change since about 2007"
   },
   {
-    "id": "neuroimage",
-    "file": "neuroimage.csv",
-    "label": "Blood levels by age",
-    "source": "NeuroImage paper",
-    "x": "age",
-    "y": "y",
-    "n": 28,
-    "m": 25,
-    "note": "three age groups with top two age groups about the same; heteroskedastic"
-  },
-  {
     "id": "central-england-temperature",
     "file": "central-england-temperature.csv",
     "label": "Central England temperature, annual means 1659–2025",
@@ -74,7 +63,7 @@
     "y": "correct",
     "n": 50,
     "m": 21,
-    "note": "hump"
+    "note": "hump; ages from the paper's supplementary data (the paper itself reports no effect of age on a different, more involved measure of performance)"
   },
   {
     "id": "cleveland-curve",
@@ -113,23 +102,12 @@
     "id": "dog-ages",
     "file": "dog-ages.csv",
     "label": "Dog ages vs genetically closest human ages",
-    "source": "https://www.biorxiv.org/content/10.1101/829192v1.full",
+    "source": "Wang, Ma, Hogan, Fong, Licon, Tsui, Kreisberg, Adams, Carvunis, Bannasch, Ostrander & Ideker (2019), Quantitative translation of dog-to-human aging by conserved remodeling of epigenetic networks, bioRxiv preprint v1, doi:10.1101/829192, https://www.biorxiv.org/content/10.1101/829192v1.full; points digitized by hand from its scatter plot",
     "x": "dog age",
     "y": "human age",
     "n": 87,
     "m": 67,
-    "note": "y ascending sharply then slowly or leveling; non-decreasing"
-  },
-  {
-    "id": "fibers-distance",
-    "file": "fibers-distance.csv",
-    "label": "Fibers distance",
-    "source": "https://www.pnas.org/doi/10.1073/pnas.2423437122",
-    "x": "time",
-    "y": "distance",
-    "n": 45,
-    "m": 5,
-    "note": "many duplicate x values; y ascending then level"
+    "note": "y ascending sharply then slowly or leveling; non-decreasing; digitized by hand, so the isolated points (the outliers among them) are placed closely and the overlapping clusters only approximately"
   },
   {
     "id": "auto-mpg-horsepower",

@@ -34,8 +34,12 @@ test('noiseStatistics: lag-1 autocorrelation of the residuals\' means at distinc
 });
 
 test('checkNoise: fewer than 10 distinct x leaves r₁ unjudged', () => {
-    const d = example('fibers-distance'); // 5 distinct x
-    const c = check(d.x, d.y, defaultSegments(d.m));
+    // 5 distinct x with 9 replicates each (the shape of the fibers data once bundled), a gentle rise, small noise
+    const levels = [16, 24, 41, 67, 115];
+    const rng = createRng(2);
+    const x = Array.from({ length: 45 }, (_, i) => levels[Math.floor(i / 9)]);
+    const y = x.map(v => 3.4 + 0.35 * (1 - Math.exp(-v / 30)) + 0.02 * rng.normal());
+    const c = check(x, y, defaultSegments(levels.length));
     assert.equal(c.lagLimits, null);
     assert.equal(c.verdict, 'ok');
 });

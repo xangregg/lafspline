@@ -4,7 +4,7 @@
 # y: growth
 # note: increase of the CO₂ mole fraction from January 1 to December 31, ppm per year (uncertainty about 0.11 ppm); rising, with large year-to-year swings from El Niño (1998, 2016, 2023–24) and the Pinatubo dip (1992)
 # intro: How fast CO₂ is rising: the yearly increase at Mauna Loa, 1959–2025
-# outro: El Niño years jump up (1998, 2016, 2023–24); Pinatubo brought a dip in 1992
+# outro: El Niño years jump up (1998, 2016, 2023–24)
 year,growth
 1959,0.94
 1960,0.5

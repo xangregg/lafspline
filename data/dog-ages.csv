@@ -1,8 +1,8 @@
 # label: Dog ages vs genetically closest human ages
-# source: https://www.biorxiv.org/content/10.1101/829192v1.full
+# source: Wang, Ma, Hogan, Fong, Licon, Tsui, Kreisberg, Adams, Carvunis, Bannasch, Ostrander & Ideker (2019), Quantitative translation of dog-to-human aging by conserved remodeling of epigenetic networks, bioRxiv preprint v1, doi:10.1101/829192, https://www.biorxiv.org/content/10.1101/829192v1.full; points digitized by hand from its scatter plot
 # x: dog age                                                                                                                                             
 # y: human age
-# note: y ascending sharply then slowly or leveling; non-decreasing
+# note: y ascending sharply then slowly or leveling; non-decreasing; digitized by hand, so the isolated points (the outliers among them) are placed closely and the overlapping clusters only approximately
 # intro: How old is a dog in human years?
 # outro: Read from a digitized figure with a log fit
 dog age,human age
