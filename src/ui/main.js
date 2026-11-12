@@ -783,6 +783,11 @@ function addNoiseRow(add, c) {
 
 /** The noise check's finding as a sentence, or null when there is nothing to say. */
 function noiseSentence(c) {
+    // an infinite ratio has two causes: no reference (neighbors agree exactly, as when y is constant) or no σ̂
+    if (!(c.reference > 0)) {
+        return 'Neighboring observations agree exactly, so they show no noise to compare the band\'s σ̂ with; the '
+            + 'noise check says nothing here.';
+    }
     if (!Number.isFinite(c.ratio))
         return 'The band\'s fit spends as many parameters as there are observations (ED ≥ n): it interpolates the '
             + 'data, and the band is meaningless. Fewer segments or a given λ may help.';

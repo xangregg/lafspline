@@ -12,10 +12,14 @@
 // degrees of freedom as there are between-x terms, the between-x terms are dropped: they only add trend
 // bias (measured: steep trend with 1–4 replicates, eq. 10 gives 1.63σ, pure error 0.99σ). Without ties
 // both estimators reduce exactly to their usual form.
+//
+// Few distinct y. When y takes only a few values (0/1 outcomes, small counts), neighbors are often equal, and more
+// than half the pseudo-residuals can be exactly 0: the median is then 0 whatever the noise. In that case only, σ̂ is
+// the root mean square of the same pseudo-residuals instead (as in Rice 1984, Ann. Statist. 12:1215–1230), which
+// estimates σ under the same model; for Bernoulli noise it gives about √(mean p(1 − p)).
 
-// Φ⁻¹(0.75)·√2 ≈ 0.9538725524: for white noise with sd σ, yᵢ₊₁ − yᵢ ~ N(0, 2σ²), and the median of
-// |N(0, 2σ²)| is σ·√2·Φ⁻¹(0.75).
-const MAD_DIFF_SCALE = 0.6744897501960817 * Math.SQRT2;
+// For white noise with sd σ, yᵢ₊₁ − yᵢ ~ N(0, 2σ²): the median of |N(0, 2σ²)| is σ·√2·Φ⁻¹(0.75), so eq. 10 divides
+// the median |difference| by Φ⁻¹(0.75)·√2 ≈ 0.954 (scaleOf with sd √2).
 const PHI_INV_075 = 0.6744897501960817; // Φ⁻¹(0.75): median of |N(0, 1)|
 
 /**
@@ -94,11 +98,27 @@ function pureError(y, start) {
     return { values, weights, mean, count, df };
 }
 
+// The scale of pseudo-residuals |r| whose sd is `sd` per unit σ: their weighted median over its expected value, or,
+// when the median is 0 (few distinct y, header comment), their weighted root mean square over sd.
+function scaleOf(values, weights, sd) {
+    const w = weights ?? Array.from(values, () => 1);
+    const med = weights ? weightedMedian(values, weights) : median(values);
+    if (med > 0)
+        return med / (PHI_INV_075 * sd);
+    let sum = 0;
+    let total = 0;
+    for (let i = 0; i < values.length; i++) {
+        sum += w[i] * values[i] * values[i];
+        total += w[i];
+    }
+    return total > 0 ? Math.sqrt(sum / total) / sd : 0;
+}
+
 // Combine pure-error and between-x pseudo-residuals by the rule in the header comment.
 function pooled(pe, between) {
     if (pe.df > 0 && pe.df >= between.length)
-        return weightedMedian(pe.values, pe.weights) / PHI_INV_075;
-    return weightedMedian([...pe.values, ...between], [...pe.weights, ...between.map(() => 1)]) / PHI_INV_075;
+        return scaleOf(pe.values, pe.weights, 1);
+    return scaleOf([...pe.values, ...between], [...pe.weights, ...between.map(() => 1)], 1);
 }
 
 /**
@@ -143,7 +163,7 @@ export function sigmaMAD(y, x) {
     const d = new Float64Array(n - 1);
     for (let i = 1; i < n; i++)
         d[i - 1] = Math.abs(y[i] - y[i - 1]);
-    return median(d) / MAD_DIFF_SCALE;
+    return scaleOf(d, null, Math.SQRT2);
 }
 
 /**
@@ -196,5 +216,5 @@ export function sigmaGSJS(x, y) {
     }
     if (r.length === 0)
         throw new RangeError('sigmaGSJS needs at least 3 observations with distinct outer x');
-    return median(r) / PHI_INV_075;
+    return scaleOf(r, null, 1);
 }

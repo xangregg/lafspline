@@ -110,6 +110,17 @@
     "note": "y ascending sharply then slowly or leveling; non-decreasing; digitized by hand, so the isolated points (the outliers among them) are placed closely and the overlapping clusters only approximately"
   },
   {
+    "id": "exam-pass-simulated",
+    "file": "exam-pass-simulated.csv",
+    "label": "Exam pass or fail by hours of study (simulated)",
+    "source": "simulated by tools/make-exam-pass.mjs, seed 2026",
+    "x": "hours",
+    "y": "pass",
+    "n": 200,
+    "m": 167,
+    "note": "200 students, hours uniform on 0.5–6.5; pass is 1 or 0, drawn with probability p = 1/(1 + e^(−1.5(hours − 3))), a logistic curve through ½ at 3 hours; column p is the true probability. The noise is Bernoulli: its spread p(1 − p) is largest at the midpoint and shrinks toward the ends"
+  },
+  {
     "id": "auto-mpg-horsepower",
     "file": "auto-mpg-horsepower.csv",
     "label": "Fuel economy by horsepower, cars of 1970–1982",

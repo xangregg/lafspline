@@ -119,3 +119,7 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   `afterBand` puts its legend item after the band's.
 - `src/ui/chart.js`: the grid lines are in an SVG layer of their own under the canvases, and first in the exported
   SVG, so they are behind the points and boxes (they were drawn over the points).
+- `src/core/sigma.js`: when the median of the absolute pseudo-residuals is 0 but not all of them are (y with few
+  distinct values, such as 0/1 outcomes, whose neighbors are often equal), σ̂ is their root mean square instead
+  (Rice 1984), for eq. 10, GSJS and the tie-aware forms alike; it was 0, so Aₙ refused such data and the noise check
+  divided by 0. Otherwise unchanged (the plain median without weights, as before).

@@ -168,3 +168,21 @@ test('with only a few ties the between-x terms are kept (≈ eq. 10 on pure nois
     assert.ok(Math.abs(mean - 1) < 0.03, `mean ${mean}`);
 });
 
+
+test('0/1 outcomes: when most neighbors are equal the median is 0, and σ̂ falls back to the RMS (Bernoulli sd)', () => {
+    // Regression: exam-pass-simulated, a logistic P(1) from 0 to 1; median |Δy| was 0, so Aₙ had σ̂ = 0 and refused,
+    // and the noise check divided by 0. Here P(1) = 0.2 everywhere, so the Bernoulli sd is 0.4 (tol 0.04, 4000 draws).
+    const rng = createRng(17);
+    const n = 4000;
+    const x = Float64Array.from({ length: n }, (_, i) => i / n);
+    const y = Float64Array.from({ length: n }, () => (rng.uniform() < 0.2 ? 1 : 0));
+    for (const [name, s] of [['eq. 10', sigmaMAD(y, x)], ['GSJS', sigmaGSJS(x, y)]])
+        assert.ok(Math.abs(s - 0.4) < 0.04, `${name}: ${s}`);
+    // with tied x (pairs of replicates), the pooled pseudo-residuals take the same fallback
+    const xt = Float64Array.from({ length: n }, (_, i) => Math.floor(i / 2));
+    for (const [name, s] of [['eq. 10', sigmaMAD(y, xt)], ['GSJS', sigmaGSJS(xt, y)]])
+        assert.ok(Math.abs(s - 0.4) < 0.04, `${name} tied: ${s}`);
+    // a constant y still has σ̂ = 0
+    assert.equal(sigmaMAD(new Float64Array(10).fill(1)), 0);
+    assert.equal(sigmaGSJS(Float64Array.from({ length: 10 }, (_, i) => i), new Float64Array(10).fill(1)), 0);
+});
