@@ -207,9 +207,13 @@ async function main() {
     }
     finally {
         // Chrome keeps writing to its profile until it has fully exited.
-        const exited = new Promise(resolve => proc.once('exit', resolve));
-        proc.kill();
-        await exited;
+        // If Chrome already exited (it failed to start), its 'exit' event has passed: waiting for it would leave
+        // nothing pending, and Node would quit with status 0 before the error is reported.
+        if (proc.exitCode === null && proc.signalCode === null) {
+            const exited = new Promise(resolve => proc.once('exit', resolve));
+            proc.kill();
+            await exited;
+        }
         rmSync(profileDir, { recursive: true, force: true, maxRetries: 5 });
     }
     process.exit(exitCode);
