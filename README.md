@@ -18,8 +18,9 @@ equally spaced knots with a penalty on the differences of their coefficients):
 Every fit reports which region it was checked against, whether it stays inside, and what the region covers under
 which assumptions; approximate methods say so. The page's ⓘ tips and its About panel explain each setting.
 
-It runs entirely in the browser: no server, no build step, no data leaves the page. Choose an example data set or
-a simulated signal, or paste or drop your own CSV. Settings live in the address bar, so a link shares a view; the
+It runs entirely in the browser: no server, no build step, and your data never leaves the page (the page counts
+visits with [Plausible](https://plausible.io/), without cookies). Choose an example data set or a simulated signal,
+or paste or drop your own CSV. Settings live in the address bar, so a link shares a view; the
 Gallery shows several data sets with the same settings; Export saves the data and fits as CSV, the chart as SVG,
 PNG or JPEG, and the fit built up step by step as an animated GIF or SVG.
 
