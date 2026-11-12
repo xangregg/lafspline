@@ -249,9 +249,11 @@ export function createMainChart(container, opts = {}) {
 
         svg.attr('width', width);
         gridSvg.attr('width', width);
+        // a chart narrower than its margins (for a moment while a pane opens) has no plot area, not a negative one
+        const plotWidth = Math.max(0, width - M.left - M.right);
         clipRect.attr('x', M.left).attr('y', M.top)
-            .attr('width', width - M.left - M.right).attr('height', H - M.top - M.bottom);
-        overlay.attr('x', M.left).attr('width', width - M.left - M.right);
+            .attr('width', plotWidth).attr('height', H - M.top - M.bottom);
+        overlay.attr('x', M.left).attr('width', plotWidth);
         // a compact chart has no axes or grid lines: its values are in the tooltip
         if (!compact) {
             gAxisX.attr('transform', `translate(0,${H - M.bottom})`)

@@ -40,6 +40,7 @@ vendor/highs/           highs.mjs + highs.wasm copied from node_modules/highs/bu
 data/                   example data sets (CSV with # label: / # source: lines) and index.json
 localdata/              data sets kept on this machine (git ignores all but its README); listed by the app on localhost
 tools/check-page.mjs    headless-Chrome page check (console errors, worker exceptions, screenshot)
+tools/ui-checks.js      in-page UI regression checks, run by npm run check:ui
 test/*.test.js          node:test + node:assert/strict
 package.json            "type": "module", scripts below
 ```
@@ -55,6 +56,7 @@ package.json            "type": "module", scripts below
   (WebStorm's built-in one) need to show local data sets.
 - Page check (server must be running): `npm run check:page -- http://localhost:8002/ --until '<js expr>'
   --eval '<js expr>' --screenshot out.png`. Exits 1 on any console error, exception, or failed load.
+- UI regression checks (server on port 8002): `npm run check:ui` (runs `tools/ui-checks.js` in the page).
 
 ## Conventions
 
