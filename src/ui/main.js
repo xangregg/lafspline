@@ -1180,7 +1180,7 @@ async function startup() {
     const exampleTexts = new Map(localList.map(e => [LOCAL_PREFIX + e.id, e.text])); // source → text, or {error}
     const status = d3.select('#status');
     const readouts = document.getElementById('readouts');
-    const chart = createMainChart(document.getElementById('main-chart'));
+    const chart = createMainChart(document.getElementById('main-chart'), { interactive: true });
     const mainChartEl = document.getElementById('main-chart');
     const galleryEl = document.getElementById('gallery');
     const regionCache = new Map();

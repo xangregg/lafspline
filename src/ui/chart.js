@@ -22,6 +22,17 @@ const OVERLAY_WIDTH = 1.5; // px
 const GAP_FACTOR = 3;
 const LONE_TICK = 3; // px half-width of the tick for a single point stranded between gaps
 const KINK_RADIUS = 4; // px
+// Pan and zoom (interactive charts only). A view is display only: the fits and regions are unchanged.
+const WHEEL_RATE = 0.002; // zoom per px of wheel travel: a 100 px notch scales the span by e^0.2 ≈ 1.22
+const PINCH_GAIN = 10; // a pinch (ctrl-wheel) reports small deltas; scale them up to a wheel's pace
+const LINE_PX = 16; // px per wheel line (deltaMode 1)
+const PAGE_PX = 400; // px per wheel page (deltaMode 2)
+const MIN_SPAN = 1e-4; // narrowest view, as a share of the full span
+const MAX_SPAN = 10; // widest view, in full spans
+const MIN_BOX = 5; // px: a shift-drag box narrower than this leaves that axis alone
+const MIN_HEIGHT = 200; // px, the shortest plot the resize grip allows
+const MAX_HEIGHT = 1200; // px, the tallest
+const HEIGHT_KEY = 'lafspline:chart-height'; // localStorage key for the viewer's chosen plot height
 const SVG_NS = 'http://www.w3.org/2000/svg';
 // Image export (toSvg): the legend's layout, which the page leaves to CSS flexbox
 const LEGEND_KEY_GAP = 5; // px between a legend key and its label
@@ -92,16 +103,18 @@ function tickFormat(scale, count) {
 
 /**
  * @param {HTMLElement} container
- * @param {{compact?: boolean, height?: number}} [opts]  compact: a gallery pane, shorter, with no axes, grid lines or
- *     legend of its own (legendItems gives the items for drawLegend); height: the plot's height in px, for a frame of
- *     a given size (the animated export), instead of the default
+ * @param {{compact?: boolean, height?: number, interactive?: boolean}} [opts]  compact: a gallery pane, shorter, with
+ *     no axes, grid lines or legend of its own (legendItems gives the items for drawLegend); height: the plot's height
+ *     in px, for a frame of a given size (the animated export), instead of the default; interactive: the axes pan and
+ *     zoom and a grip below the plot sets its height (remembered in this browser), as on the page's main chart
  * @returns {{render: function(ChartModel): void, highlight: function({lo: number, hi: number}|null): void,
  *     setBoxes: function(BoxesSpec|null): void, toSvg: function({title?: string}=): ({text: string, width: number,
  *     height: number}|null), legendItems: function(): object[]}}
  */
 export function createMainChart(container, opts = {}) {
     const compact = opts.compact ?? false;
-    const H = opts.height ?? (compact ? COMPACT_HEIGHT : HEIGHT);
+    const interactive = (opts.interactive ?? false) && !compact;
+    let H = opts.height ?? (compact ? COMPACT_HEIGHT : interactive ? storedHeight() : HEIGHT);
     const M = compact ? COMPACT_MARGIN : MARGIN;
     container.classList.add('chart');
     if (compact)
@@ -110,26 +123,42 @@ export function createMainChart(container, opts = {}) {
     const legend = d3.select(container).append('div').attr('class', 'legend').attr('hidden', compact ? '' : null);
     const plot = d3.select(container).append('div').attr('class', 'plot').style('height', `${H}px`);
     // grid lines in an SVG layer of their own under the canvases, so they are behind the points and boxes
-    const gridSvg = plot.append('svg').attr('class', 'grid-layer').attr('height', H);
+    const gridSvg = plot.append('svg').attr('class', 'grid-layer');
     const canvas = plot.append('canvas').node();
     const boxCanvas = plot.append('canvas').node(); // Aₙ boxes: above the points, below the lines
-    const svg = plot.append('svg').attr('height', H);
+    const svg = plot.append('svg');
     const clipId = `plot-clip-${Math.random().toString(36).slice(2)}`;
     const clipRect = svg.append('clipPath').attr('id', clipId).append('rect');
     const gGrid = gridSvg.append('g').attr('class', 'grid');
     const gBand = svg.append('g').attr('class', 'band').attr('clip-path', `url(#${clipId})`);
-    const gHighlight = svg.append('rect').attr('class', 'interval-highlight').attr('visibility', 'hidden');
+    const gHighlight = svg.append('rect').attr('class', 'interval-highlight').attr('visibility', 'hidden')
+        .attr('clip-path', `url(#${clipId})`);
     const gGaps = svg.append('g').attr('class', 'gap-connectors').attr('clip-path', `url(#${clipId})`);
     const gLines = svg.append('g').attr('clip-path', `url(#${clipId})`);
     const gKinks = svg.append('g').attr('class', 'kink-marks').attr('clip-path', `url(#${clipId})`);
-    const gMarks = svg.append('g').attr('class', 'extreme-marks');
+    const gMarks = svg.append('g').attr('class', 'extreme-marks').attr('clip-path', `url(#${clipId})`);
     const gAxisX = svg.append('g').attr('class', 'axis');
     const gAxisY = svg.append('g').attr('class', 'axis');
     const cross = svg.append('g').attr('class', 'crosshair').attr('visibility', 'hidden');
-    cross.append('line').attr('y1', M.top).attr('y2', H - M.bottom);
+    const crossLine = cross.append('line');
     const crossDot = cross.append('circle').attr('r', 4);
-    const overlay = svg.append('rect').attr('class', 'overlay')
-        .attr('y', M.top).attr('height', H - M.top - M.bottom);
+    const zoomBox = svg.append('rect').attr('class', 'zoom-box').attr('visibility', 'hidden');
+    const overlay = svg.append('rect').attr('class', 'overlay');
+    // transparent strips over the axes, which take drags and wheel turns for that axis alone
+    const hitX = interactive ? svg.append('rect').attr('class', 'axis-hit x') : null;
+    const hitY = interactive ? svg.append('rect').attr('class', 'axis-hit y') : null;
+    const resetButton = interactive
+        ? plot.append('button').attr('type', 'button').attr('class', 'reset-view').attr('hidden', '')
+            .text('Reset axes').attr('title', 'Show all the data again (or double-click the plot)')
+        : null;
+    if (interactive) {
+        d3.select(container).append('div').attr('class', 'plot-foot')
+            .call(foot => foot.append('span').attr('class', 'plot-hint')
+                .text('Drag to pan, shift-drag to zoom to a box; scroll over an axis, or pinch, to zoom; '
+                    + 'double-click to reset'))
+            .call(foot => foot.append('div').attr('class', 'resize-grip')
+                .attr('title', 'Drag to change the chart\'s height (double-click: the default height)'));
+    }
 
     let model = null;
     let sx = null;
@@ -137,6 +166,12 @@ export function createMainChart(container, opts = {}) {
     let width = 0;
     let boxSpec = null;
     let legendItems = [];
+    // the zoomed domains; null shows the axis's full range, as computed from the model
+    let view = { x: null, y: null };
+    let fullX = null;
+    let fullY = null;
+    let drag = null;
+    let frame = 0;
 
     // Each box spans its interval's cells horizontally and mean_I(y) ± c/√|I| vertically; the tick is
     // the fit's mean over the interval. A tick outside its box is a violated constraint. The shapes are listed
@@ -217,17 +252,29 @@ export function createMainChart(container, opts = {}) {
     }
 
     function render(m) {
+        // a different data set starts from its full range; new fits of the same data keep the view (simulated data
+        // are rebuilt on every change, so the x and y values are compared, not the arrays)
+        if (model && !(sameValues(m.x, model.x) && sameValues(m.y, model.y)))
+            view = { x: null, y: null };
         model = m;
         // Anything showing values from the previous model is now stale.
         cross.attr('visibility', 'hidden');
         gHighlight.attr('visibility', 'hidden');
         hideTooltip();
+        draw();
+    }
+
+    function draw() {
+        const m = model;
         width = container.clientWidth;
         const colors = themeColors();
         const { x, y, f, edges } = m;
         const n = x.length;
         const hidden = m.hidden ?? new Set();
         sx = xScale(edges, width, M);
+        fullX = sx.domain();
+        if (view.x)
+            sx.domain(view.x);
         let lo = d3.min(y);
         let hi = d3.max(y);
         if (f) {
@@ -246,14 +293,25 @@ export function createMainChart(container, opts = {}) {
             }
         }
         sy = d3.scaleLinear().domain([lo, hi]).nice().range([H - M.bottom, M.top]);
+        fullY = sy.domain();
+        if (view.y)
+            sy.domain(view.y);
 
-        svg.attr('width', width);
-        gridSvg.attr('width', width);
+        plot.style('height', `${H}px`);
+        svg.attr('width', width).attr('height', H);
+        gridSvg.attr('width', width).attr('height', H);
+        crossLine.attr('y1', M.top).attr('y2', H - M.bottom);
         // a chart narrower than its margins (for a moment while a pane opens) has no plot area, not a negative one
         const plotWidth = Math.max(0, width - M.left - M.right);
         clipRect.attr('x', M.left).attr('y', M.top)
             .attr('width', plotWidth).attr('height', H - M.top - M.bottom);
-        overlay.attr('x', M.left).attr('width', plotWidth);
+        overlay.attr('x', M.left).attr('width', plotWidth).attr('y', M.top).attr('height', H - M.top - M.bottom);
+        if (interactive) {
+            hitX.attr('x', M.left).attr('width', plotWidth).attr('y', H - M.bottom).attr('height', M.bottom);
+            hitY.attr('x', 0).attr('width', M.left).attr('y', M.top).attr('height', H - M.top - M.bottom);
+            resetButton.attr('hidden', view.x || view.y ? null : '')
+                .style('top', `${M.top + 4}px`).style('right', `${M.right + 4}px`);
+        }
         // a compact chart has no axes or grid lines: its values are in the tooltip
         if (!compact) {
             gAxisX.attr('transform', `translate(0,${H - M.bottom})`)
@@ -270,11 +328,17 @@ export function createMainChart(container, opts = {}) {
         ctx.fillStyle = colors.muted;
         ctx.globalAlpha = POINT_ALPHA;
         const r = pointRadius(n);
+        // zoomed in, points fall outside the plot: keep them off the axes
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(M.left, M.top, plotWidth, H - M.top - M.bottom);
+        ctx.clip();
         for (let i = 0; i < (hidden.has('data') ? 0 : n); i++) {
             ctx.beginPath();
             ctx.arc(sx(x[i]), sy(y[i]), r, 0, 2 * Math.PI);
             ctx.fill();
         }
+        ctx.restore();
         ctx.globalAlpha = 1;
 
         const line = v => d3.line().x((_, i) => sx(x[i])).y((_, i) => sy(v[i]))(v);
@@ -551,7 +615,7 @@ export function createMainChart(container, opts = {}) {
         plotG.append(grid);
         const hidden = model.hidden ?? new Set();
         if (!hidden.has('data')) {
-            const points = svgEl('g', paint('fill', colors.muted, POINT_ALPHA));
+            const points = svgEl('g', { ...paint('fill', colors.muted, POINT_ALPHA), 'clip-path': `url(#${clipId})` });
             const r = pointRadius(model.x.length);
             for (let i = 0; i < model.x.length; i++)
                 points.append(svgEl('circle', { cx: round2(sx(model.x[i])), cy: round2(sy(model.y[i])), r }));
@@ -571,7 +635,8 @@ export function createMainChart(container, opts = {}) {
             }
             plotG.append(boxG);
         }
-        const skip = new Set([gHighlight.node(), cross.node(), overlay.node()]);
+        const skip = new Set([gHighlight.node(), cross.node(), overlay.node(), zoomBox.node(), hitX?.node(),
+            hitY?.node()]);
         for (const node of svg.node().children) {
             if (skip.has(node))
                 continue;
@@ -605,7 +670,7 @@ export function createMainChart(container, opts = {}) {
     }
 
     overlay.on('pointermove', event => {
-        if (!model)
+        if (!model || drag)
             return;
         const [px] = d3.pointer(event);
         const i = cellIndex(model.edges, sx.invert(px));
@@ -659,7 +724,186 @@ export function createMainChart(container, opts = {}) {
         hideTooltip();
     });
 
+    if (interactive)
+        attachViewControls();
+
+    /**
+     * Pan, zoom and resize, by the conventions of map and plotting libraries: drag pans, shift-drag zooms to a box,
+     * double-click resets. A plain wheel over the plot still scrolls the page (a chart that captures it traps the
+     * reader mid-page), so the plot zooms only to a pinch or ctrl/⌘-wheel; over an axis, where nothing else wants
+     * the wheel, a plain wheel zooms that axis alone, as a drag there pans it alone. Touch keeps scrolling the page.
+     */
+    function attachViewControls() {
+        const schedule = () => {
+            if (!frame) {
+                frame = requestAnimationFrame(() => {
+                    frame = 0;
+                    if (model)
+                        draw();
+                });
+            }
+        };
+        const clampSpan = (domain, full) => {
+            const fullSpan = full[1] - full[0];
+            const span = domain[1] - domain[0];
+            const target = Math.min(MAX_SPAN * fullSpan, Math.max(MIN_SPAN * fullSpan, span));
+            if (target === span)
+                return domain;
+            const mid = (domain[0] + domain[1]) / 2;
+            return [mid - target / 2, mid + target / 2];
+        };
+        // the domain scaled by s about the data value under pixel p
+        const zoomAbout = (scale, p, s, full) => {
+            const c = scale.invert(p);
+            const [a, b] = scale.domain();
+            return clampSpan([c + (a - c) * s, c + (b - c) * s], full);
+        };
+        const setView = next => {
+            view = next;
+            hideTooltip();
+            cross.attr('visibility', 'hidden');
+            schedule();
+        };
+
+        const onWheel = (event, axes) => {
+            if (!model || (axes === 'xy' && !(event.ctrlKey || event.metaKey)))
+                return;
+            event.preventDefault();
+            const unit = event.deltaMode === 1 ? LINE_PX : event.deltaMode === 2 ? PAGE_PX : 1;
+            const s = Math.exp(event.deltaY * unit * WHEEL_RATE * (event.ctrlKey ? PINCH_GAIN : 1));
+            const [px, py] = d3.pointer(event, svg.node());
+            setView({
+                x: axes.includes('x') ? zoomAbout(sx, px, s, fullX) : view.x,
+                y: axes.includes('y') ? zoomAbout(sy, py, s, fullY) : view.y,
+            });
+        };
+
+        const onDown = (event, axes) => {
+            if (!model || event.button !== 0 || event.pointerType === 'touch')
+                return;
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            const [px, py] = d3.pointer(event, svg.node());
+            drag = { axes, box: axes === 'xy' && event.shiftKey, px, py, sx: sx.copy(), sy: sy.copy(),
+                target: event.currentTarget };
+            d3.select(drag.target).classed('dragging', true);
+            hideTooltip();
+            cross.attr('visibility', 'hidden');
+        };
+        const onMove = event => {
+            if (!drag)
+                return;
+            const [px, py] = d3.pointer(event, svg.node());
+            if (drag.box) {
+                const [x0, x1] = [drag.px, px].sort((a, b) => a - b);
+                const [y0, y1] = [drag.py, py].sort((a, b) => a - b);
+                zoomBox.attr('visibility', 'visible')
+                    .attr('x', x0).attr('width', x1 - x0).attr('y', y0).attr('height', y1 - y0);
+                return;
+            }
+            const shift = (scale, from, to) => {
+                const d = scale.invert(from) - scale.invert(to);
+                return scale.domain().map(v => v + d);
+            };
+            setView({
+                x: drag.axes.includes('x') && px !== drag.px ? shift(drag.sx, drag.px, px) : view.x,
+                y: drag.axes.includes('y') && py !== drag.py ? shift(drag.sy, drag.py, py) : view.y,
+            });
+        };
+        const onUp = event => {
+            if (!drag)
+                return;
+            const d = drag;
+            drag = null;
+            d3.select(d.target).classed('dragging', false);
+            if (!d.box)
+                return;
+            zoomBox.attr('visibility', 'hidden');
+            const [px, py] = d3.pointer(event, svg.node());
+            const span = (scale, a, b) => clampSpan([scale.invert(a), scale.invert(b)].sort((u, v) => u - v),
+                scale === d.sx ? fullX : fullY);
+            setView({
+                x: Math.abs(px - d.px) >= MIN_BOX ? span(d.sx, d.px, px) : view.x,
+                y: Math.abs(py - d.py) >= MIN_BOX ? span(d.sy, d.py, py) : view.y,
+            });
+        };
+        for (const [el, axes] of [[overlay, 'xy'], [hitX, 'x'], [hitY, 'y']]) {
+            el.node().addEventListener('wheel', event => onWheel(event, axes), { passive: false });
+            el.on('pointerdown', event => onDown(event, axes))
+                .on('pointermove.view', onMove)
+                .on('pointerup', onUp)
+                .on('pointercancel', onUp)
+                .on('dblclick', () => setView({ x: axes === 'y' ? view.x : null, y: axes === 'x' ? view.y : null }));
+        }
+        resetButton.on('click', () => setView({ x: null, y: null }));
+
+        // the grip below the plot sets its height; the choice is kept in this browser
+        const grip = d3.select(container).select('.resize-grip');
+        let resize = null;
+        grip.on('pointerdown', event => {
+            if (event.button !== 0)
+                return;
+            event.preventDefault();
+            grip.node().setPointerCapture(event.pointerId);
+            resize = { y: event.clientY, h: H };
+            grip.classed('dragging', true);
+        })
+            .on('pointermove', event => {
+                if (!resize)
+                    return;
+                H = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resize.h + event.clientY - resize.y)));
+                schedule();
+            })
+            .on('pointerup pointercancel', () => {
+                if (!resize)
+                    return;
+                resize = null;
+                grip.classed('dragging', false);
+                storeHeight(H);
+            })
+            .on('dblclick', () => {
+                H = HEIGHT;
+                storeHeight(null);
+                schedule();
+            });
+    }
+
     return { render, highlight, setBoxes, toSvg, legendItems: () => legendItems };
+}
+
+function sameValues(a, b) {
+    if (a === b)
+        return true;
+    if (a.length !== b.length)
+        return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i])
+            return false;
+    }
+    return true;
+}
+
+// The viewer's chosen plot height, a convenience kept in this browser only; storage can be missing or blocked.
+function storedHeight() {
+    try {
+        const h = Number(localStorage.getItem(HEIGHT_KEY));
+        return h >= MIN_HEIGHT && h <= MAX_HEIGHT ? h : HEIGHT;
+    }
+    catch {
+        return HEIGHT;
+    }
+}
+
+function storeHeight(h) {
+    try {
+        if (h === null)
+            localStorage.removeItem(HEIGHT_KEY);
+        else
+            localStorage.setItem(HEIGHT_KEY, String(h));
+    }
+    catch {
+        // the height is still used for this visit
+    }
 }
 
 /**

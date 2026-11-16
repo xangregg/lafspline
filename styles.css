@@ -1084,3 +1084,73 @@ h2 .info {
 #readouts dl {
     grid-template-columns: max-content minmax(0, 1fr);
 }
+
+/* --- pan, zoom and resize (the main chart) */
+.axis-hit {
+    fill: transparent;
+    cursor: grab;
+}
+
+.axis-hit.x {
+    cursor: ew-resize;
+}
+
+.axis-hit.y {
+    cursor: ns-resize;
+}
+
+.overlay.dragging,
+.axis-hit.dragging {
+    cursor: grabbing;
+}
+
+.zoom-box {
+    fill: var(--band);
+    fill-opacity: 0.25;
+    stroke: var(--ink-2);
+    stroke-dasharray: 3 2;
+    pointer-events: none;
+}
+
+.reset-view {
+    position: absolute;
+    font-size: 0.8rem;
+    padding: 0.15rem 0.5rem;
+}
+
+.plot-foot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.plot-hint {
+    align-self: flex-start;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.resize-grip {
+    position: relative;
+    width: 48px;
+    height: 12px;
+    margin-bottom: -0.5rem;
+    cursor: ns-resize;
+    touch-action: none;
+}
+
+.resize-grip::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    top: 4px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+}
+
+.resize-grip:hover::after,
+.resize-grip.dragging::after {
+    background: var(--muted);
+}
