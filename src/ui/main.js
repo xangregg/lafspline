@@ -1475,7 +1475,7 @@ async function startup() {
         root.className = 'pane';
         const head = document.createElement('div');
         head.className = 'pane-head';
-        const select = sourceSelect(exampleList, localList, { user: false });
+        const select = sourceSelect(exampleList, localList);
         select.setAttribute('aria-label', `Data set in pane ${i + 1}`);
         select.addEventListener('change', () => {
             const next = [...state.panes];

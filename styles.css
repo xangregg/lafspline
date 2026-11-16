@@ -417,6 +417,63 @@ body.gallery main {
     position: relative;
 }
 
+/* --- the Data section's source: Example, File or Text, and a drop target for files and text */
+.segmented {
+    display: flex;
+}
+
+.segmented button {
+    flex: 1;
+    border-radius: 0;
+    padding-left: 0.3rem;
+    padding-right: 0.3rem;
+}
+
+.segmented button + button {
+    margin-left: -1px;
+}
+
+.segmented button:first-child {
+    border-radius: 6px 0 0 6px;
+}
+
+.segmented button:last-child {
+    border-radius: 0 6px 6px 0;
+}
+
+.segmented button[aria-pressed=true] {
+    background: var(--highlight);
+    border-color: var(--series-1);
+    position: relative;
+}
+
+.source-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-radius: 6px;
+}
+
+.source-area.drop-target {
+    outline: 2px dashed var(--series-1);
+    outline-offset: 4px;
+    background: var(--highlight);
+}
+
+.file-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.file-name {
+    font-size: 0.85rem;
+    color: var(--ink-2);
+    overflow-wrap: anywhere;
+}
+
 /* --- controls */
 .field {
     display: flex;

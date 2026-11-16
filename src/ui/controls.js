@@ -16,6 +16,15 @@ import { infoIcon, setInfo } from './info.js';
 
 const DEBOUNCE = 300; // ms for typed input
 const USER = 'user';
+const SOURCE_MODES = [['example', 'Example'], ['file', 'File'], ['text', 'Text']];
+const SPREADSHEET_FILE = /\.(xlsx|xlsm|xls|ods|numbers)$/i; // workbooks, which only their own apps read
+
+// The Data section's choice between File and Text, and the file's name, outlive a rebuild of the controls (undo,
+// reset, a link): the state says only that the data are the user's, not how they arrived.
+let userMode = 'text';
+let fileLabel = '';
+let fileNote = ''; // why the last file dropped or opened was not read
+let lastExample = null; // the source Example goes back to
 const AMBITION_STEP = 0.1; // decades
 const FLAT_STEP = 0.05;
 const BEND_LENGTH_STEP = 0.005; // fraction of the x range
@@ -78,10 +87,11 @@ const PENALTY_OPTIONS = [
 
 const TIPS = {
     source: 'Where the data come from:\n'
-        + '- **Examples**: bundled data sets.\n'
-        + '- **Local data**: data sets kept on this machine (localdata/), listed only when served locally.\n'
-        + '- **Simulated**: signals with Gaussian noise added.\n'
-        + '- **Your data**: CSV pasted or dropped.',
+        + '- **Example**: bundled data sets, simulated signals with Gaussian noise added, and data sets kept on '
+        + 'this machine (localdata/, listed only when served locally).\n'
+        + '- **File**: a CSV or TSV file from this computer.\n'
+        + '- **Text**: CSV or TSV typed or pasted, or cells copied from a spreadsheet (tab-separated).\n'
+        + 'A file or text dropped anywhere on this area is read as well.',
     n: 'Number of observations, at x = i/n.',
     sigma: 'Standard deviation of the Gaussian noise added to the signal.',
     seed: 'Seed of the simulated noise: the same seed gives the same data.',
@@ -260,15 +270,14 @@ function debounce(fn, ms) {
 }
 
 /**
- * A select of the data sources: the example data sets, the local ones, the simulated signals and, unless
- * opts.user is false, the user's pasted data. Values are 'example:id', 'local:id', a SIGNALS key or 'user'.
+ * A select of the built-in data sources: the example data sets, the local ones and the simulated signals. Values are
+ * 'example:id', 'local:id' or a SIGNALS key (the user's data, 'user', come from the File and Text segments).
  *
  * @param {{id: string, label: string}[]} examples
  * @param {{id: string, label: string}[]} local
- * @param {{user?: boolean}} [opts]
  * @returns {HTMLSelectElement}
  */
-export function sourceSelect(examples, local, opts = {}) {
+export function sourceSelect(examples, local) {
     const source = el('select');
     if (examples.length) {
         source.append(el('optgroup', { label: 'Examples' },
@@ -282,8 +291,6 @@ export function sourceSelect(examples, local, opts = {}) {
     for (const [key, spec] of Object.entries(SIGNALS))
         sim.append(el('option', { value: key, text: spec.label }));
     source.append(sim);
-    if (opts.user ?? true)
-        source.append(el('option', { value: USER, text: 'Your data (paste or drop CSV)' }));
     return source;
 }
 
@@ -364,41 +371,131 @@ export function createControls(container, state, onChange, examples = [], local 
         sizeRow,
         el('div', { class: 'row' }, [field('seed', seedInput, TIPS.seed), newSeed]),
     ]);
-    const sourceField = field('source', source, TIPS.source);
     const galleryNote = el('p', { class: 'field-hint gallery-note',
         text: 'Each pane chooses its data set above its chart. Simulated signals use their own n and σ and this '
             + 'seed; the other settings apply to every pane.' });
 
+    // Example, File or Text, the last two both the user's data (source USER, userText); choosing File or Text
+    // with no data yet leaves the chart as it is until data arrive
+    let current = state;
+    if (state.source !== USER)
+        lastExample = state.source;
     const text = el('textarea', {
         rows: 6, spellcheck: false,
-        placeholder: 'Paste CSV/TSV here or drop a file. A header row is optional.',
+        placeholder: 'Paste CSV or TSV, or cells copied from a spreadsheet. A header row is optional.',
         'aria-label': 'Your data: CSV or TSV text',
     });
     text.value = state.userText;
-    text.addEventListener('input', () => later({ userText: text.value }));
-    const loadText = t => {
-        text.value = t;
-        onChange({ userText: t, xCol: null, yCol: null });
-    };
-    text.addEventListener('dragover', e => e.preventDefault());
-    text.addEventListener('drop', async e => {
-        e.preventDefault();
-        const file = e.dataTransfer?.files?.[0];
-        if (file)
-            loadText(await file.text());
-    });
-    const file = el('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain',
+    text.addEventListener('input', () => later({ source: USER, userText: text.value }));
+    const file = el('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain', hidden: true,
         'aria-label': 'Your data: a CSV or TSV file' });
-    file.addEventListener('change', async () => {
-        if (file.files[0])
-            loadText(await file.files[0].text());
-    });
+    const openButton = el('button', { type: 'button', text: 'Open…' });
+    openButton.addEventListener('click', () => file.click());
+    const fileName = el('span', { class: 'file-name' });
+    const fileProblem = el('p', { class: 'field-hint file-problem' });
     const xCol = el('select');
     const yCol = el('select');
     xCol.addEventListener('change', () => onChange({ xCol: Number(xCol.value) }));
     yCol.addEventListener('change', () => onChange({ yCol: Number(yCol.value) }));
-    const userBox = el('div', { class: 'group' }, [text, file,
-        el('div', { class: 'row' }, [field('x column', xCol, TIPS.xCol), field('y column', yCol, TIPS.yCol)])]);
+    const columnsRow = el('div', { class: 'row' },
+        [field('x column', xCol, TIPS.xCol), field('y column', yCol, TIPS.yCol)]);
+    const examplePanel = el('div', {}, [source]);
+    const filePanel = el('div', {}, [el('div', { class: 'file-row' }, [openButton, fileName, file]), fileProblem]);
+    const textPanel = el('div', {}, [text]);
+    const modeButtons = SOURCE_MODES.map(([value, label]) => el('button', { type: 'button', text: label,
+        'aria-pressed': 'false', 'data-mode': value }));
+    let mode = state.source === USER ? userMode : 'example';
+    const showMode = m => {
+        mode = m;
+        for (const b of modeButtons)
+            b.setAttribute('aria-pressed', String(b.dataset.mode === m));
+        examplePanel.hidden = m !== 'example';
+        filePanel.hidden = m !== 'file';
+        textPanel.hidden = m !== 'text';
+        columnsRow.hidden = m === 'example' || current.source !== USER;
+        const has = current.userText.trim() !== '';
+        fileName.textContent = fileLabel || (has ? 'using the data from Text' : 'no file opened');
+        fileProblem.textContent = fileNote;
+        fileProblem.hidden = !fileNote;
+    };
+    for (const b of modeButtons) {
+        b.addEventListener('click', () => {
+            const m = b.dataset.mode;
+            if (m === 'example') {
+                showMode(m);
+                if (current.source === USER)
+                    onChange({ source: lastExample ?? source.options[0].value });
+                return;
+            }
+            userMode = m;
+            showMode(m);
+            if (current.source !== USER && current.userText.trim() !== '')
+                onChange({ source: USER });
+        });
+    }
+    const loadText = (t, how, name = '') => {
+        text.value = t;
+        userMode = how;
+        fileLabel = name;
+        fileNote = '';
+        current = { ...current, source: USER, userText: t };
+        showMode(how);
+        onChange({ source: USER, userText: t, xCol: null, yCol: null });
+    };
+    file.addEventListener('change', async () => {
+        const f = file.files[0];
+        if (f)
+            readFile(f);
+        file.value = '';
+    });
+    async function readFile(f) {
+        if (SPREADSHEET_FILE.test(f.name)) {
+            fileNote = `${f.name} is a workbook, which can't be read here: save it as CSV, or copy its cells and paste `
+                + 'them in Text.';
+            userMode = 'file';
+            showMode('file');
+            return;
+        }
+        loadText(await f.text(), 'file', f.name);
+    }
+    source.addEventListener('change', () => {
+        lastExample = source.value;
+    });
+    const modeBar = el('div', { class: 'segmented', role: 'group', 'aria-label': 'Data source' }, modeButtons);
+    const sourceArea = el('div', { class: 'source-area' }, [
+        field('source', modeBar, TIPS.source),
+        examplePanel,
+        filePanel,
+        textPanel,
+        columnsRow,
+    ]);
+    // the whole area takes a dropped file or text clipping (CSV, TSV, cells from a spreadsheet)
+    const accepts = e => [...(e.dataTransfer?.types ?? [])].some(t => t === 'Files' || t === 'text/plain');
+    sourceArea.addEventListener('dragover', e => {
+        if (!accepts(e))
+            return;
+        e.preventDefault();
+        sourceArea.classList.add('drop-target');
+    });
+    sourceArea.addEventListener('dragleave', e => {
+        if (!sourceArea.contains(e.relatedTarget))
+            sourceArea.classList.remove('drop-target');
+    });
+    sourceArea.addEventListener('drop', e => {
+        sourceArea.classList.remove('drop-target');
+        if (!accepts(e))
+            return;
+        e.preventDefault();
+        const f = e.dataTransfer.files?.[0];
+        if (f) {
+            readFile(f);
+            return;
+        }
+        const t = e.dataTransfer.getData('text/plain');
+        if (t.trim() !== '')
+            loadText(t, 'text');
+    });
+    showMode(mode);
 
     // --- region: Aₙ
     const regionKind = select('region', REGION_OPTIONS);
@@ -525,10 +622,9 @@ export function createControls(container, state, onChange, examples = [], local 
 
     container.append(
         el('h2', { text: 'Data' }),
-        sourceField,
+        sourceArea,
         galleryNote,
         simBox,
-        userBox,
         heading('Region', TIPS.regionHead),
         field('region', regionKind, TIPS.region),
         anBox,
@@ -554,12 +650,13 @@ export function createControls(container, state, onChange, examples = [], local 
         scaleRaised = null, ambition: amb = null }) {
         // the gallery's panes choose their own data; the seed and true f apply to its simulated ones
         const gallery = st.view === 'gallery';
-        sourceField.hidden = gallery;
+        current = st;
+        sourceArea.hidden = gallery;
         galleryNote.hidden = !gallery;
         simBox.hidden = !gallery && !SIGNALS[st.source];
         sizeRow.hidden = gallery;
         truthToggle.hidden = !gallery && !SIGNALS[st.source];
-        userBox.hidden = gallery || st.source !== USER;
+        showMode(mode);
         const key = columns.join('\u0000');
         if (key !== lastColumns) {
             lastColumns = key;
