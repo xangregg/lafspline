@@ -13,9 +13,13 @@
 // (thumb.js scaleLambda, with its floor by n), e.g. bayes:s0.1.
 // --noise sets the noise ε: gauss (the signals' own), skew (Exp(1) − 1: mean 0, sd 1, right-skewed) or hetero
 // (Gaussian with sd growing from 0.25 to 1.75 times σ across x, average 1).
+// --design sets the x: even (the signals' own design points), uneven (x = t + 0.8·sin(2πt)/2π: nine times as dense
+// in the middle as at the ends) or gap (the design points with x in (0.6, 0.8) left out, so n is 80% of the given).
+// A bootstrap window ending in p is a share of the observations (windowBy 'points'), e.g. boot-matched-0.1p.
 //
 // Usage: node tools/sim-band.mjs [--reps 400] [--B 1000] [--n 100,500] [--signals line,sine,ramp,heavisine,blocks]
 //                                [--configs bayes:1,bayes:0.0625,sandwich:1,sandwich:0.0625] [--noise gauss]
+//                                [--design even]
 
 import { bandRegion, checkBand, CHECK_TOL } from '../src/core/band.js';
 import { fitPSpline, evaluate } from '../src/core/pspline.js';
@@ -38,7 +42,8 @@ function parseConfigs(text) {
 
 function parseArgs(argv) {
     const opts = { reps: 400, B: 1000, sizes: [100, 500], signals: ['line', 'sine', 'ramp', 'heavisine', 'blocks'],
-        configs: parseConfigs('bayes:1,bayes:0.0625,sandwich:1,sandwich:0.0625'), noise: 'gauss' };
+        configs: parseConfigs('bayes:1,bayes:0.0625,sandwich:1,sandwich:0.0625'), noise: 'gauss',
+        design: 'even' };
     for (let i = 0; i < argv.length; i++) {
         if (argv[i] === '--reps')
             opts.reps = Number(argv[++i]);
@@ -52,6 +57,8 @@ function parseArgs(argv) {
             opts.configs = parseConfigs(argv[++i]);
         else if (argv[i] === '--noise')
             opts.noise = argv[++i];
+        else if (argv[i] === '--design')
+            opts.design = argv[++i];
         else
             throw new Error(`unknown argument ${argv[i]}`);
     }
@@ -69,9 +76,29 @@ function atData(band, x, ratios) {
     return true;
 }
 
-/** y = f + σε with the chosen noise; gauss is the signal's own simulation. */
-function sample(name, n, sigma, seed, noise) {
-    const sim = simulate(name, n, sigma, seed);
+const UNEVEN = 0.8; // the uneven design's amplitude: density 1/(1 − 0.8) = 5 times the mean in the middle, 1/1.8 at the ends
+const GAP = [0.6, 0.8]; // the gap design's empty stretch of x
+
+/** The x design: the signal's own points, moved or thinned. */
+function design(x, kind) {
+    if (kind === 'even')
+        return x;
+    if (kind === 'uneven')
+        return x.map(t => t + UNEVEN * Math.sin(2 * Math.PI * t) / (2 * Math.PI));
+    if (kind === 'gap')
+        return x.filter(t => t <= GAP[0] || t >= GAP[1]);
+    throw new Error(`unknown design ${kind}`);
+}
+
+/** y = f + σε with the chosen noise and design; gauss on the even design is the signal's own simulation. */
+function sample(name, n, sigma, seed, noise, kind, fAt) {
+    let sim = simulate(name, n, sigma, seed);
+    if (kind !== 'even') {
+        const x = design(sim.x, kind);
+        const rng = createRng(seed + 5555555);
+        const f = x.map(fAt);
+        sim = { x, f, y: f.map(v => v + sigma * rng.normal()) };
+    }
     if (noise === 'gauss')
         return sim;
     const rng = createRng(seed + 7777777);
@@ -79,7 +106,7 @@ function sample(name, n, sigma, seed, noise) {
         if (noise === 'skew')
             return f + sigma * (-Math.log(1 - rng.uniform()) - 1);
         if (noise === 'hetero')
-            return f + sigma * (0.25 + 1.5 * i / (n - 1)) * rng.normal();
+            return f + sigma * (0.25 + 1.5 * i / (sim.f.length - 1)) * rng.normal();
         throw new Error(`unknown noise ${noise}`);
     });
     return { ...sim, y };
@@ -92,8 +119,10 @@ function makeBand(x, y, config, B) {
     if (config.covariance.startsWith('boot')) {
         // boot-<weights>-<window>-<refit>, each optional: boot, boot-dirichlet, boot-matched-0.2-linear
         const [, weights, window, refit] = config.covariance.split('-');
-        return bootstrapBand(x, y, { ...common, weights, window: window === undefined ? undefined : Number(window),
-            refit });
+        const byPoints = window?.endsWith('p');
+        return bootstrapBand(x, y, { ...common, weights, refit,
+            window: window === undefined ? undefined : Number(byPoints ? window.slice(0, -1) : window),
+            windowBy: byPoints ? 'points' : undefined });
     }
     return bandRegion(x, y, { ...common, covariance: config.covariance });
 }
@@ -104,7 +133,7 @@ function main() {
     const opts = parseArgs(process.argv.slice(2));
     console.log(`α = ${ALPHA}, ${opts.reps} replications, B = ${opts.B}; σ estimated; λ by GCV × factor or by `
         + 'feature scale (s); '
-        + `noise ${opts.noise}`);
+        + `noise ${opts.noise}, design ${opts.design}`);
     console.log('signal | n | config | ∋ f | ∋ f at data x | ∋ E f̂ | half-width/σ | ED');
     for (const name of opts.signals) {
         const sigma = (SIGNALS[name] ?? TEST_SIGNALS[name]).sigma;
@@ -117,7 +146,7 @@ function main() {
                 let halfSum = 0;
                 let edSum = 0;
                 for (let r = 0; r < opts.reps; r++) {
-                    const { x, f, y } = sample(name, n, sigma, SEED_BASE + r, opts.noise);
+                    const { x, f, y } = sample(name, n, sigma, SEED_BASE + r, opts.noise, opts.design, fAt);
                     const band = makeBand(x, y, config, opts.B);
                     const p = band.params;
                     const check = checkBand(band, band.grid.map(fAt));

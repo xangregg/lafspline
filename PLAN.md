@@ -157,6 +157,53 @@ upper end is 1.27 at B = 250, 1.11 at 1000 and 1.06 at 2000 against 1.06; the sk
 0.82. **Decided:** B = 2000 for n ≤ 1000 (up to about 0.6 s), 1000 above (up to about 1.5 s at n = 5000); the
 ratio's tip says its extremes are Monte Carlo estimates.
 
+**The window (±15% of x since this study; ±10% before) and a window by points.** The widths (τ̄) and the tail
+quantiles are pooled over a window along x (`DEFAULT_WINDOW`). The ±10% first chosen was a middle ground between
+each point's own spread (60% for 95%) and one width for the whole grid (98–100%), not a tuned value. Checked at 5%,
+10%, 15% and 20%, measured along x or as a share of the
+observations (`windowBy: 'points'`, the window in ranks, so it widens in x where data are sparse and spans a gap),
+with `tools/sim-band.mjs --design even|uneven|gap` (uneven: x = t + 0.8·sin(2πt)/2π, five times the mean density in
+the middle; gap: no x in (0.6, 0.8)). Coverage of E f̂ at 95%, matched weights, λ by feature scale 10%, 200
+replications, min–max over line, sine, ramp and HeaviSine at n = 100 and 500 (by points equals by x on even x):
+
+| design | noise | x 5% | x 10% | x 15% | x 20% | points 5% | points 10% | points 15% | points 20% |
+|---|---|---|---|---|---|---|---|---|---|
+| even | Gaussian | 89.5–95 | 94–96 | 93.5–97.5 | 96–98.5 | | | | |
+| even | skewed | 71.5–87 | 93–96 | 95.5–97 | 96.5–98 | | | | |
+| even | heteroscedastic | 89.5–95 | 95–96.5 | 96.5–97.5 | 96.5–98 | | | | |
+| uneven | Gaussian | 76–95.5 | 89.5–96.5 | 93.5–97.5 | 94–98.5 | 84.5–96.5 | 92.5–97.5 | 94.5–99.5 | 97–99.5 |
+| uneven | skewed | 67–82.5 | 91–96.5 | 94–97 | 94.5–98.5 | 71.5–88 | 88.5–96 | 91.5–98.5 | 93.5–99.5 |
+| uneven | heteroscedastic | 79.5–95.5 | 92–97.5 | 93.5–98 | 96–99 | 87.5–96 | 92.5–98.5 | 94.5–99 | 95.5–99 |
+| gap | Gaussian | 89–93 | 93–95 | 96–97.5 | 96.5–98.5 | 89–94 | 95–96.5 | 95.5–97.5 | 96.5–98.5 |
+| gap | skewed | 64.5–82 | 85.5–95 | 92.5–97.5 | 94.5–98.5 | 64.5–80.5 | 86.5–94 | 93.5–98.5 | 94.5–98.5 |
+| gap | heteroscedastic | 88.5–93.5 | 95–97 | 96.5–98 | 96–98.5 | 88.5–92.5 | 93.5–96.5 | 97.5–98.5 | 98–99 |
+
+The window hardly changes the mean half-width (within 2% of the 10% window's throughout), yet coverage moves by 20
+points: a small window makes the width noisy, too narrow in places, rather than narrower on average. 5% undercovers
+(down to 64.5% with skewed noise), 10% falls to 85.5% (skewed noise with a gap, n = 100), 15% never below 92.5%,
+and 20% never below 93.5% but overcovers (to 99.5%). By points rescued 5% on the uneven design but was within noise
+of by x from 10% up, and equal across the gap. The four signals nearly coincide: f̂ − E f̂ depends on the noise, not
+on f, so they differ only through σ̂. On a sparse 52-point example, dog ages and a sine with rising noise, the
+bands at 10%, 15% and 20% nearly coincide (mean half-width within 1–2%); the wider windows even out local bumps in
+the width (dog ages' narrow stretch near 6 years widens, its bulge near 3 shrinks). **Decided:** ±15% along x, for
+about 1% more width; `windowBy: 'points'` stays in the core for comparison (the app does not offer it). The claim's
+figures were rerun at 15% (even design, 200 replications): E f̂ at feature scale 10% 93.5–97.5% and f (not HeaviSine)
+93.5–97%; at 20% 91.5–98.5%, f as rarely as 14.5% for a sine; GCV × 1/4 86.5–98.5%, × 1/16 90–98.5%, least often
+for lines.
+
+A tie found along the way: on evenly spaced x at window 0.1, check-grid points lay exactly on window edges and
+rounding put them in or out, moving the half-width by up to 10% at an end (n = 80). The edges now reach 10⁻⁹ of the
+span past ±h (`EDGE_SLACK`), so such points are always in (regression test). Rerun after the fix, the even rows at
+10% give 93–96.5% as before (every row within 1 point), so the claim's figures stand.
+
+**The refits drawn (Display → bootstrap refits).** A sample of 100 refits f̂ + d_b, not reflected, with their range
+at x in the tooltip, and a rug of the data's x on the main chart, to show where the band is wide for want of data.
+By construction a fraction 1 − α of the refits leave the band somewhere (fewer where it is conservative: 1.7% on a
+sparse 52-point example at ED 9, about 5% when a large λ leaves ED 2). Across a gap they fan out, but less relative
+to the standard error than in dense data (0.68 against 1.57 on a sine with x in (0.6, 0.8) removed): reweighting
+moves only the points beside a gap, so it sees less of the uncertainty there than the standard error does, and the
+bootstrap band is narrower in a gap than the Bayesian band.
+
 **Noise check** (`noisecheck.js`, the "σ̂ check" readout of both bands). The band fit's σ̂ against σ̂ from
 neighboring observations (sigma.js GSJS: local linear pseudo-residuals, pure error at tied x), which does not depend
 on λ, and the lag-1 autocorrelation r₁ of the residuals' means at successive distinct x (judged from 10 distinct x).

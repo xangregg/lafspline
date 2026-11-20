@@ -837,8 +837,9 @@ function addBootstrapRows(add, region) {
         + `${p.weights === 'dirichlet' ? 'Dirichlet' : 'matched'} weights, refits to `
         + `${p.refit === 'exact' ? 'all orders' : 'first order'} in the weights`,
         'Critical values: the band reaches q·se below and above the fit, where se is the standard error for constant '
-        + 'noise. They are the replicates\' upper and lower tail quantiles (standardized, pooled over ±10% of the x '
-        + 'range) at the pointwise tail level that holds for a fraction α of the replicates everywhere at once. '
+        + `noise. They are the replicates' upper and lower tail quantiles (standardized, pooled over ±${
+            fmtShort(100 * p.window)}% of ${p.windowBy === 'points' ? 'the observations' : 'the x range'}) `
+        + 'at the pointwise tail level that holds for a fraction α of the replicates everywhere at once. '
         + 'Reflected, as a bootstrap-t interval: when the replicates run high, f̂ itself may have run high, so the '
         + 'band reaches further below.');
     add('half-width', `${fmt(d3.min(region.half))} – ${fmt(d3.max(region.half))}`, `below f̂ ${fmt(d3.min(p.down))} – `

@@ -170,6 +170,6 @@ test('a band with λ by feature scale says so, with no undersmoothing', () => {
     const at10 = { criterion: 'scale', scale: 0.1, B: 200 };
     assert.ok(bandRegion(x, y, at10).claim.includes('feature scale at 10% it contained a line'));
     const boot = bootstrapBand(x, y, at10).claim;
-    assert.ok(boot.includes('feature scale at 10% it contained E f̂ in 93–96.5%') && boot.includes('fixed given x'),
+    assert.ok(boot.includes('feature scale at 10% it contained E f̂ in 93.5–97.5%') && boot.includes('fixed given x'),
         boot);
 });

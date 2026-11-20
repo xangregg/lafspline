@@ -24,7 +24,8 @@
 //   d_b(x) = f̂*_b(x) − f̂(x) is studentized by its global σ̂*_b and the constant-noise standard error s(x):
 //   T_b(x) = d_b(x)/(σ̂*_b·s(x)). Each point's root mean square τ(x) standardizes T for the coverage check, which then
 //   reflects the replicates' shape and correlation along x rather than the noise in τ; the band's widths use τ
-//   averaged over a window of ±10% of the x range, where enough residuals pool to follow a trend in the noise.
+//   averaged over a window of ±15% of the x range, where enough residuals pool to follow a trend in the noise (±10%
+//   until a study of 5–20% windows showed 10% falling to 85.5% with skewed noise and a gap in x; PLAN §1.2).
 // - The asymmetry is in the tails. With right-skewed noise the true 0.1% tails of f̂ − E f̂ were 1.35–1.6 times as
 //   long above as below, but semi-deviations (second moments) of the replicates saw only 1.05. So the band's shape
 //   is the replicates' own quantiles: standardized values Z = T/τ pooled over each window (B times the window's grid
@@ -49,7 +50,11 @@ const REFITS = ['linear', 'exact'];
 // First order in the weights: the exact refit A_b⁻¹ swings far when the few points that pin a segment or an end get
 // small weights under a small λ (Tukey coal, ED 25 of n = 49: 15 times the sandwich band at 1920); see linearChange.
 const DEFAULT_REFIT = 'linear';
-const DEFAULT_WINDOW = 0.1; // half-width of the window the band's widths average over, as a fraction of the x range
+const DEFAULT_WINDOW = 0.15; // half-width of the window the band's widths average over, as a fraction of the x range
+// Window edges reach this far past ±h (relative to the grid's span), so a grid point exactly on an edge is always in:
+// on evenly spaced x with the window at 0.1, rounding put such points in or out and moved the half-width by up to 10%
+const EDGE_SLACK = 1e-9;
+const WINDOW_BY = ['x', 'points']; // the window's half-width as a share of the x range, or of the observations
 const MIN_RESIDUAL_VARIANCE = 1e-9; // factors below this (an interpolated point, h_i ≈ 1): the residual counts as 0
 const ZERO_RESIDUAL = 1e-10; // relative to the range of y: residuals no larger leave no spread to resample
 const SCALE_FLOOR = 1e-12; // a scale this small (relative) is raised to it, not left at 0
@@ -243,7 +248,8 @@ function windowQuantiles(grid, T, tau, B, h) {
     const G = grid.length;
     const x0 = grid[0];
     const span = grid[G - 1] - x0;
-    const count = Number.isFinite(h) && h < span ? Math.ceil(span / h) + 1 : 1;
+    const slack = EDGE_SLACK * span;
+    const count = Number.isFinite(h) && h < span ? Math.ceil(span / h - EDGE_SLACK) + 1 : 1;
     const step = count > 1 ? span / (count - 1) : 0;
     const smallest = Math.max(1 / (B * Math.min(G, Math.ceil(G * 2 * h / span))), MIN_TAIL_LEVEL);
     const levels = Float64Array.from({ length: TAIL_LEVELS },
@@ -253,10 +259,10 @@ function windowQuantiles(grid, T, tau, B, h) {
     for (let k = 0; k < count; k++) {
         const at = x0 + k * step;
         let first = 0;
-        while (count > 1 && grid[first] < at - h)
+        while (count > 1 && grid[first] < at - h - slack)
             first++;
         let last = first;
-        while (last < G && (count === 1 || grid[last] <= at + h))
+        while (last < G && (count === 1 || grid[last] <= at + h + slack))
             last++;
         const pooled = new Float32Array(B * (last - first));
         let m = 0;
@@ -294,20 +300,58 @@ function quantileAt(table, side, j, l) {
  */
 function windowRms(grid, t, h) {
     const G = grid.length;
+    const slack = EDGE_SLACK * (grid[G - 1] - grid[0]);
     const out = new Float64Array(G);
     let lo = 0;
     let hi = 0;
     let sum = 0;
     for (let j = 0; j < G; j++) {
-        while (hi < G && grid[hi] <= grid[j] + h) {
+        while (hi < G && grid[hi] <= grid[j] + h + slack) {
             sum += t[hi] * t[hi];
             hi++;
         }
-        while (grid[lo] < grid[j] - h) {
+        while (grid[lo] < grid[j] - h - slack) {
             sum -= t[lo] * t[lo];
             lo++;
         }
         out[j] = Math.sqrt(Math.max(sum, 0) / (hi - lo));
+    }
+    return out;
+}
+
+/**
+ * Each grid point's position among the observations: the rank (0 to n − 1, ties sharing their mean rank) interpolated
+ * linearly in x between neighboring distinct x, and extended beyond the first and last at the slope of the nearest
+ * pair (the grid reaches past the data by up to half a segment), so on evenly spaced x it is x rescaled. Across a gap in x the position
+ * barely moves, so a window measured in it spans the gap. O((n + G) log n).
+ *
+ * @param {ArrayLike<number>} x  the observations' x, any order
+ * @param {Float64Array} grid    sorted
+ * @returns {Float64Array}
+ */
+function rankPositions(x, grid) {
+    const sorted = Float64Array.from(x).sort();
+    const xs = [];
+    const ranks = [];
+    for (let i = 0; i < sorted.length;) {
+        let k = i;
+        while (k + 1 < sorted.length && sorted[k + 1] === sorted[i])
+            k++;
+        xs.push(sorted[i]);
+        ranks.push((i + k) / 2);
+        i = k + 1;
+    }
+    const out = new Float64Array(grid.length);
+    const m = xs.length;
+    if (m === 1)
+        return out;
+    let k = 0;
+    for (let j = 0; j < grid.length; j++) {
+        const g = grid[j];
+        while (k + 2 < m && xs[k + 1] <= g)
+            k++;
+        // segment k to k + 1, extended past the ends
+        out[j] = ranks[k] + (ranks[k + 1] - ranks[k]) * (g - xs[k]) / (xs[k + 1] - xs[k]);
     }
     return out;
 }
@@ -321,17 +365,16 @@ function mean(a) {
 }
 
 // Simulated coverage by GCV's undersmoothing factor and by feature scale (tools/sim-band.mjs, 200 replications per
-// row; PLAN §1.2 and open question 7)
+// row, the window at ±15%; PLAN §1.2 and open question 7)
 const SIMULATED_GCV = [
-    [1 / 4, 'with λ by GCV × 1/4 it contained E f̂ in 84–98% of samples, least often for a ramp with skewed noise at '
-        + 'n = 100 and for lines'],
-    [1 / 16, 'with λ by GCV × 1/16 it contained E f̂ in 86–98% of samples, least often for a line with skewed noise'],
+    [1 / 4, 'with λ by GCV × 1/4 it contained E f̂ in 86.5–98.5% of samples, least often for lines'],
+    [1 / 16, 'with λ by GCV × 1/16 it contained E f̂ in 90–98.5% of samples, least often for lines'],
 ];
 const SIMULATED_SCALE = [
-    [0.1, 'with λ by feature scale at 10% it contained E f̂ in 93–96.5% of samples, and f (but for HeaviSine, whose '
-        + 'jumps it never holds) in 92.5–95.5%'],
-    [0.2, 'with λ by feature scale at 20% it contained E f̂ in 85–97.5% of samples, least often for a line and a ramp '
-        + 'with skewed noise at n = 100, and f as rarely as 7.5% for a sine with a period of 2.5 times the scale'],
+    [0.1, 'with λ by feature scale at 10% it contained E f̂ in 93.5–97.5% of samples, and f (but for HeaviSine, whose '
+        + 'jumps it never holds) in 93.5–97%'],
+    [0.2, 'with λ by feature scale at 20% it contained E f̂ in 91.5–98.5% of samples, least often for a sine at '
+        + 'n = 500, and f as rarely as 14.5% for a sine with a period of 2.5 times the scale'],
 ];
 const SAME = 1e-12; // a simulated setting matches to rounding
 
@@ -342,8 +385,8 @@ function simulated(p) {
     if (hit)
         return hit[1];
     const not = { gcv: 'not this undersmoothing', scale: 'not this scale' }[p.lambdaSource] ?? 'not λ chosen this way';
-    return `with λ by GCV × 1/4 and 1/16 and by feature scale at 10% and 20% (${not}) it contained E f̂ in 84–98% `
-        + 'of samples';
+    return `with λ by GCV × 1/4 and 1/16 and by feature scale at 10% and 20% (${not}) it contained E f̂ in `
+        + '86.5–98.5% of samples';
 }
 
 /** How the claim treats λ: exact when it does not depend on y. */
@@ -371,7 +414,7 @@ function bootstrapClaim(p) {
         + `positive fractional weights on the observations that sum to n: ${weights}. The residuals are rescaled to `
         + 'the size of the noise and the replicates studentized by their σ̂; the band\'s reach below and above the '
         + 'fit is the replicates\' upper and lower tail (reflected, as a bootstrap-t interval), pooled over '
-        + `±${round(100 * p.window)}% of the x range, at the tail level that holds for a fraction ${p.alpha} of the `
+        + `±${round(100 * p.window)}% of ${p.windowBy === 'points' ? 'the observations' : 'the x range'}, at the tail level that holds for a fraction ${p.alpha} of the `
         + `replicates at every point at once. Contains the P-spline's mean, f smoothed by the same penalty, at every `
         + `x of the check grid with probability ≈ ${p.alpha}, for independent observations; the noise need not be `
         + `Gaussian, and its spread may change slowly along x. In simulations at 95% ${simulated(p)} (a `
@@ -395,6 +438,8 @@ function bootstrapClaim(p) {
  * @param {'matched'|'dirichlet'} [opts.weights]  ('matched')
  * @param {number} [opts.window]   half-width of the window the widths average over, a fraction of the x range
  *     (0.1); 0 uses each point's own, Infinity one value for the whole grid
+ * @param {'x'|'points'} [opts.windowBy]  'points': the window is a fraction of the observations instead, ±window·n
+ *     of them around each grid point (by rank), so it is wide in x where data are sparse ('x')
  * @param {'exact'|'linear'} [opts.refit]  each replicate the exact reweighted refit, or its first order in the
  *     weights (the fit's own A; see linearChange)
  * @param {number} [opts.keep]     replicate curves to return for display (100)
@@ -410,6 +455,9 @@ export function bootstrapBand(x, y, opts = {}) {
     const seed = opts.seed ?? DEFAULT_SEED;
     const weights = opts.weights ?? 'matched';
     const window = opts.window ?? DEFAULT_WINDOW;
+    const windowBy = opts.windowBy ?? 'x';
+    if (!WINDOW_BY.includes(windowBy))
+        throw new RangeError(`bootstrapBand: unknown windowBy ${windowBy}`);
     if (!WEIGHTS.includes(weights))
         throw new RangeError(`bootstrapBand: unknown weights ${weights}`);
     const { fit, lambdaSource, lambdaChosen, atEdge, undersmooth, deg, diff, rule } = bandFit(x, y, opts);
@@ -445,8 +493,10 @@ export function bootstrapBand(x, y, opts = {}) {
     }
     for (let j = 0; j < G; j++)
         tau[j] = Math.max(Math.sqrt(tau[j] / Bused), SCALE_FLOOR);
-    const h = window * (basis.xr - basis.xl);
-    const table = windowQuantiles(grid, T, tau, Bused, h);
+    // the windows are measured along x, or along the observations' ranks
+    const pos = windowBy === 'points' ? rankPositions(fit.system.x, grid) : grid;
+    const h = window * (pos[G - 1] - pos[0] || 1);
+    const table = windowQuantiles(pos, T, tau, Bused, h);
     // each replicate's deepest level (largest l) at which it lies inside the pooled quantiles at every point; the
     // band's level is the one a fraction α of replicates reach. Inside at l implies inside at every smaller l.
     const deepest = new Int32Array(Bused);
@@ -472,7 +522,7 @@ export function bootstrapBand(x, y, opts = {}) {
     }
     const sorted = Int32Array.from(deepest).sort();
     const level = Math.max(0, sorted[Math.max(0, Bused - Math.ceil(alpha * Bused))]);
-    const tauBar = windowRms(grid, tau, h);
+    const tauBar = windowRms(pos, tau, h);
     const se = unitSe.map(v => v * fit.sigma);
     // reflected, as a bootstrap-t interval: a long upper tail of the replicates makes the band reach further below
     // f̂ (simulations with skewed noise could not tell this from the unreflected band by coverage; theory favors it)
@@ -486,7 +536,7 @@ export function bootstrapBand(x, y, opts = {}) {
     // toward the midpoint of the edges, which a long tail on one side moves away from the estimate.
     const median = fhat.map((f, j) => f - quantileAt(table, 'hi', j, TAIL_LEVELS - 1) * tauBar[j] * se[j]);
     const params = {
-        n: fit.system.n, alpha, B: Bused, seed, covariance: 'bootstrap', weights, window, refit,
+        n: fit.system.n, alpha, B: Bused, seed, covariance: 'bootstrap', weights, window, windowBy, refit,
         tailLevel: table.levels[level], qBelow, qAbove, q: (mean(qBelow) + mean(qAbove)) / 2,
         criterion: opts.criterion ?? 'gcv', lambdaSource, lambdaChosen, rule, atEdge, undersmooth, lambda: fit.lambda,
         ed: fit.ed, sigma: fit.sigma, df: fit.system.n - fit.ed, xl: basis.xl, xr: basis.xr, nseg: basis.nseg,

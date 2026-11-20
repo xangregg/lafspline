@@ -250,3 +250,40 @@ test('the band returns its first refits for display: they fan out where data are
     }
     assert.ok(outside <= 0.2 * count, `${outside} of ${count} refits leave the band`);
 });
+
+test('a window by points equals a window by x on evenly spaced x, and spans a gap in x', () => {
+    const TOL = 1e-12; // relative: the same windows, measured in rescaled units
+    const WINDOW = 0.13; // not a multiple of the grid's spacing, so no grid point lies on a window's edge
+    const { x, y } = simulate('sine', 120, 0.3, SEED);
+    const byX = bootstrapBand(x, y, { B, window: WINDOW });
+    const byPoints = bootstrapBand(x, y, { B, window: WINDOW, windowBy: 'points' });
+    byX.half.forEach((v, j) => assert.ok(Math.abs(v - byPoints.half[j]) <= TOL * v, `j = ${j}`));
+    assert.equal(byPoints.params.windowBy, 'points');
+    assert.match(byPoints.claim, /of the observations/);
+    // with a stretch of x empty, the points window pools the gap with the data on both sides: its widths there
+    // differ from the x window's, which holds only the gap's own grid points
+    const keep = [...x.keys()].filter(i => x[i] < 0.55 || x[i] > 0.85);
+    const xs = keep.map(i => x[i]);
+    const ys = keep.map(i => y[i]);
+    const gapX = bootstrapBand(xs, ys, { B, window: WINDOW });
+    const gapPoints = bootstrapBand(xs, ys, { B, window: WINDOW, windowBy: 'points' });
+    const j = gapX.grid.findIndex(g => g >= 0.7);
+    assert.notEqual(gapX.half[j], gapPoints.half[j]);
+    assert.throws(() => bootstrapBand(x, y, { B, windowBy: 'rank' }), RangeError);
+});
+
+test('a grid point on a window\'s edge is in it whatever the rounding: the band is stable at window 0.1', () => {
+    // Regression: on evenly spaced x at window 0.1 (the default then), check-grid points fell exactly on window edges, and
+    // rounding put them in or out, so the window by x and by points (the same windows, rescaled) differed by up to
+    // 10% in half-width at the right end
+    const TOL = 1e-9; // relative
+    const x = Float64Array.from({ length: 80 }, (_, i) => i / 79);
+    const y = x.map((v, i) => v * v + ((i * 7919) % 13 - 6) / 20);
+    const byX = bootstrapBand(x, y, { B, window: 0.1 });
+    const byPoints = bootstrapBand(x, y, { B, window: 0.1, windowBy: 'points' });
+    const nudged = bootstrapBand(x, y, { B, window: 0.1 * (1 + 1e-12) });
+    byX.half.forEach((v, j) => {
+        assert.ok(Math.abs(v - byPoints.half[j]) <= TOL * v, `by points, j = ${j}: ${v} vs ${byPoints.half[j]}`);
+        assert.ok(Math.abs(v - nudged.half[j]) <= TOL * v, `nudged, j = ${j}: ${v} vs ${nudged.half[j]}`);
+    });
+});
