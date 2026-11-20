@@ -213,3 +213,40 @@ test('the band\'s target is the replicates\' median: inside the band, at the fit
     }
     assert.throws(() => bootstrapBand(x, y, { B: 10, refit: 'quadratic' }), RangeError);
 });
+
+test('the band returns its first refits for display: they fan out where data are few', () => {
+    // a sine with a stretch of x left empty: the refits must fan out there, where the standard error is largest
+    const { x, y } = simulate('sine', 200, 0.3, SEED);
+    const keepIdx = [...x.keys()].filter(i => x[i] < 0.6 || x[i] > 0.8);
+    const xs = keepIdx.map(i => x[i]);
+    const ys = keepIdx.map(i => y[i]);
+    const KEEP = 60;
+    const band = bootstrapBand(xs, ys, { B, keep: KEEP, criterion: 'scale', scale: 0.1 });
+    const G = band.grid.length;
+    const { count, curves } = band.replicates;
+    assert.equal(count, KEEP);
+    assert.equal(curves.length, KEEP * G);
+    const rms = Float64Array.from(band.grid, (_, j) => {
+        let ss = 0;
+        for (let b = 0; b < count; b++)
+            ss += (curves[b * G + j] - band.params.fit[j]) ** 2;
+        return Math.sqrt(ss / count);
+    });
+    const at = xv => band.grid.findIndex(g => g >= xv);
+    // In the gap the refits spread about 1.6 times as far as in dense data (1.3 required). (Relative to the standard error they
+    // spread less there, 0.68 against 1.57 here: reweighting moves only the points beside the gap, so it sees less
+    // of the uncertainty where there are no data than the standard error does.)
+    assert.ok(rms[at(0.7)] > 1.3 * rms[at(0.3)], `rms ${rms[at(0.7)]} vs ${rms[at(0.3)]}`);
+    // the band itself contains most of them at every point (it is simultaneous; they are typical refits)
+    let outside = 0;
+    for (let b = 0; b < count; b++) {
+        for (let j = 0; j < G; j++) {
+            const v = curves[b * G + j];
+            if (v < band.lower[j] - 1e-9 || v > band.upper[j] + 1e-9) {
+                outside++;
+                break;
+            }
+        }
+    }
+    assert.ok(outside <= 0.2 * count, `${outside} of ${count} refits leave the band`);
+});

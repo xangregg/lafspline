@@ -123,3 +123,14 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   distinct values, such as 0/1 outcomes, whose neighbors are often equal), σ̂ is their root mean square instead
   (Rice 1984), for eq. 10, GSJS and the tie-aware forms alike; it was 0, so Aₙ refused such data and the noise check
   divided by 0. Otherwise unchanged (the plain median without weights, as before).
+- `src/ui/chart.js`: a chart narrower than its margins draws its clip and hover rects with width 0, not a negative
+  width (an SVG error).
+- `src/ui/chart.js`: `createMainChart(container, {interactive})` (the page's main chart) pans and zooms: drag pans
+  (on an axis, that axis alone), a wheel over an axis zooms it, a pinch or ctrl/⌘-wheel over the plot zooms both,
+  shift-drag zooms to a box, double-click or a Reset axes button resets; the view is kept while the data's x and y
+  are unchanged. A grip below the plot sets its height (kept in localStorage). `render` sets the model and `draw`
+  draws it. The points, plateau marks and hover highlight are clipped to the plot, also in `toSvg`.
+- `src/ui/chart.js`: the model's `replicates` (a sample of a bootstrap band's refits) are drawn as thin translucent
+  lines, a layer that `hidden` can leave out ('replicates'), with a legend item and their range at x in the tooltip;
+  an interactive chart draws a rug of the data's x along the bottom of the plot.
+- `src/ui/urlstate.js`: `showReplicates`, the bootstrap refits layer.

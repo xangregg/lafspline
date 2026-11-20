@@ -132,6 +132,7 @@ const FIELDS = {
     showData: bool,
     showCenter: bool,
     showBand: bool,
+    showReplicates: bool,
     showFit: bool,
     // last in a link (before only the pasted data), so the settings ahead of them are easier to edit by hand
     view: enumOf(VIEWS),

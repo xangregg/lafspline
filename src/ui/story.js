@@ -32,7 +32,7 @@ const FRAME_HEIGHT = 450; // px, CSS
 const MIN_PLOT_HEIGHT = 160; // px: the plot's least height, should the banner and legend take more than their share
 const GIF_SCALE = 1.6; // GIF pixels per CSS pixel: 1280 × 720
 const GIF_COLORS = 256;
-const ALL_LAYERS = ['data', 'truth', 'center', 'band', 'fit'];
+const ALL_LAYERS = ['data', 'truth', 'center', 'band', 'replicates', 'fit'];
 
 const SIMULATED_INTRO = 'Simulated data: what curve is hidden in the noise?';
 

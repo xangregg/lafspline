@@ -55,6 +55,7 @@ const ZERO_RESIDUAL = 1e-10; // relative to the range of y: residuals no larger 
 const SCALE_FLOOR = 1e-12; // a scale this small (relative) is raised to it, not left at 0
 const TAIL_LEVELS = 200; // log-spaced pointwise tail levels the critical level is chosen from
 const MIN_TAIL_LEVEL = 1e-7; // the smallest of them, at most
+const DEFAULT_KEEP = 100; // replicate curves returned for display (a spaghetti plot of the refits)
 const MAX_STORED = 2e7; // replicate values kept (4 bytes each); B is reduced on very fine grids to stay under it
 const DEGREE_NAMES = { 1: 'linear', 2: 'quadratic', 3: 'cubic' };
 // Matched weights: X = G^(1/MATCHED_POWER), G ~ Gamma(MATCHED_SHAPE), has coefficient of variation 1 and skewness 1,
@@ -177,10 +178,11 @@ function linearChange(fit, wb, r) {
 }
 
 /**
- * The studentized replicates T_bj = d_b(x_j)/(σ̂*_b·s_j) on the grid, replicate b at [b·G, (b + 1)·G).
- * O(B·(n·deg² + nb·p + G·deg)); B·G single-precision values (4 bytes each).
+ * The studentized replicates T_bj = d_b(x_j)/(σ̂*_b·s_j) on the grid, replicate b at [b·G, (b + 1)·G), and the raw
+ * deviations d_b(x_j) of the first `keep` replicates, laid out the same way. O(B·(n·deg² + nb·p + G·deg)); B·G
+ * single-precision values (4 bytes each).
  */
-function studentizedReplicates(fit, gb, r, unitSe, { B, seed, weights, refit }) {
+function studentizedReplicates(fit, gb, r, unitSe, { B, seed, weights, refit, keep }) {
     const rng = createRng(seed);
     const { basis, w: prior } = fit.system;
     const n = prior.length;
@@ -192,6 +194,8 @@ function studentizedReplicates(fit, gb, r, unitSe, { B, seed, weights, refit }) 
         total += prior[i];
     const wb = new Float64Array(n);
     const T = new Float32Array(B * G);
+    const kept = Math.min(keep, B);
+    const deviations = new Float32Array(kept * G);
     for (let b = 0; b < B; b++) {
         // prior weights times the random weights, rescaled to keep the prior total
         const d = weights === 'dirichlet' ? dirichletWeights(n, rng) : matchedWeights(n, rng);
@@ -218,9 +222,11 @@ function studentizedReplicates(fit, gb, r, unitSe, { B, seed, weights, refit }) 
             for (let k = 0; k < gbw; k++)
                 g += gb.values[j * gbw + k] * delta[gb.first[j] + k];
             T[b * G + j] = g / (sigma * unitSe[j]);
+            if (b < kept)
+                deviations[b * G + j] = g;
         }
     }
-    return T;
+    return { T, deviations, kept };
 }
 
 /**
@@ -391,7 +397,10 @@ function bootstrapClaim(p) {
  *     (0.1); 0 uses each point's own, Infinity one value for the whole grid
  * @param {'exact'|'linear'} [opts.refit]  each replicate the exact reweighted refit, or its first order in the
  *     weights (the fit's own A; see linearChange)
- * @returns {import('./band.js').BandRegion & {target: Float64Array}}  params add fit (f̂ at the grid), se (σ̂·s,
+ * @param {number} [opts.keep]     replicate curves to return for display (100)
+ * @returns {import('./band.js').BandRegion & {target: Float64Array, replicates: {count: number,
+ *     curves: Float32Array}}}  replicates: the first `count` refits f̂ + d_b on the grid (not reflected, unlike the
+ *     band), refit b at [b·G, (b + 1)·G)  params add fit (f̂ at the grid), se (σ̂·s,
  *     units of y), up and down
  *     (the band's reach above and below f̂), tUp and tDown (t⁺, t⁻ per point)
  */
@@ -426,7 +435,8 @@ export function bootstrapBand(x, y, opts = {}) {
     const refit = opts.refit ?? DEFAULT_REFIT;
     if (!REFITS.includes(refit))
         throw new RangeError(`bootstrapBand: unknown refit ${refit}`);
-    const T = studentizedReplicates(fit, gb, r, unitSe, { B: Bused, seed, weights, refit });
+    const { T, deviations, kept } = studentizedReplicates(fit, gb, r, unitSe,
+        { B: Bused, seed, weights, refit, keep: opts.keep ?? DEFAULT_KEEP });
     // τ_j: each point's root mean square, to standardize before pooling and for the coverage check
     const tau = new Float64Array(G);
     for (let b = 0; b < Bused; b++) {
@@ -491,5 +501,6 @@ export function bootstrapBand(x, y, opts = {}) {
         center: lower.map((l, j) => (l + upper[j]) / 2),
         half: lower.map((l, j) => (upper[j] - l) / 2),
         lower, upper, target: median, params,
+        replicates: { count: kept, curves: deviations.map((d, k) => d + fhat[k % G]) },
     };
 }

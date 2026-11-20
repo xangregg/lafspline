@@ -125,10 +125,12 @@ const state = {
     showData: true, // chart layers (the readouts are unchanged): the data points,
     showCenter: true, // the band's P-spline fit (phase 1),
     showBand: true, // the band,
+    showReplicates: false, // a bootstrap band's refits (a spaghetti plot of a sample of them),
     showFit: true, // and the phase-2 fit
 };
 // Settings that change only what the chart draws: a change to them redraws without refitting.
-const DISPLAY_KEYS = new Set(['showTruth', 'showData', 'showCenter', 'showBand', 'showFit', 'boxes']);
+const DISPLAY_KEYS = new Set(['showTruth', 'showData', 'showCenter', 'showBand', 'showReplicates', 'showFit',
+    'boxes']);
 const PANE_SUMMARY_SEP = ' · ';
 // What chooses the data (the source, pasted data and its columns, a signal's n, σ and seed, the gallery's panes)
 // and the view: Reset, Undo and Redo leave these alone and change only the other settings.
@@ -1301,6 +1303,8 @@ async function startup() {
             hidden.add('band');
         if (!state.showFit)
             hidden.add('fit');
+        if (!state.showReplicates)
+            hidden.add('replicates');
         const model = {
             x: data.x,
             y: data.y,
@@ -1309,6 +1313,10 @@ async function startup() {
             extremes: [],
             edges: data.edges,
             band: region && !an ? { lb: region.lower, ub: region.upper, label: region.label, x: region.grid } : null,
+            replicates: region?.replicates
+                ? { x: region.grid, curves: region.replicates.curves, count: region.replicates.count,
+                    of: region.params.B }
+                : null,
             boxesLabel: boxes ? boxes.label : null,
             hidden,
         };

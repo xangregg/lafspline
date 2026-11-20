@@ -226,6 +226,11 @@ const TIPS = {
     showCenter: 'The P-spline the band is built around (for the P-spline band, its center).',
     showBand: 'The phase-1 confidence band the fit must stay inside.',
     showFit: 'The least ambitious fit inside the region (phase 2).',
+    showReplicates: 'A sample of the bootstrap band\'s refits, each the P-spline refitted with the data reweighted at '
+        + 'random, drawn as thin lines: where they fan out, the fit is poorly pinned down (few points, or points '
+        + 'with large leverage). They are typical refits, so they do not reach the band\'s edges, which hold for '
+        + 'the rare extremes too, at every point at once. And they are not reflected, as the band is: where the '
+        + 'refits lean one way, the band reaches further the other way. The tooltip gives their range at x.',
 };
 
 function el(tag, attrs = {}, children = []) {
@@ -618,6 +623,7 @@ export function createControls(container, state, onChange, examples = [], local 
     const truthToggle = toggle('showTruth', 'true f');
     const centerToggle = toggle('showCenter', 'phase-1 fit');
     const bandToggle = toggle('showBand', 'confidence band');
+    const replicatesToggle = toggle('showReplicates', 'bootstrap refits');
     const boxesField = field('Aₙ boxes', select('boxes', BOX_OPTIONS), TIPS.boxes);
 
     container.append(
@@ -641,6 +647,7 @@ export function createControls(container, state, onChange, examples = [], local 
         truthToggle,
         centerToggle,
         bandToggle,
+        replicatesToggle,
         boxesField,
         toggle('showFit', 'phase-2 fit'),
     );
@@ -693,6 +700,7 @@ export function createControls(container, state, onChange, examples = [], local 
         // Aₙ has no band or phase-1 fit to draw, only its boxes
         centerToggle.hidden = an;
         bandToggle.hidden = an;
+        replicatesToggle.hidden = st.region !== 'boot';
         boxesField.hidden = !an;
         tauField.hidden = !an || st.calibrate;
         alphaField.hidden = an && !st.calibrate;

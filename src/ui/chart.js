@@ -22,6 +22,10 @@ const OVERLAY_WIDTH = 1.5; // px
 const GAP_FACTOR = 3;
 const LONE_TICK = 3; // px half-width of the tick for a single point stranded between gaps
 const KINK_RADIUS = 4; // px
+const REPLICATE_WIDTH = 0.75; // px, a bootstrap refit in the spaghetti layer
+const REPLICATE_ALPHA = 0.14; // of each refit's line: about 7 overlapping refits read as solid
+const RUG_LENGTH = 6; // px, a data x tick along the bottom of the plot (interactive charts)
+const RUG_ALPHA = 0.6; // so stacked ticks read darker where the data are dense
 // Pan and zoom (interactive charts only). A view is display only: the fits and regions are unchanged.
 const WHEEL_RATE = 0.002; // zoom per px of wheel travel: a 100 px notch scales the span by e^0.2 ≈ 1.22
 const PINCH_GAIN = 10; // a pinch (ctrl-wheel) reports small deltas; scale them up to a wheel's pace
@@ -70,7 +74,9 @@ function tickFormat(scale, count) {
  * @property {string|null} [boxesLabel]  legend text for the Aₙ boxes layer (null: no legend item)
  * @property {{points: Array<{x: number, y: number}>, label: string, plural: string}} [markers]  features of the
  *     primary fit (kinks, inflections) marked with circles at (x, y), named in the legend and tooltip
- * @property {Set<string>} [hidden]  layers not drawn: 'data', 'truth' (f), 'band', or a fit's key. They leave the
+ * @property {{x: Float64Array, curves: Float32Array, count: number, of: number}|null} [replicates]  a sample of a
+ *     bootstrap band's refits at their sorted abscissae x, refit b at [b·G, (b + 1)·G), count of the band's `of`
+ * @property {Set<string>} [hidden]  layers not drawn: 'data', 'truth' (f), 'band', 'replicates', or a fit's key. They leave the
  *     legend but still set the scales (so toggling one does not move the others) and keep their rows in the tooltip.
  */
 
@@ -131,6 +137,8 @@ export function createMainChart(container, opts = {}) {
     const clipRect = svg.append('clipPath').attr('id', clipId).append('rect');
     const gGrid = gridSvg.append('g').attr('class', 'grid');
     const gBand = svg.append('g').attr('class', 'band').attr('clip-path', `url(#${clipId})`);
+    const gReplicates = svg.append('g').attr('class', 'replicates').attr('clip-path', `url(#${clipId})`);
+    const gRug = svg.append('g').attr('class', 'rug').attr('clip-path', `url(#${clipId})`);
     const gHighlight = svg.append('rect').attr('class', 'interval-highlight').attr('visibility', 'hidden')
         .attr('clip-path', `url(#${clipId})`);
     const gGaps = svg.append('g').attr('class', 'gap-connectors').attr('clip-path', `url(#${clipId})`);
@@ -370,6 +378,33 @@ export function createMainChart(container, opts = {}) {
                 }
             }
         }
+        // a sample of the bootstrap refits, all in one path: a hundred curves of hundreds of points each
+        gReplicates.selectAll('*').remove();
+        const reps = m.replicates && !hidden.has('replicates') ? m.replicates : null;
+        if (reps) {
+            const G = reps.x.length;
+            const px = reps.x.map(v => sx(v));
+            let d = '';
+            for (let b = 0; b < reps.count; b++) {
+                for (let j = 0; j < G; j++)
+                    d += `${j ? 'L' : 'M'}${round2(px[j])},${round2(sy(reps.curves[b * G + j]))}`;
+            }
+            gReplicates.append('path').attr('d', d).attr('fill', 'none')
+                .attr('stroke', colors['ink-2']).attr('stroke-opacity', REPLICATE_ALPHA)
+                .attr('stroke-width', REPLICATE_WIDTH).attr('stroke-linejoin', 'round');
+        }
+        // a rug of the data's x along the bottom of the plot, so gaps and stranded points show even where the
+        // points overlap
+        gRug.selectAll('*').remove();
+        if (interactive && !hidden.has('data')) {
+            const base = H - M.bottom;
+            let d = '';
+            for (let i = 0; i < n; i++)
+                d += `M${round2(sx(x[i]))},${base}v${-RUG_LENGTH}`;
+            gRug.append('path').attr('d', d).attr('stroke', colors.muted).attr('stroke-width', 1)
+                .attr('stroke-opacity', RUG_ALPHA);
+        }
+
         // gapAfter[i]: the spacing x[i] → x[i+1] is a gap (see GAP_FACTOR)
         const spacings = [];
         for (let i = 1; i < n; i++) {
@@ -524,6 +559,10 @@ export function createMainChart(container, opts = {}) {
             items.push({ label: m.band.label, color: colors['band'], box: true });
         if (bandShown && m.exact)
             items.push({ label: m.exact.label, color: colors.ink, glyph: '┄' });
+        if (reps) {
+            items.push({ label: `bootstrap refits (${reps.count} of ${reps.of}, not reflected)`,
+                color: colors['ink-2'] });
+        }
         items.push(...series.filter(s => s.afterBand));
         if (gapPaths.some(g => !g.isBreak) && anyGap)
             items.push({ label: 'gap in x: step fit undefined between the data', color: colors['ink-2'], glyph: '┈' });
@@ -691,6 +730,18 @@ export function createMainChart(container, opts = {}) {
             rows.push([`[${show(b.lb[k])}, ${show(b.ub[k])}]`, b.lb[k] > b.ub[k] ? 'band (empty here)' : 'band']);
             if (model.exact)
                 rows.push([`[${show(model.exact.lb[i])}, ${show(model.exact.ub[i])}]`, 'exact LP bounds']);
+        }
+        const reps = model.replicates;
+        if (reps && !(model.hidden ?? new Set()).has('replicates')) {
+            const G = reps.x.length;
+            const k = atX(reps.x, i);
+            let lo = Infinity;
+            let hi = -Infinity;
+            for (let b = 0; b < reps.count; b++) {
+                lo = Math.min(lo, reps.curves[b * G + k]);
+                hi = Math.max(hi, reps.curves[b * G + k]);
+            }
+            rows.push([`[${fmt(lo)}, ${fmt(hi)}]`, `${reps.count} bootstrap refits (least, greatest)`]);
         }
         if (boxSpec && boxSpec.levels.length === 1) {
             const b = boxSpec.levels[0].boxes;
