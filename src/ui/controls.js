@@ -228,9 +228,10 @@ const TIPS = {
     showFit: 'The least ambitious fit inside the region (phase 2).',
     showReplicates: 'A sample of the bootstrap band\'s refits, each the P-spline refitted with the data reweighted at '
         + 'random, drawn as thin lines: where they fan out, the fit is poorly pinned down (few points, or points '
-        + 'with large leverage). They are typical refits, so they do not reach the band\'s edges, which hold for '
-        + 'the rare extremes too, at every point at once. And they are not reflected, as the band is: where the '
-        + 'refits lean one way, the band reaches further the other way. The tooltip gives their range at x.',
+        + 'with large leverage). The band is set so that a fraction α of all the refits stay inside it at every '
+        + 'point at once (studentized by their own noise level), so at 95% about 1 in 20 leaves it somewhere; where '
+        + 'it is conservative, fewer do. And they are not reflected, as the band is: where the refits lean one way, '
+        + 'the band reaches further the other way. The tooltip gives their range at x.',
 };
 
 function el(tag, attrs = {}, children = []) {
