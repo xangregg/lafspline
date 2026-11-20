@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+    <!-- lafspline: a gray confidence band, a few data points, and the least ambitious fit (blue) inside it: level,
+         then one bend, then straight. Colors are the app's light and dark theme tokens. -->
+    <style>
+        .bg { fill: #fcfcfb; stroke: #d9d8d3; }
+        .band { fill: #52514e; fill-opacity: 0.3; }
+        .dot { fill: #52514e; fill-opacity: 0.7; }
+        .fit { fill: none; stroke: #2a78d6; }
+        @media (prefers-color-scheme: dark) {
+            .bg { fill: #1a1a19; stroke: #3a3a37; }
+            .band { fill: #c3c2b7; fill-opacity: 0.32; }
+            .dot { fill: #c3c2b7; fill-opacity: 0.75; }
+            .fit { stroke: #5b9cf0; }
+        }
+    </style>
+    <rect class="bg" x="0.5" y="0.5" width="31" height="31" rx="7" stroke-width="1"/>
+    <path class="band" d="M3 18.5 C7 16.5 10 18 13 16.5 S20 9 23 7.5 S27 4.5 29 4.5 L29 12.5 C27 12.5 25 14 22.5 16
+        S16 23 12.5 24.5 S6 25 3 26.5 Z"/>
+    <circle class="dot" cx="6" cy="20" r="1.6"/>
+    <circle class="dot" cx="11" cy="23.5" r="1.6"/>
+    <circle class="dot" cx="19" cy="13" r="1.6"/>
+    <circle class="dot" cx="25.5" cy="11" r="1.6"/>
+    <path class="fit" d="M3 22.5 L11 21.5 Q14 21 16.5 18.5 L29 8" stroke-width="2.6" stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>
