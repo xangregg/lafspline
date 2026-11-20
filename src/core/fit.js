@@ -26,12 +26,19 @@
 // the mean of the basis rows over the observations in an interval I, with c_k = mean_I(y) and h_k = c/√|I| (an.js),
 // whose support grows with I; the Newton system is then banded only as far as the widest row reaches (dense for
 // I = everything), still nb × nb. Specs carry such rows in `rows`; without them the rows are the basis at `grid`.
+//
+// Anchors (anchors.js, PLAN §1.3b) are points the fit must pass through: k linear equalities Cβ = d, C the basis
+// at the anchors' x. Every phase-2 solve goes through one banded system Aβ = r (fitIterated's Newton steps, which
+// the adaptive-ridge fits repeat), so the equalities enter there, exactly, by the bordered (Lagrange) solve
+// β = β₀ − Zλ with β₀ = A⁻¹r, Z = A⁻¹Cᵀ and (CZ)λ = Cβ₀ − d: k + 1 banded solves and a k × k system. Both β₀
+// and the anchored β satisfy the equalities along the line search's segment, so the iteration is unchanged.
 
 import {
     bsplineBasis, addDifferencePenalty, differenceCoefficients, choleskyBanded, solveCholesky, bandedInverse,
 } from './pspline.js';
 
 const MAX_ITERATIONS = 200; // iterated weights: cap on Newton solves
+const ANCHOR_PIVOT = 1e-12; // anchors: a pivot of CA⁻¹Cᵀ below this share of its largest diagonal is singular
 const CHECK_TOL = 1e-9; // a grid point counts as outside when |g − c|/h > 1 + CHECK_TOL
 export const DEFAULT_KAPPA = 1e4; // weight on the squared distance outside the region, per grid point
 export const DEFAULT_EPSILON = 1e-2; // weight on the squared distance from the center, per grid point
@@ -115,6 +122,8 @@ export const SHAPE_DEFAULTS = Object.freeze({
  * @property {number} lambda2       weight on ‖D₂β‖²/s² (toward straight)
  * @property {Float64Array} [w1]    weights on the squared first differences (adaptive ridge; 1 without)
  * @property {Float64Array} [w2]    weights on the squared second differences
+ * @property {import('./anchors.js').Anchors} [anchors]  points the fit passes through exactly; beyond [xl, xr] the
+ *     fit is the tangent line at the nearer end (pointRows)
  */
 
 /**
@@ -125,6 +134,7 @@ export const SHAPE_DEFAULTS = Object.freeze({
  * @property {number} maxRatio       max_j |g_j − c_j| / h_j
  * @property {number} outside        rows (grid points) with ratio > 1
  * @property {number} ms             wall-clock time
+ * @property {number} [anchorGap]    with anchors: the largest |g(x_a) − y_a| (units of y), rounding only
  */
 
 function prepare(spec) {
@@ -149,7 +159,88 @@ function prepare(spec) {
     for (let k = 0; k < rows.n; k++)
         widest = Math.max(widest, rows.width[k]);
     const W = Math.min(nb, Math.max(widest, Math.max(deg, 2) + 1));
-    return { spec, s, cs, hs, ts, rows, W, nb };
+    let anchorRows = null;
+    let anchorTargets = null;
+    if (spec.anchors) {
+        if (spec.anchors.x.length > nb - 1)
+            throw new RangeError(`phase 2: ${spec.anchors.x.length} anchors for ${nb} coefficients`);
+        anchorRows = pointRows(spec.anchors.x, { xl, xr, nseg, deg });
+        anchorTargets = Float64Array.from(spec.anchors.y, v => v / s);
+    }
+    return { spec, s, cs, hs, ts, rows, W, nb, anchorRows, anchorTargets };
+}
+
+/**
+ * Solve Aβ' = r (banded, SPD) subject to the anchors' equalities, if any (the bordered solve in the header).
+ * O(nb·p² + k·nb·p + k³) for k anchors.
+ *
+ * @returns {{beta: Float64Array, L: Float64Array, Z: Float64Array[]|null, S: Float64Array|null}}  L: Cholesky
+ *     factor of A; Z: the columns A⁻¹Cᵀ; S = CA⁻¹Cᵀ (k × k, row-major), for the effective dimension
+ */
+function solveAnchored(p, A, rhs) {
+    const L = choleskyBanded(A, p.nb, p.W);
+    const beta = solveCholesky(L, p.nb, p.W, rhs);
+    if (!p.anchorRows)
+        return { beta, L, Z: null, S: null };
+    const C = p.anchorRows;
+    const k = C.n;
+    const Z = [];
+    for (let a = 0; a < k; a++) {
+        const e = new Float64Array(p.nb);
+        for (let r = 0; r < C.width[a]; r++)
+            e[C.first[a] + r] = C.values[C.offset[a] + r];
+        Z.push(solveCholesky(L, p.nb, p.W, e));
+    }
+    const CZ = Z.map(z => rowValues(C, z)); // CZ[b][a] = (C A⁻¹ Cᵀ)_ab, symmetric
+    const S = new Float64Array(k * k);
+    for (let a = 0; a < k; a++) {
+        for (let b = 0; b < k; b++)
+            S[a * k + b] = CZ[b][a];
+    }
+    const gap = rowValues(C, beta).map((v, a) => v - p.anchorTargets[a]);
+    const lambda = solveSmall(S, k, gap);
+    for (let a = 0; a < k; a++) {
+        for (let i = 0; i < p.nb; i++)
+            beta[i] -= Z[a][i] * lambda[a];
+    }
+    return { beta, L, Z, S };
+}
+
+/** Solve the k × k system Mx = b (row-major M) by Gaussian elimination with partial pivoting. O(k³). */
+function solveSmall(M, k, b) {
+    const a = Float64Array.from(M);
+    const x = Float64Array.from(b);
+    let top = 0;
+    for (let i = 0; i < k; i++)
+        top = Math.max(top, Math.abs(a[i * k + i]));
+    for (let c = 0; c < k; c++) {
+        let piv = c;
+        for (let r = c + 1; r < k; r++) {
+            if (Math.abs(a[r * k + c]) > Math.abs(a[piv * k + c]))
+                piv = r;
+        }
+        if (!(Math.abs(a[piv * k + c]) > ANCHOR_PIVOT * top))
+            throw new RangeError('phase 2: the anchors are too close together for the basis; use fewer anchors or '
+                + 'more segments');
+        if (piv !== c) {
+            for (let j = 0; j < k; j++)
+                [a[c * k + j], a[piv * k + j]] = [a[piv * k + j], a[c * k + j]];
+            [x[c], x[piv]] = [x[piv], x[c]];
+        }
+        for (let r = c + 1; r < k; r++) {
+            const f = a[r * k + c] / a[c * k + c];
+            for (let j = c; j < k; j++)
+                a[r * k + j] -= f * a[c * k + j];
+            x[r] -= f * x[c];
+        }
+    }
+    for (let c = k - 1; c >= 0; c--) {
+        let v = x[c];
+        for (let j = c + 1; j < k; j++)
+            v -= a[c * k + j] * x[j];
+        x[c] = v / a[c * k + c];
+    }
+    return x;
 }
 
 /**
@@ -235,15 +326,73 @@ function rowCrossProducts(rows, w, t, nb, W) {
 }
 
 /**
- * A spline with coefficients β (from a phase-2 fit) evaluated at points within [xl, xr].
+ * A spline with coefficients β (from a phase-2 fit) evaluated at points: within [xl, xr] the spline, beyond it the
+ * tangent line at the nearer end (pointRows).
  *
  * @param {ArrayLike<number>} beta
  * @param {ArrayLike<number>} at
  * @param {{xl: number, xr: number, nseg: number, deg?: number}} knots
  * @returns {Float64Array}
  */
-export function splineValues(beta, at, { xl, xr, nseg, deg = 3 }) {
-    return rowValues(basisRows(bsplineBasis(at, xl, xr, nseg, deg)), beta);
+export function splineValues(beta, at, knots) {
+    return rowValues(pointRows(at, knots), beta);
+}
+
+/**
+ * The fit's value at points as Rows: the basis within [xl, xr]; beyond it the tangent line at the nearer end e,
+ * g(e) + (x − e)·g'(e). For equally spaced knots (width δ) the derivative of Σβ_iN_{i,p} is
+ * Σ_k (β_{k+1} − β_k)/δ · M_k, M the degree-(p − 1) basis on the same knots (de Boor's derivative formula, with
+ * t_{i+p+1} − t_{i+1} = pδ; the 0-based M_k is the 1-based N_{k+1,p−1}). A tangent row spans the end's p + 1
+ * coefficients (p + 2 at most).
+ *
+ * @param {ArrayLike<number>} at
+ * @param {{xl: number, xr: number, nseg: number, deg?: number}} knots  deg ≥ 1 for points beyond the range
+ * @returns {Rows}
+ */
+export function pointRows(at, { xl, xr, nseg, deg = 3 }) {
+    const n = at.length;
+    const tol = 1e-12 * (xr - xl); // pspline.js RANGE_TOL: points this close to an end are on it
+    const inside = Array.from(at, v => v >= xl - tol && v <= xr + tol);
+    if (inside.every(Boolean))
+        return basisRows(bsplineBasis(at, xl, xr, nseg, deg));
+    if (deg < 1)
+        throw new RangeError('pointRows: a degree-0 spline has no tangent beyond its range');
+    const dx = (xr - xl) / nseg;
+    const value = basisRows(bsplineBasis(Array.from(at, (v, i) => (inside[i] ? v : v < xl ? xl : xr)), xl, xr,
+        nseg, deg));
+    const slope = bsplineBasis(Array.from(at, v => (v < xl ? xl : xr)), xl, xr, nseg, deg - 1);
+    const first = new Int32Array(n);
+    const width = new Int32Array(n);
+    const offset = new Int32Array(n + 1);
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+        const f = value.first[i];
+        const v = value.values.subarray(value.offset[i], value.offset[i + 1]);
+        if (inside[i]) {
+            first[i] = f;
+            parts.push(v);
+        }
+        else {
+            const m = slope.first[i];
+            const lo = Math.min(f, m);
+            const coef = new Float64Array(Math.max(f + deg, m + deg) - lo + 1);
+            for (let r = 0; r <= deg; r++)
+                coef[f - lo + r] += v[r];
+            const reach = at[i] - (at[i] < xl ? xl : xr);
+            for (let r = 0; r < deg; r++) {
+                const w = reach * slope.values[i * deg + r] / dx;
+                coef[m - lo + r] -= w;
+                coef[m - lo + r + 1] += w;
+            }
+            first[i] = lo;
+            parts.push(coef);
+        }
+        width[i] = parts[i].length;
+        offset[i + 1] = offset[i] + width[i];
+    }
+    const values = new Float64Array(offset[n]);
+    parts.forEach((v, i) => values.set(v, offset[i]));
+    return { n, first, width, offset, values };
 }
 
 function addAmbition(A, p) {
@@ -306,7 +455,7 @@ function objective(p, beta, g) {
 function finish(p, betaScaled, start) {
     const gs = rowValues(p.rows, betaScaled);
     const check = checkRegion(gs, p.cs, p.hs);
-    return {
+    const fit = {
         beta: betaScaled.map(v => v * p.s),
         g: gs.map(v => v * p.s),
         objective: objective(p, betaScaled, gs),
@@ -314,6 +463,11 @@ function finish(p, betaScaled, start) {
         outside: check.outside,
         ms: performance.now() - start,
     };
+    if (p.anchorRows) {
+        const at = rowValues(p.anchorRows, betaScaled);
+        fit.anchorGap = at.reduce((m, v, a) => Math.max(m, Math.abs(v - p.anchorTargets[a]) * p.s), 0);
+    }
+    return fit;
 }
 
 /**
@@ -382,7 +536,7 @@ export function fitIterated(spec, opts = {}) {
     while (iterations < maxIterations) {
         iterations++;
         const { A, rhs } = newtonSystem(p, side);
-        const betaN = solveCholesky(choleskyBanded(A, p.nb, p.W), p.nb, p.W, rhs);
+        const betaN = solveAnchored(p, A, rhs).beta;
         const gN = rowValues(p.rows, betaN);
         const sideN = sidesOf(gN, p);
         if (sameSides(sideN, side)) {
@@ -439,17 +593,36 @@ function newtonSystem(p, side) {
  * tr((BᵀVB + P)⁻¹BᵀVB) = K − tr(A⁻¹P), from the band of A⁻¹ (P lies within it). Between the order of the
  * ambition penalty (a line: 2) and K (no ambition). With fixed sides the fit is linear in the targets, so this is
  * the usual count of parameters spent; the sides themselves depend on the region, which it does not count.
+ *
+ * With k anchors the fit is β = M A⁻¹ BᵀVt + const, M = I − ZS⁻¹C (Z = A⁻¹Cᵀ, S = CZ), so the trace is
+ * tr(M A⁻¹(A − P)) = (K − k) − tr(A⁻¹P) + tr(S⁻¹ZᵀPZ): each anchor spends one parameter (a line through one
+ * anchor: 1).
  */
 function effectiveDimension(p, side, P) {
-    const { A } = newtonSystem(p, side);
-    const Z = bandedInverse(choleskyBanded(A, p.nb, p.W), p.nb, p.W);
+    const { A, rhs } = newtonSystem(p, side);
+    const { L, Z, S } = solveAnchored(p, A, rhs);
+    const inv = bandedInverse(L, p.nb, p.W);
     let trace = 0;
     for (let i = 0; i < p.nb; i++) {
-        trace += Z[i * p.W] * P[i * p.W];
+        trace += inv[i * p.W] * P[i * p.W];
         for (let k = 1; k <= Math.min(i, p.W - 1); k++)
-            trace += 2 * Z[i * p.W + k] * P[i * p.W + k];
+            trace += 2 * inv[i * p.W + k] * P[i * p.W + k];
     }
-    return p.nb - trace;
+    if (!Z)
+        return p.nb - trace;
+    const k = Z.length;
+    const ZPZ = new Float64Array(k * k);
+    for (let a = 0; a < k; a++) {
+        for (let b = 0; b < k; b++)
+            ZPZ[a * k + b] = bandedBilinear(P, p.nb, p.W, Z[a], Z[b]);
+    }
+    // tr(S⁻¹·ZᵀPZ), column by column
+    let correction = 0;
+    for (let b = 0; b < k; b++) {
+        const col = solveSmall(S, k, Float64Array.from({ length: k }, (_, a) => ZPZ[a * k + b]));
+        correction += col[b];
+    }
+    return p.nb - k - trace + correction;
 }
 
 const LINE_SEARCH_STEPS = 50; // bisection halvings: step length to 2⁻⁵⁰
@@ -588,17 +761,49 @@ export function buildQP(spec, opts = {}) {
         }
     }
     rowStarts[G] = e;
+    const rowLower = Float64Array.from(cs, (v, j) => v - hs[j]);
+    const rowUpper = Float64Array.from(cs, (v, j) => v + hs[j]);
+    let numRows = G;
+    let starts2 = rowStarts;
+    let indices2 = rowIndices;
+    let entries2 = rowEntries;
+    let lower2 = rowLower;
+    let upper2 = rowUpper;
+    if (p.anchorRows) {
+        // anchors: equality rows (C β')_a = y_a / s after the region's
+        const C = p.anchorRows;
+        numRows = G + C.n;
+        starts2 = new Int32Array(numRows + 1);
+        starts2.set(rowStarts);
+        indices2 = new Int32Array(e + C.offset[C.n]);
+        indices2.set(rowIndices);
+        entries2 = new Float64Array(indices2.length);
+        entries2.set(rowEntries);
+        for (let a = 0; a < C.n; a++) {
+            for (let r = 0; r < C.width[a]; r++) {
+                indices2[e] = C.first[a] + r;
+                entries2[e] = C.values[C.offset[a] + r];
+                e++;
+            }
+            starts2[G + a + 1] = e;
+        }
+        lower2 = new Float64Array(numRows);
+        lower2.set(rowLower);
+        lower2.set(p.anchorTargets, G);
+        upper2 = Float64Array.from(lower2);
+        upper2.set(rowUpper);
+    }
 
     const model = {
         numCols,
-        numRows: G,
+        numRows,
         offset,
         colCost,
         colLower: new Float64Array(numCols).fill(-Infinity),
         colUpper: new Float64Array(numCols).fill(Infinity),
-        rowLower: Float64Array.from(cs, (v, j) => v - hs[j]),
-        rowUpper: Float64Array.from(cs, (v, j) => v + hs[j]),
-        matrix: { format: 'csr', numRows: G, numCols, starts: rowStarts, indices: rowIndices, values: rowEntries },
+        rowLower: lower2,
+        rowUpper: upper2,
+        matrix: { format: 'csr', numRows, numCols, starts: starts2, indices: indices2, values: entries2 },
         hessian: { format: 'triangular', dimension: numCols, starts, indices: Int32Array.from(indices),
             values: Float64Array.from(values) },
     };
@@ -645,11 +850,12 @@ export function ambitionLambdas({ ambition, flat = 0, G, nseg }) {
 /**
  * A phase-2 spec from a region: a phase-1 band (band.js: the check grid, center and half-width, and the band's
  * knot range; the phase-2 basis has the band's segments unless nseg is given) or Aₙ's boxes (an.js, which carry
- * their rows, built for their own segments).
+ * their rows, built for their own segments), with the anchors the fit passes through, if any.
  *
  * @param {{grid: Float64Array, center: Float64Array, half: Float64Array, rows?: Rows, params: {xl: number,
  *     xr: number, nseg: number}}} region
- * @param {{ambition: number, flat?: number, kappa?: number, epsilon?: number, nseg?: number}} opts
+ * @param {{ambition: number, flat?: number, kappa?: number, epsilon?: number, nseg?: number,
+ *     anchors?: import('./anchors.js').Anchors|null}} opts
  * @returns {Phase2Spec & {ambition: number, flat: number}}
  */
 export function regionSpec(region, opts) {
@@ -659,7 +865,7 @@ export function regionSpec(region, opts) {
     const flat = opts.flat ?? 0;
     return {
         grid: region.grid, rows: region.rows, c: region.center, h: region.half, target: region.target,
-        xl: region.params.xl, xr: region.params.xr, nseg, deg: 3,
+        xl: region.params.xl, xr: region.params.xr, nseg, deg: 3, anchors: opts.anchors ?? undefined,
         kappa: opts.kappa ?? DEFAULT_KAPPA,
         epsilon: opts.epsilon ?? DEFAULT_EPSILON,
         ambition: opts.ambition, flat,

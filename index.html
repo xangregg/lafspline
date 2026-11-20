@@ -165,6 +165,13 @@
             the differences' sizes to a power q.
         </p>
         <p>
+            Known facts can be added: <strong>anchors</strong>, points the fit must pass through exactly (such as
+            (0, 0); beyond the data the fit reaches one along a straight line), and <strong>bounds</strong> on the
+            fit (such as 0 and 1 for a proportion), which narrow the band's boxes. Anchors are not data: the
+            region does not know about them, so one the data disagree with pushes the fit outside, and the check
+            says so.
+        </p>
+        <p>
             Every fit says which region it was checked against, whether it stays inside, and by how much it
             leaves where it does. Approximate methods (iterated weights, the adaptive ridge, majorize-minimize)
             say so, and report whether they converged. The readouts also say whether a constant or a straight line

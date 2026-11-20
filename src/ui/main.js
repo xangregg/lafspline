@@ -23,6 +23,7 @@ import {
     LEAVE_TOL, SHAPE_DEFAULTS,
 } from '../core/fit.js';
 import { ladder } from '../core/ladder.js';
+import { makeAnchors, boundBand } from '../core/anchors.js';
 import { anRegion, calibrateTau, checkFit } from '../core/regions.js';
 import { anBoxes } from '../core/an.js';
 import { checkNoise } from '../core/noisecheck.js';
@@ -123,6 +124,9 @@ const state = {
     inflectionCost: SHAPE_DEFAULTS.inflection, // and of an inflection
     logKappa: 4, // log₁₀ κ
     logEpsilon: -2, // log₁₀ ε
+    anchors: [], // phase 2: [x, y] points the fit passes through exactly (core/anchors.js)
+    lower: null, // phase 2: bounds on the fit, applied to a band's boxes (null: none); not to Aₙ
+    upper: null,
     showData: true, // chart layers (the readouts are unchanged): the data points,
     showCenter: true, // the band's P-spline fit (phase 1),
     showBand: true, // the band,
@@ -383,7 +387,48 @@ function starKey(st, data) {
         shape = [st.bendLength, st.extremumCost, st.inflectionCost, st.flat];
     else if (st.penalty === 'power')
         shape = [st.q, st.flat];
-    return [regionKey(st, data), st.penalty, ...shape, st.logKappa, st.logEpsilon].join('|');
+    return [regionKey(st, data), st.penalty, ...shape, st.logKappa, st.logEpsilon, constraintKey(st)].join('|');
+}
+
+/** The anchors and the bounds that apply (bounds: bands only), as a cache key. */
+function constraintKey(st) {
+    const bounds = st.region === 'An' ? '' : `${st.lower}:${st.upper}`;
+    return `${st.anchors.map(([x, y]) => `${x},${y}`).join(';')}|${bounds}`;
+}
+
+/**
+ * The result with the fit's bounds applied to its band (anchors.js boundBand), memoized on the cached result:
+ * {result}, or {result, error} with the unbounded band when the bounds disagree with it (no fit then). Aₙ and
+ * unbounded settings return the result unchanged.
+ */
+function boundedResult(result, st) {
+    if (!result.region || result.region.kind === 'An' || (st.lower === null && st.upper === null))
+        return { result };
+    result.bounded ??= new Map();
+    const key = `${st.lower}:${st.upper}`;
+    let out = result.bounded.get(key);
+    if (!out) {
+        try {
+            const b = boundBand(result.region, st);
+            const bounds = { lower: st.lower, upper: st.upper, clipped: b.clipped };
+            out = { result: { ...result, region: { ...result.region, ...b, ladder: undefined, bounds,
+                label: `${result.region.label}, ${boundsText(bounds)}` } } };
+        }
+        catch (err) {
+            if (!(err instanceof RangeError))
+                throw err;
+            out = { result, error: err.message };
+        }
+        result.bounded.set(key, out);
+    }
+    return out;
+}
+
+/** "0 ≤ y ≤ 1", "y ≥ 0" or "y ≤ 1". */
+function boundsText({ lower, upper }) {
+    if (lower !== null && upper !== null)
+        return `${fmt(lower)} ≤ y ≤ ${fmt(upper)}`;
+    return lower !== null ? `y ≥ ${fmt(lower)}` : `y ≤ ${fmt(upper)}`;
 }
 
 function phase2Options(st) {
@@ -392,7 +437,7 @@ function phase2Options(st) {
     return { flat: st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon,
         shape: shaped ? { length: st.bendLength, extremum: st.extremumCost, inflection: st.inflectionCost }
             : undefined,
-        q: power ? st.q : undefined };
+        q: power ? st.q : undefined, anchors: makeAnchors(st.anchors) };
 }
 
 /** The positions in the (sorted, distinct) check grid of the distinct data x; the grid contains every data x. */
@@ -421,6 +466,7 @@ function computeFit(st, region, star) {
     const wanted = star.ambition * 10 ** st.ambition;
     const a = Math.min(wanted, star.top);
     const spec = { ...regionSpec(region, { ...opts, ambition: a }), shape: opts.shape, q: opts.q };
+    const knots = { xl: spec.xl, xr: spec.xr, nseg: spec.nseg };
     const G = region.center.length;
     let fit;
     if (power)
@@ -452,7 +498,7 @@ function computeFit(st, region, star) {
             leaving++;
     }
     return { ...fit, a, sparse, shaped, power, q: opts.q, clamped: wanted > star.top, argMax, leaving,
-        leavingAtData: atData, opts };
+        leavingAtData: atData, opts, knots, anchors: opts.anchors };
 }
 
 /**
@@ -503,7 +549,13 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         : `Checked against the region above, the ${region.label}, on its check grid. The region is soft: leaving it `
             + 'costs κ per squared half-width, so the fit can cross its edge, and the check says by how much.',
     'the check'));
-    if (star.unreachable) {
+    if (star.unreachable && fit.anchors) {
+        sel.append('p').attr('class', 'warning').text(`No fit through the ${fit.anchors.x.length === 1 ? 'anchor'
+            : 'anchors'} gets inside ${an ? 'Aₙ' : 'the region'}, even with no ambition: the largest ${ratio} is `
+            + `${fmt(star.fit.maxRatio)}. The data disagree with an anchor, or the basis cannot bend sharply enough `
+            + 'between an anchor and the region. The fit shown is at the smallest ambition searched.');
+    }
+    else if (star.unreachable) {
         sel.append('p').attr('class', 'warning').text(`No fit with this basis gets inside ${an ? 'Aₙ' : 'the region'}, `
             + `even with no ambition: the largest ${ratio} is ${fmt(star.fit.maxRatio)}. A cubic spline on `
             + `${region.params.nseg} equal segments cannot follow the data closely enough for the shortest `
@@ -609,6 +661,19 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     add('basis', `${region.params.nseg} segments`, an
         ? `cubic, equal segments over the data's x range${region.nsegCapped ? `; capped at ${AN_MAX_SEGMENTS}` : ''}`
         : 'cubic, on the band\'s knots');
+    if (fit.anchors) {
+        const k = fit.knots;
+        const list = Array.from(fit.anchors.x, (v, a) => `(${fmt(v)}, ${fmt(fit.anchors.y[a])})`).join(', ');
+        const beyond = Array.from(fit.anchors.x).filter(v => v < k.xl || v > k.xr).length;
+        add(fit.anchors.x.length === 1 ? 'anchor' : 'anchors', list, `the fit passes through ${fit.anchors.x.length
+            === 1 ? 'it' : 'them'} exactly (largest miss ${fmtExp(fit.anchorGap)}, rounding)${beyond
+            ? `; beyond x = ${fmt(k.xl)} – ${fmt(k.xr)} by a straight line, the tangent at that end` : ''}`,
+        'Points you set that the fit must pass through, imposed as exact equalities in every solve. They are not '
+            + 'data: the region does not know about them, so an anchor the data disagree with pushes the fit out of '
+            + 'the region, and the check above says so. Each anchor spends one effective dimension. Beyond the '
+            + 'basis\'s knots the fit continues as the tangent line at the nearer end, so an anchor there sets the '
+            + 'end\'s value and slope together: the straight bridge is the least ambitious way to reach it.');
+    }
     if (fit.power) {
         add('solver', `${fit.iterations} solves`, `majorize-minimize: ${fit.reweights} reweighting`
             + `${fit.reweights === 1 ? '' : 's'}; ${fit.settled ? 'the objective settled' : 'not settled'}`);
@@ -912,7 +977,7 @@ function shortClaim(result) {
             + 'independent Gaussian.';
 }
 
-function renderReadouts(container, data, result, truthCheck, phase2, st) {
+function renderReadouts(container, data, result, truthCheck, phase2, st, fitError) {
     const sel = d3.select(container);
     sel.selectAll('*').remove();
     sel.append('h2').text('Region');
@@ -1007,6 +1072,14 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
                 'q × standard error, units of y');
         }
         add('basis', `${p.nseg} segments`, `B-splines of degree ${p.deg}, penalty order ${p.diff}`);
+        if (region.bounds) {
+            const b = region.bounds;
+            add('bounds', boundsText(b), `${fmtInt(b.clipped)} of ${fmtInt(region.grid.length)} boxes narrowed`,
+                'The band\'s boxes intersected with the bounds you set, which the fit is checked against. If the true '
+                + 'curve lies within the bounds, the intersection holds it whenever the band does, so the claim above '
+                + 'is unchanged; if it may not, the bounds are an assumption the data cannot check. The fit is held '
+                + 'to them on the check grid only, so between grid points it can cross a bound slightly.');
+        }
         add('check grid', `${fmtInt(region.grid.length)} points`, 'the distinct data x and 4 points per segment');
         add('computed in', `${fmt(result.ms)} ms`);
         appendRows(sel, rows);
@@ -1014,6 +1087,10 @@ function renderReadouts(container, data, result, truthCheck, phase2, st) {
     // phase 2 after phase 1, in the order they are computed (and as in the controls)
     if (phase2)
         renderFitReadouts(sel, result.region, phase2.star, phase2.fit, st, data.x);
+    else if (fitError) {
+        sel.append('h2').text('Fit');
+        sel.append('p').attr('class', 'error').text(`No fit: ${fitError}.`);
+    }
     sel.append('h2').text('Data');
     appendRows(sel, [
         { label: 'observations', value: fmtInt(data.n), tip: 'Rows with both x and y.' },
@@ -1276,6 +1353,8 @@ async function startup() {
             result = st.region === 'An' ? computeAn(st, data, nullCache) : computeBand(st, data);
             remember(regionCache, key, result);
         }
+        const bounded = boundedResult(result, st);
+        result = bounded.result;
         const region = result.region;
         const an = region?.kind === 'An';
         let phase2 = null;
@@ -1283,21 +1362,39 @@ async function startup() {
             if (!an)
                 region.dataAt ??= dataPositions(region.grid, data.x);
             region.ladder ??= ladder(region);
+            // bounds the band lies outside of: the unbounded band, its readouts, and no fit
+            if (bounded.error)
+                return { data, result, phase2: null, truthCheck: null, fitError: bounded.error };
             const sk = starKey(st, data);
             let star = starCache.get(sk);
-            if (!star) {
-                const opts = phase2Options(st);
-                star = leavingAmbition({ ...regionSpec(region, { ...opts, ambition: 0 }), shape: opts.shape,
-                    q: opts.q }, { sparse: st.penalty === 'sparse', shaped: st.penalty === 'shaped',
-                    power: st.penalty === 'power' });
-                remember(starCache, sk, star);
+            let fit;
+            try {
+                if (!star) {
+                    const opts = phase2Options(st);
+                    star = leavingAmbition({ ...regionSpec(region, { ...opts, ambition: 0 }), shape: opts.shape,
+                        q: opts.q }, { sparse: st.penalty === 'sparse', shaped: st.penalty === 'shaped',
+                        power: st.penalty === 'power' });
+                    remember(starCache, sk, star);
+                }
+                fit = computeFit(st, region, star);
             }
-            const fit = computeFit(st, region, star);
-            // the curve drawn: a band's fit is already on its check grid; Aₙ's boxes are interval means
+            catch (err) {
+                // anchors the basis cannot take (too many, or too close together)
+                if (!(err instanceof RangeError))
+                    throw err;
+                return { data, result, phase2: null, truthCheck: null,
+                    fitError: err.message.replace(/^phase 2: /, '') };
+            }
+            // the curve drawn: a band's fit is already on its check grid; Aₙ's boxes are interval means. An anchor
+            // beyond the knots adds the straight piece out to it (the tangent at that end).
+            const k = fit.knots;
             let curve = { x: region.grid, g: fit.g };
-            if (an) {
-                region.drawGrid ??= checkGrid(data.x, region.params.xl, region.params.xr, region.params.nseg);
-                curve = { x: region.drawGrid, g: splineValues(fit.beta, region.drawGrid, region.params) };
+            if (an)
+                region.drawGrid ??= checkGrid(data.x, k.xl, k.xr, k.nseg);
+            const beyond = fit.anchors ? Array.from(fit.anchors.x).filter(v => v < k.xl || v > k.xr) : [];
+            if (an || beyond.length) {
+                const x = Float64Array.from([...(an ? region.drawGrid : region.grid), ...beyond]).sort();
+                curve = { x, g: splineValues(fit.beta, x, k) };
             }
             phase2 = { star, fit, curve };
         }
@@ -1353,6 +1450,7 @@ async function startup() {
                     of: region.params.B }
                 : null,
             boxesLabel: boxes ? boxes.label : null,
+            anchors: phase2?.fit.anchors ?? null,
             hidden,
         };
         return { model, boxes };
@@ -1392,7 +1490,7 @@ async function startup() {
     /** Aₙ's levels of intervals and the fit at the data x, computed once per view (boxes, animated steps). */
     function anLevels(result, phase2, data) {
         result.levels ??= familyLevels(data.x, result.family);
-        phase2.atData ??= splineValues(phase2.fit.beta, data.x, result.region.params);
+        phase2.atData ??= splineValues(phase2.fit.beta, data.x, phase2.fit.knots);
     }
 
     function anBoxSpec(result, phase2, data) {
@@ -1464,11 +1562,15 @@ async function startup() {
                 clamped: phase2.fit.clamped, sparse: phase2.fit.sparse } : null,
         });
         draw();
-        renderReadouts(readouts, data, result, truthCheck, phase2, state);
+        renderReadouts(readouts, data, result, truthCheck, phase2, state, view.fitError);
         const note = linkNote ? ` ${linkNote}` : '';
         if (result.error) {
             status.classed('error', true).text(`${data.label}: no ${an || state.region === 'An' ? 'Aₙ' : 'band'} `
                 + `(${result.error})${note}`);
+        }
+        else if (view.fitError) {
+            status.classed('error', true).text(`${data.label}: n = ${fmtInt(data.n)}; ${region.label}; no fit `
+                + `(${view.fitError}).${note}`);
         }
         else {
             status.classed('error', Boolean(linkNote)).text(`${data.label}: n = ${fmtInt(data.n)}; ${region.label}; `
@@ -1603,7 +1705,8 @@ async function startup() {
         pane.root.classList.remove('stale');
         pane.select.title = view.data.label ?? '';
         const problem = view.data.error ?? (view.result.error
-            ? `No ${state.region === 'An' ? 'Aₙ' : 'band'}: ${view.result.error}` : null);
+            ? `No ${state.region === 'An' ? 'Aₙ' : 'band'}: ${view.result.error}`
+            : view.fitError ? `No fit: ${view.fitError}` : null);
         pane.chartEl.hidden = Boolean(problem);
         pane.summary.classList.toggle('error', Boolean(problem));
         if (problem) {

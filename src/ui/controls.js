@@ -7,6 +7,7 @@
 import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import { lambdaSourceName, MIN_POINTS_PER_PERIOD } from '../core/thumb.js';
+import { makeAnchors } from '../core/anchors.js';
 import {
     MAX_N, MAX_SEGMENTS, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
     BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_START, BOOT_REGIONS,
@@ -234,6 +235,14 @@ const TIPS = {
         + 'harder.',
     epsilon: 'Weight on the squared distance from the region\'s center: a slight pull inside the region, which also '
         + 'makes the fit unique.',
+    anchors: 'Points the fit must pass through, as x, y pairs separated by semicolons (0, 0; 16, 1). They are '
+        + 'imposed exactly in every solve but are not data: the region knows nothing of them, so one the data '
+        + 'disagree with pushes the fit out of the region, and the check says so. Beyond the data the fit reaches '
+        + 'an anchor by a straight line, the tangent at the nearer end.',
+    bounds: 'Lower and upper bounds on the fit (either may be empty), such as 0 and 1 for a proportion. Each of the '
+        + 'band\'s boxes is intersected with them, and the fit is checked against the result. If the true curve '
+        + 'lies within the bounds, the intersection holds it whenever the band does. For bands only: an Aₙ box '
+        + 'bounds an interval mean, not the values.',
     displayHead: 'What the chart draws. A hidden layer still sets the axes, keeps its values in the tooltip and its '
         + 'readouts; nothing is refitted.',
     showTruth: 'The signal the data were simulated from.',
@@ -267,6 +276,31 @@ function el(tag, attrs = {}, children = []) {
  * A labeled control. tip: the explanation behind an ⓘ after the label, a string or an icon from infoIcon (to
  * update it later).
  */
+/**
+ * Anchors typed as "x, y; x, y" (whitespace free), as sorted [x, y] pairs; null if the text does not parse or two
+ * share an x. Empty text is no anchors.
+ */
+function parseAnchors(text) {
+    const parts = text.split(';').map(p => p.trim()).filter(p => p !== '');
+    const pairs = [];
+    for (const part of parts) {
+        const nums = part.split(/[\s,]+/).filter(t => t !== '');
+        if (nums.length !== 2)
+            return null;
+        const [x, y] = nums.map(Number);
+        if (!Number.isFinite(x) || !Number.isFinite(y))
+            return null;
+        pairs.push([x, y]);
+    }
+    try {
+        const a = makeAnchors(pairs);
+        return a ? Array.from(a.x, (x, k) => [x, a.y[k]]) : [];
+    }
+    catch {
+        return null;
+    }
+}
+
 function field(labelText, input, tip) {
     const head = el('span', { class: 'field-label' }, [labelText]);
     if (tip)
@@ -621,6 +655,28 @@ export function createControls(container, state, onChange, examples = [], local 
     ]);
     const logKappa = numberInput('logKappa', { min: LOG_KAPPA_RANGE[0], max: LOG_KAPPA_RANGE[1], step: 0.5 });
     const logEpsilon = numberInput('logEpsilon', { min: LOG_EPSILON_RANGE[0], max: LOG_EPSILON_RANGE[1], step: 0.5 });
+    // anchors: typed as text, applied once the whole list parses; an empty box clears them
+    const anchorsInput = el('input', { type: 'text', placeholder: 'x, y; x, y', spellcheck: 'false',
+        value: state.anchors.map(([x, y]) => `${x}, ${y}`).join('; ') });
+    anchorsInput.addEventListener('input', () => {
+        const pairs = parseAnchors(anchorsInput.value);
+        anchorsInput.setCustomValidity(pairs ? '' : 'pairs of numbers x, y separated by semicolons, x distinct');
+        if (pairs)
+            later({ anchors: pairs });
+    });
+    const boundInput = key => {
+        const input = el('input', { type: 'number', step: 'any', placeholder: 'none',
+            value: String(state[key] ?? '') });
+        input.addEventListener('input', () => {
+            if (input.value === '')
+                later({ [key]: null });
+            else if (Number.isFinite(input.valueAsNumber))
+                later({ [key]: input.valueAsNumber });
+        });
+        return input;
+    };
+    const boundsField = field('bounds (lower, upper)', el('div', { class: 'row' },
+        [boundInput('lower'), boundInput('upper')]), TIPS.bounds);
     // Shaped bends' knobs are rarely changed from their defaults, so they sit here rather than beside the penalty.
     const advanced = el('details', {}, [
         el('summary', { text: 'Advanced' }),
@@ -657,6 +713,8 @@ export function createControls(container, state, onChange, examples = [], local 
         field('ambition (decades from a*)', el('div', {}, [ambition.row, ambitionEnds]), ambitionInfo),
         flatField,
         powerField,
+        field('anchors', anchorsInput, TIPS.anchors),
+        boundsField,
         advanced,
         heading('Display', TIPS.displayHead),
         toggle('showData', 'data points'),
@@ -718,6 +776,7 @@ export function createControls(container, state, onChange, examples = [], local 
         bandToggle.hidden = an;
         replicatesToggle.hidden = !BOOT_REGIONS[st.region];
         boxesField.hidden = !an;
+        boundsField.hidden = an;
         tauField.hidden = !an || st.calibrate;
         alphaField.hidden = an && !st.calibrate;
         covarianceField.hidden = st.region !== 'band';

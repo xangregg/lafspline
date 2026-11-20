@@ -91,6 +91,17 @@ were tried and kept.
   is ℓ₁ trend filtering (straight pieces and kinks; convex), and toward 0 the count of bends (not convex: a local
   minimum).
 
+### Anchors and bounds
+
+Two kinds of known facts can be added to the fit (PLAN §1.3b):
+
+- **Anchors**: points the fit must pass through, such as (0, 0), imposed exactly in every solve. They are not data:
+  the region does not know about them, so an anchor the data disagree with pushes the fit out of the region, and
+  the check says so. Beyond the data the fit reaches an anchor by a straight line, the tangent at the nearer end.
+- **Bounds**: a lower and upper limit on the fit, such as 0 and 1 for a proportion. Each of the band's boxes is
+  intersected with them; if f lies within the bounds, the intersection covers it whenever the band does. Bands
+  only, since an Aₙ box bounds an interval mean rather than the values.
+
 ### The regions
 
 - **Bootstrap band** (the default): a simultaneous band around a P-spline fit, from B refits with random fractional

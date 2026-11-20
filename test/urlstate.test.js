@@ -10,7 +10,7 @@ const DEFAULTS = {
     alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
     nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, bendLength: 0.05, extremumCost: 2,
     inflectionCost: 1, logKappa: 4, logEpsilon: -2, showData: true, showCenter: true, showBand: true, showFit: true,
-    featureScale: 0.1, view: 'single',
+    featureScale: 0.1, view: 'single', anchors: [], lower: null, upper: null,
     panes: ['example:nile-flow', 'sine', 'box', 'step', 'example:ozone-annual', 'ramp'],
 };
 
@@ -201,4 +201,22 @@ test('Aₙ\'s shortest interval round-trips; 0 keeps every interval; out of rang
         assert.equal((await hashToState(hash, DEFAULTS)).state.anShare, anShare);
     }
     assert.deepEqual((await hashToState('#anShare=0.6', DEFAULTS)).rejected, ['anShare']);
+});
+
+test('anchors and bounds round-trip; anchors are sorted; a repeated x or a malformed pair is rejected', async () => {
+    const st = { ...DEFAULTS, anchors: [[0, 0], [16.5, -2e-3]], lower: 0, upper: 1 };
+    const { hash } = await stateToHash(st, DEFAULTS);
+    assert.match(hash, /anchors=0_0\*16\.5_-0\.002/);
+    assert.match(hash, /lower=0&upper=1/);
+    const back = await hashToState(hash, DEFAULTS);
+    assert.deepEqual(back.rejected, []);
+    assert.deepEqual(back.state.anchors, [[0, 0], [16.5, -0.002]]);
+    assert.equal(back.state.lower, 0);
+    assert.equal(back.state.upper, 1);
+    assert.deepEqual((await hashToState('#anchors=3_1*1_2', DEFAULTS)).state.anchors, [[1, 2], [3, 1]]);
+    const bad = await hashToState('#anchors=1_2*1_3', DEFAULTS);
+    assert.deepEqual(bad.rejected, ['anchors']);
+    assert.deepEqual(bad.state.anchors, []);
+    for (const raw of ['1_', '1', '1_2_3', 'a_b', '1_2*'])
+        assert.deepEqual((await hashToState(`#anchors=${raw}`, DEFAULTS)).rejected, ['anchors'], raw);
 });

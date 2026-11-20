@@ -11,6 +11,7 @@
 import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import { WEIGHTS } from '../core/bootstrap.js';
+import { makeAnchors } from '../core/anchors.js';
 
 const MAX_DATA_CHARS = 8000; // encoded data longer than this stays out of the link (chat apps truncate long URLs)
 // pasted data unpacked from a link, at most: far above what MAX_DATA_CHARS packs, so a crafted link cannot inflate
@@ -63,6 +64,25 @@ const int = (min, max) => ({
         return s !== '' && Number.isInteger(v) && v >= min && v <= max ? v : undefined;
     },
 });
+// anchors as x_y pairs joined by * (characters URLSearchParams leaves unencoded, unlike , ; and ~), checked as
+// the core checks them
+const anchorList = {
+    write: v => v.map(([x, y]) => `${x}_${y}`).join('*'),
+    read: s => {
+        if (s === '')
+            return [];
+        const pairs = s.split('*').map(p => p.split('_'));
+        if (!pairs.every(p => p.length === 2 && p[0] !== '' && p[1] !== ''))
+            return undefined;
+        try {
+            const a = makeAnchors(pairs.map(([x, y]) => [Number(x), Number(y)]));
+            return Array.from(a.x, (x, k) => [x, a.y[k]]);
+        }
+        catch {
+            return undefined;
+        }
+    },
+};
 const bool = {
     write: v => (v ? '1' : '0'),
     read: s => (s === '1' ? true : s === '0' ? false : undefined),
@@ -132,6 +152,9 @@ const FIELDS = {
     q: num(...POWER_RANGE),
     logKappa: num(...LOG_KAPPA_RANGE),
     logEpsilon: num(...LOG_EPSILON_RANGE),
+    anchors: anchorList,
+    lower: num(-Infinity),
+    upper: num(-Infinity),
     showData: bool,
     showCenter: bool,
     showBand: bool,

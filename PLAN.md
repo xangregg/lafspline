@@ -312,6 +312,40 @@ wanted, is κ → ∞ in the iteration (violations shrink like 1/κ).
   short-term choice. *Since:* λ by feature scale is the default (open question 7).
 - **advanced:** κ (how hard the region is), ε (center pull), the check-grid density.
 
+### 1.3b Anchors and bounds
+
+Known facts about f that the data do not supply: a curve that must start at (0, 0) (dog ages: a newborn dog is a
+newborn human), or a proportion that must stay within 0 and 1 (pass rates, a logistic rise). P-splines suit both,
+because each is linear in β:
+
+- **Value bounds** lo ≤ g ≤ hi (`src/core/anchors.js` `boundBand`) are applied to the region, not to the fit: each
+  of a band's boxes is intersected with [lo, hi], and phase 2 runs unchanged on the result. If f lies within the
+  bounds, the intersection covers f whenever the band does, so the band's claim carries over. The fit is held to
+  them at the check grid only, so between grid points it can cross a bound slightly. A box the bounds leave less
+  than 1% of is a conflict: the data disagree with the bounds there, and the app says so and fits nothing. Bands
+  only: an Aₙ box bounds an interval mean, not the values.
+- **Anchors** (x_a, y_a) are exact equalities Cβ = d in every phase-2 solve (`src/core/fit.js` `solveAnchored`).
+  Every penalty's fits go through the one banded Newton system Aβ = r, so the equalities enter there by the
+  bordered (Lagrange) solve: β₀ = A⁻¹r, Z = A⁻¹Cᵀ, (CZ)λ = Cβ₀ − d, β = β₀ − Zλ, k + 1 banded solves and a k × k
+  system. Both ends of the line search's segment satisfy the equalities, so the iteration is unchanged. The HiGHS
+  QP takes them as equality rows (the test oracle agrees to its tolerance). Each anchor spends one effective
+  dimension: ED = (K − k) − tr(A⁻¹P) + tr(S⁻¹ZᵀPZ), S = CZ; a line through one anchor has ED 1.
+- **Anchors beyond the data:** the fit continues past its knots as the tangent line at the nearer end
+  (`pointRows`), so an anchor there is g(e) + (x_a − e)·g′(e) = y_a, a row on the end's p + 1 coefficients. A
+  basis widened by whole segments to reach the anchor was tried first and dropped: the added segments have no
+  region rows, so with little ambition (the a* scan's low end, the counting penalties' unpenalized first solve) the
+  Newton system lost positive definiteness, and the anchor system became singular for an anchor half the data's x
+  range away. The straight bridge is also the least ambitious way to reach the point.
+- **Phase 1 is not anchored.** The region stays a summary of the data alone, so an anchor the data disagree with
+  pushes the fit out of the region, and the check reports it (with no ambition at all: no a*). Anchoring phase 1
+  as well (a band that pinches to zero width at a known point) would need every bootstrap refit constrained and the
+  studentization to divide by an se(x) that reaches 0; possible later.
+- **Not yet:** slope conditions (g′(x_a) = 0, "levels off"), another linear equality per anchor.
+
+Decision: phase 2 only; anchors as exact equalities with tangent lines beyond the data; bounds as an intersection
+with the band. The readouts list the anchors (and the largest miss, a rounding error), the bounds and how many boxes
+they narrowed, and the chart marks the anchors with diamonds.
+
 ### 1.4 Sparse ambition (optional)
 
 Quadratic difference penalties make the fit straighter everywhere but give no exactly flat or straight pieces. The
@@ -738,6 +772,15 @@ the default fit, toward straight, is a line.
 
 ### Phase 4 — Aₙ as a region
 - [x] Aₙ in penalty form (open question 6), with the earlier project's interval families and calibrated τ.
+
+### Phase 4b — Anchors and bounds (§1.3b)
+- [x] Value bounds on a band (`boundBand`), with the conflict reported; anchors as exact equalities in the phase-2
+      solve, the QP and the effective dimension; tangent lines beyond the data. Tests: exact passage, iteration vs
+      QP, ED per anchor, the line through one anchor, anchors far outside under shaped bends (regression), bounds held
+      on a logistic rise.
+- [x] UI: anchors (x, y; …) and bounds in the Fit section and the link; diamonds on the chart; readout rows; "No
+      fit" when the bounds and the band disagree (UI check 3, a regression) or the basis cannot take the anchors.
+- [ ] Slope conditions at an anchor (levels off); anchoring phase 1.
 
 ### Phase 5 — Polish and deploy
 - [x] About panel; export of the data and fits (CSV at the observations and on the check grid) and of the chart

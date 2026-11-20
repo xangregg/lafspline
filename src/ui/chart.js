@@ -22,6 +22,7 @@ const OVERLAY_WIDTH = 1.5; // px
 const GAP_FACTOR = 3;
 const LONE_TICK = 3; // px half-width of the tick for a single point stranded between gaps
 const KINK_RADIUS = 4; // px
+const ANCHOR_SIZE = 64; // d3.symbol area of an anchor's diamond, px²
 const REPLICATE_WIDTH = 0.75; // px, a bootstrap refit in the spaghetti layer
 const REPLICATE_ALPHA = 0.14; // of each refit's line: about 7 overlapping refits read as solid
 const RUG_LENGTH = 6; // px, a data x tick along the bottom of the plot (interactive charts)
@@ -74,6 +75,8 @@ function tickFormat(scale, count) {
  * @property {string|null} [boxesLabel]  legend text for the Aₙ boxes layer (null: no legend item)
  * @property {{points: Array<{x: number, y: number}>, label: string, plural: string}} [markers]  features of the
  *     primary fit (kinks, inflections) marked with circles at (x, y), named in the legend and tooltip
+ * @property {{x: Float64Array, y: Float64Array}|null} [anchors]  points the primary fit passes through, marked with
+ *     diamonds; they and the fits' own x widen the x axis past the data
  * @property {{x: Float64Array, curves: Float64Array, count: number, of: number}|null} [replicates]  a sample of a
  *     bootstrap band's refits at their sorted abscissae x, refit b at [b·G, (b + 1)·G), count of the band's `of`
  * @property {Set<string>} [hidden]  layers not drawn: 'data', 'truth' (f), 'band', 'replicates', or a fit's key. They leave the
@@ -144,6 +147,7 @@ export function createMainChart(container, opts = {}) {
     const gGaps = svg.append('g').attr('class', 'gap-connectors').attr('clip-path', `url(#${clipId})`);
     const gLines = svg.append('g').attr('clip-path', `url(#${clipId})`);
     const gKinks = svg.append('g').attr('class', 'kink-marks').attr('clip-path', `url(#${clipId})`);
+    const gAnchors = svg.append('g').attr('class', 'anchor-marks').attr('clip-path', `url(#${clipId})`);
     const gMarks = svg.append('g').attr('class', 'extreme-marks').attr('clip-path', `url(#${clipId})`);
     const gAxisX = svg.append('g').attr('class', 'axis');
     const gAxisY = svg.append('g').attr('class', 'axis');
@@ -280,6 +284,14 @@ export function createMainChart(container, opts = {}) {
         const n = x.length;
         const hidden = m.hidden ?? new Set();
         sx = xScale(edges, width, M);
+        // anchors beyond the data, and a fit widened to reach them, stay on the chart
+        const anchors = m.anchors ?? null;
+        const xEnds = [...sx.domain(), ...(anchors ? anchors.x : [])];
+        for (const fit of m.fits) {
+            if (fit.x)
+                xEnds.push(fit.x[0], fit.x[fit.x.length - 1]);
+        }
+        sx.domain(d3.extent(xEnds));
         fullX = sx.domain();
         if (view.x)
             sx.domain(view.x);
@@ -293,6 +305,10 @@ export function createMainChart(container, opts = {}) {
         for (const fit of m.fits) {
             lo = Math.min(lo, d3.min(fit.g));
             hi = Math.max(hi, d3.max(fit.g));
+        }
+        if (anchors) {
+            lo = Math.min(lo, d3.min(anchors.y));
+            hi = Math.max(hi, d3.max(anchors.y));
         }
         if (m.band?.x) {
             for (const v of [m.band.lb, m.band.ub]) {
@@ -519,6 +535,15 @@ export function createMainChart(container, opts = {}) {
             .attr('stroke', primaryFit ? cssColor(primaryFit.colorVar) : colors.ink)
             .attr('stroke-width', 1.5);
 
+        const anchorPoints = anchors && primaryFit && !hidden.has(primaryFit.key)
+            ? Array.from(anchors.x, (v, k) => ({ x: v, y: anchors.y[k] })) : [];
+        gAnchors.selectAll('path').data(anchorPoints).join('path')
+            .attr('d', d3.symbol(d3.symbolDiamond, ANCHOR_SIZE)())
+            .attr('transform', p => `translate(${sx(p.x)},${sy(p.y)})`)
+            .attr('fill', primaryFit ? cssColor(primaryFit.colorVar) : colors.ink)
+            .attr('stroke', colors.surface)
+            .attr('stroke-width', 1.5);
+
         const markY = H - M.bottom - MARK_ROW;
         const shown = m.extremes.length <= MAX_MARKS ? m.extremes : [];
         const marks = gMarks.selectAll('g.mark').data(shown).join(enter => {
@@ -571,6 +596,11 @@ export function createMainChart(container, opts = {}) {
         if (markers.length) {
             items.push({ label: `${markers.length === 1 ? m.markers.label : m.markers.plural} (${markers.length})`,
                 color: primaryFit ? cssColor(primaryFit.colorVar) : colors.ink, glyph: '○' });
+        }
+        if (anchorPoints.length) {
+            items.push({ label: anchorPoints.length === 1 ? 'anchor: the fit passes through it'
+                : `anchors (${anchorPoints.length}): the fit passes through them`,
+            color: cssColor(primaryFit.colorVar), glyph: '◆' });
         }
         if (m.boxesLabel)
             items.push({ label: m.boxesLabel, color: colors['ink-2'], glyph: '▭' });

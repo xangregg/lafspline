@@ -136,3 +136,7 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/urlstate.js`: `showReplicates`, the bootstrap refits layer.
 - `src/ui/urlstate.js`: `region` also takes `bootPct` and `bootCap`, the bootstrap band's two comparison
   constructions (`BOOT_REGIONS` maps each bootstrap region to its construction).
+- `src/ui/chart.js`: the model's `anchors` (points the fit passes through) are drawn as diamonds in the primary
+  fit's color, with a legend item; they and the fits' own x widen the x axis past the data, and their y the y axis.
+- `src/ui/urlstate.js`: `anchors` (x_y pairs joined by `*`, checked as `core/anchors.js` `makeAnchors` checks them),
+  `lower` and `upper` (the fit's bounds).
