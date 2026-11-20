@@ -32,8 +32,8 @@ import { tauFromSample } from '../core/calibrate.js';
 import { constraintBoxes } from '../core/region.js';
 import { createControls, sourceSelect } from './controls.js';
 import { infoIcon } from './info.js';
-import { stateToHash, hashToState, AN_MAX_SEGMENTS, MAX_N, PANE_COUNTS, FEATURE_SCALE_START, AN_SHARE_START }
-    from './urlstate.js';
+import { stateToHash, hashToState, AN_MAX_SEGMENTS, MAX_N, PANE_COUNTS, FEATURE_SCALE_START, AN_SHARE_START,
+    BOOT_REGIONS } from './urlstate.js';
 import { fmtExp, sentence } from './format.js';
 import { createMainChart, drawLegend } from './chart.js';
 import { cellEdges } from './layout.js';
@@ -97,7 +97,8 @@ const state = {
     userText: '',
     xCol: null, // column index, −1 = row number, null = auto (first column if there are ≥ 2)
     yCol: null, // column index, null = auto (second column if there are ≥ 2, else the only one)
-    region: 'boot', // phase 1: 'band' (P-spline) | 'boot' (bootstrap band) | 'An' (Davies, Kovac & Meise's)
+    region: 'boot', // phase 1: 'band' (P-spline) | 'boot' (bootstrap band) | 'An' (Davies, Kovac & Meise's), or for
+    // comparison 'bootPct' (pointwise percentile band) | 'bootCap' (bootstrap band capped at the refits)
     family: 'blocks', // Aₙ intervals: 'blocks' | 'quarter' (¼-width steps) | 'every' (every position) | 'all'
     anShare: AN_SHARE_START, // Aₙ: the shortest interval kept, share of the x range (intervals.intervalSpan)
     calibrate: true, // Aₙ: τ calibrated for coverage alpha, instead of tau
@@ -258,7 +259,7 @@ function bandKey(st, data) {
         lambda = `given:${st.logLambda}`;
     else if (st.lambdaMode === 'scale')
         lambda = `scale:${st.featureScale}`;
-    const kind = st.region === 'boot' ? `boot:${st.bootWeights}` : st.covariance;
+    const kind = BOOT_REGIONS[st.region] ? `${st.region}:${st.bootWeights}` : st.covariance;
     return [data.dataKey, st.alpha, kind, lambda, st.nseg ?? 'auto', st.diff].join('|');
 }
 
@@ -337,9 +338,10 @@ function remember(cache, key, value) {
 }
 
 function computeBand(st, data) {
-    const boot = st.region === 'boot';
+    const boot = Boolean(BOOT_REGIONS[st.region]);
     const opts = boot
         ? { alpha: st.alpha, weights: st.bootWeights, diff: st.diff, seed: BAND_SEED,
+            construction: BOOT_REGIONS[st.region],
             B: data.n <= BOOT_SMALL_N ? BOOT_B_SMALL : BOOT_B_LARGE }
         : { alpha: st.alpha, covariance: st.covariance, diff: st.diff, B: BAND_B, seed: BAND_SEED };
     if (st.nseg !== null)
@@ -832,6 +834,24 @@ function appendClaim(sel, short, full) {
  */
 function addBootstrapRows(add, region) {
     const p = region.params;
+    if (p.construction === 'percentile') {
+        add('construction', 'pointwise', `central ${p.alpha} of B = ${fmtInt(p.B)} refits at each grid point`,
+            'For comparison only: at each x, the refits\' (1 − α)/2 and (1 + α)/2 quantiles, not studentized or '
+            + 'reflected. It holds at each x separately, not for the whole curve, so it is far narrower than a '
+            + 'band for the curve must be; see the region\'s claim.');
+    }
+    else if (p.construction === 'capped') {
+        add('capped', `${fmtShort(100 * p.capShare)}% of the grid`, 'edges pulled in to the lowest or highest refit',
+            'For comparison only: the share of check-grid points where the bootstrap band reached past every '
+            + 'refit and was pulled in to them. Its coverage claim no longer holds there; see the region\'s claim.');
+    }
+    if (p.construction !== 'percentile') {
+        addBandQRows(add, p);
+    }
+    addReachRows(add, region);
+}
+
+function addBandQRows(add, p) {
     add('q below / above', `${fmt(d3.mean(p.qBelow))} / ${fmt(d3.mean(p.qAbove))}`, `averages over the grid; `
         + `pointwise tail level ${fmtShort(p.tailLevel)}, B = ${fmtInt(p.B)} replicates, `
         + `${p.weights === 'dirichlet' ? 'Dirichlet' : 'matched'} weights, refits to `
@@ -841,7 +861,12 @@ function addBootstrapRows(add, region) {
             fmtShort(100 * p.window)}% of ${p.windowBy === 'points' ? 'the observations' : 'the x range'}) `
         + 'at the pointwise tail level that holds for a fraction α of the replicates everywhere at once. '
         + 'Reflected, as a bootstrap-t interval: when the replicates run high, f̂ itself may have run high, so the '
-        + 'band reaches further below.');
+        + 'band reaches further below.'
+        + (p.construction === 'capped' ? ' These are the uncapped band\'s.' : ''));
+}
+
+function addReachRows(add, region) {
+    const p = region.params;
     add('half-width', `${fmt(d3.min(region.half))} – ${fmt(d3.max(region.half))}`, `below f̂ ${fmt(d3.min(p.down))} – `
         + `${fmt(d3.max(p.down))}, above ${fmt(d3.min(p.up))} – ${fmt(d3.max(p.up))}; units of y`,
         'Half the band\'s width, smallest to largest over the grid; the band is centered at its midpoint, which '
@@ -867,6 +892,15 @@ function shortClaim(result) {
             + `bootstrap band's); no smoothness is assumed about f.${shortest}`;
     }
     const p = result.region.params;
+    if (p.construction === 'percentile') {
+        return `For comparison only: contains the P-spline's mean at each check-grid point separately with `
+            + `probability ≈ ${p.alpha}, not at every point at once; as a region for the curve it held it in only `
+            + '0–11.5% of simulated samples.';
+    }
+    if (p.construction === 'capped') {
+        return 'For comparison only: the bootstrap band with its edges pulled in to the refits, which no longer '
+            + `covers at ${p.alpha}; in simulations it held the P-spline's mean in only 5–90% of samples.`;
+    }
     if (p.covariance === 'bootstrap') {
         return `Contains the P-spline's mean (f smoothed), not f, at every check-grid point with probability ≈ `
             + `${p.alpha}, for independent observations; the noise need not be Gaussian or of constant variance.`;

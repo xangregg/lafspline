@@ -54,7 +54,11 @@ const DEFAULT_WINDOW = 0.15; // half-width of the window the band's widths avera
 // Window edges reach this far past ±h (relative to the grid's span), so a grid point exactly on an edge is always in:
 // on evenly spaced x with the window at 0.1, rounding put such points in or out and moved the half-width by up to 10%
 const EDGE_SLACK = 1e-9;
-const WINDOW_BY = ['x', 'points']; // the window's half-width as a share of the x range, or of the observations
+const WINDOW_BY = ['x', 'points'];
+// The region built from the refits: the band (studentized, simultaneous), or two simpler constructions offered for
+// comparison, which simulations showed to undercover (PLAN §1.2): each point's central α of the refits (pointwise),
+// and the band capped at each point by the lowest and highest refit
+export const CONSTRUCTIONS = ['band', 'percentile', 'capped']; // the window's half-width as a share of the x range, or of the observations
 const MIN_RESIDUAL_VARIANCE = 1e-9; // factors below this (an interpolated point, h_i ≈ 1): the residual counts as 0
 const ZERO_RESIDUAL = 1e-10; // relative to the range of y: residuals no larger leave no spread to resample
 const SCALE_FLOOR = 1e-12; // a scale this small (relative) is raised to it, not left at 0
@@ -389,6 +393,35 @@ function simulated(p) {
         + '86.5–98.5% of samples';
 }
 
+const CONSTRUCTION_LABELS = {
+    band: 'bootstrap band',
+    percentile: 'pointwise percentile band',
+    capped: 'bootstrap band capped at the refits',
+};
+
+/**
+ * Each grid point's refits f̂ + d_b: lowest, highest, central α (the (1 − α)/2 and (1 + α)/2 quantiles) and median.
+ * O(B·G log B).
+ */
+function pointwiseRefits(deviations, count, fhat, alpha) {
+    const G = fhat.length;
+    const col = new Float64Array(count);
+    const out = { min: new Float64Array(G), max: new Float64Array(G), lower: new Float64Array(G),
+        upper: new Float64Array(G), median: new Float64Array(G) };
+    const pick = p => col[Math.min(count - 1, Math.max(0, Math.round(p * (count - 1))))];
+    for (let j = 0; j < G; j++) {
+        for (let b = 0; b < count; b++)
+            col[b] = fhat[j] + deviations[b * G + j];
+        col.sort();
+        out.min[j] = col[0];
+        out.max[j] = col[count - 1];
+        out.lower[j] = pick((1 - alpha) / 2);
+        out.upper[j] = pick((1 + alpha) / 2);
+        out.median[j] = pick(0.5);
+    }
+    return out;
+}
+
 /** How the claim treats λ: exact when it does not depend on y. */
 function fixedLambda(p) {
     if (p.lambdaSource === 'given')
@@ -398,7 +431,36 @@ function fixedLambda(p) {
     return 'λ is treated as fixed';
 }
 
+// What the two comparison constructions did in simulation (tools/sim-band.mjs; scratch runs recorded in PLAN §1.2):
+// 200 replications at 95%, λ by feature scale 10%, a line, a sine, a ramp and HeaviSine at n = 100 and 500
+const PERCENTILE_SIMULATED = 'In simulations at 95% (λ by feature scale 10%; a line, a sine, a ramp and HeaviSine; '
+    + 'n = 100 and 500; Gaussian or skewed noise) the whole curve E f̂ was inside it in only 0–11.5% of samples, and '
+    + 'even point by point it held E f̂ only 84–94% of the time (it takes the refits\' spread at face value, with no '
+    + 'allowance for the uncertainty in σ̂); it was about half as wide as the bootstrap band.';
+const CAPPED_SIMULATED = 'In simulations at 95% (λ by feature scale 10%; a line and a sine at n = 100 and 500; '
+    + 'Gaussian or skewed noise; evenly spaced x or a gap) it contained E f̂ in only 5–90% of samples, against '
+    + '92.5–98% for the band, and the cap bound over 65–89% of the grid: the refits\' raw spread understates f̂\'s '
+    + 'variability (the band studentizes each refit by its own σ̂* to correct this), most of all across a gap in x, '
+    + 'where reweighting moves only the points beside it.';
+
 function bootstrapClaim(p) {
+    if (p.construction === 'percentile') {
+        return `Pointwise percentile band, for comparison: at each point of the check grid, the central ${p.alpha} `
+            + `of B = ${p.B} bootstrap refits of the P-spline (the refits of the bootstrap band, not studentized or `
+            + `reflected). It is a ${p.alpha} interval for the P-spline's mean at each x separately, not a band for `
+            + `the whole curve: a fit kept inside it is held to a region far too tight. ${PERCENTILE_SIMULATED}`;
+    }
+    const band = bandClaim(p);
+    if (p.construction === 'capped') {
+        return `The bootstrap band capped at the refits, for comparison: each edge is pulled in to the lowest or `
+            + `highest of the B = ${p.B} refits at that point (here over ${round(100 * p.capShare)}% of the grid). `
+            + 'It contains every refit the band contains, but that is a statement about the bootstrap, not the data: '
+            + `the band's own coverage claim no longer holds. ${CAPPED_SIMULATED} The band it caps: ${band}`;
+    }
+    return band;
+}
+
+function bandClaim(p) {
     let lambdaHow = `λ chosen by ${lambdaSourceName(p.lambdaSource)}`;
     if (p.lambdaSource === 'given' || p.lambdaSource === 'scale')
         lambdaHow = lambdaHowText(p);
@@ -414,8 +476,8 @@ function bootstrapClaim(p) {
         + `positive fractional weights on the observations that sum to n: ${weights}. The residuals are rescaled to `
         + 'the size of the noise and the replicates studentized by their σ̂; the band\'s reach below and above the '
         + 'fit is the replicates\' upper and lower tail (reflected, as a bootstrap-t interval), pooled over '
-        + `±${round(100 * p.window)}% of ${p.windowBy === 'points' ? 'the observations' : 'the x range'}, at the tail level that holds for a fraction ${p.alpha} of the `
-        + `replicates at every point at once. Contains the P-spline's mean, f smoothed by the same penalty, at every `
+        + `±${round(100 * p.window)}% of ${p.windowBy === 'points' ? 'the observations' : 'the x range'}, at the tail `
+        + `level that holds for a fraction ${p.alpha} of the replicates at every point at once. Contains the P-spline's mean, f smoothed by the same penalty, at every `
         + `x of the check grid with probability ≈ ${p.alpha}, for independent observations; the noise need not be `
         + `Gaussian, and its spread may change slowly along x. In simulations at 95% ${simulated(p)} (a `
         + `line, a sine, a ramp and HeaviSine; n = 100 and 500; Gaussian, skewed or heteroscedastic noise). ${
@@ -437,14 +499,17 @@ function bootstrapClaim(p) {
  * @param {number} [opts.seed]
  * @param {'matched'|'dirichlet'} [opts.weights]  ('matched')
  * @param {number} [opts.window]   half-width of the window the widths average over, a fraction of the x range
- *     (0.1); 0 uses each point's own, Infinity one value for the whole grid
+ *     (0.15); 0 uses each point's own, Infinity one value for the whole grid
  * @param {'x'|'points'} [opts.windowBy]  'points': the window is a fraction of the observations instead, ±window·n
  *     of them around each grid point (by rank), so it is wide in x where data are sparse ('x')
  * @param {'exact'|'linear'} [opts.refit]  each replicate the exact reweighted refit, or its first order in the
  *     weights (the fit's own A; see linearChange)
  * @param {number} [opts.keep]     replicate curves to return for display (100)
+ * @param {'band'|'percentile'|'capped'} [opts.construction]  'percentile': at each grid point the central α of the
+ *     refits f̂ + d_b (a pointwise band, not simultaneous); 'capped': the band, each edge pulled in to the lowest or
+ *     highest refit at that point. Both undercover badly as regions for the curve (PLAN §1.2); for comparison
  * @returns {import('./band.js').BandRegion & {target: Float64Array, replicates: {count: number,
- *     curves: Float32Array}}}  replicates: the first `count` refits f̂ + d_b on the grid (not reflected, unlike the
+ *     curves: Float64Array}}}  replicates: the first `count` refits f̂ + d_b on the grid (not reflected, unlike the
  *     band), refit b at [b·G, (b + 1)·G)  params add fit (f̂ at the grid), se (σ̂·s,
  *     units of y), up and down
  *     (the band's reach above and below f̂), tUp and tDown (t⁺, t⁻ per point)
@@ -456,6 +521,9 @@ export function bootstrapBand(x, y, opts = {}) {
     const weights = opts.weights ?? 'matched';
     const window = opts.window ?? DEFAULT_WINDOW;
     const windowBy = opts.windowBy ?? 'x';
+    const construction = opts.construction ?? 'band';
+    if (!CONSTRUCTIONS.includes(construction))
+        throw new RangeError(`bootstrapBand: unknown construction ${construction}`);
     if (!WINDOW_BY.includes(windowBy))
         throw new RangeError(`bootstrapBand: unknown windowBy ${windowBy}`);
     if (!WEIGHTS.includes(weights))
@@ -484,7 +552,8 @@ export function bootstrapBand(x, y, opts = {}) {
     if (!REFITS.includes(refit))
         throw new RangeError(`bootstrapBand: unknown refit ${refit}`);
     const { T, deviations, kept } = studentizedReplicates(fit, gb, r, unitSe,
-        { B: Bused, seed, weights, refit, keep: opts.keep ?? DEFAULT_KEEP });
+        { B: Bused, seed, weights, refit, keep: construction === 'band' ? opts.keep ?? DEFAULT_KEEP : Bused });
+    const shown = Math.min(kept, opts.keep ?? DEFAULT_KEEP);
     // τ_j: each point's root mean square, to standardize before pooling and for the coverage check
     const tau = new Float64Array(G);
     for (let b = 0; b < Bused; b++) {
@@ -528,15 +597,34 @@ export function bootstrapBand(x, y, opts = {}) {
     // f̂ (simulations with skewed noise could not tell this from the unreflected band by coverage; theory favors it)
     const qBelow = Float64Array.from(grid, (_, j) => quantileAt(table, 'hi', j, level) * tauBar[j]);
     const qAbove = Float64Array.from(grid, (_, j) => -quantileAt(table, 'lo', j, level) * tauBar[j]);
-    const down = se.map((v, j) => qBelow[j] * v);
-    const up = se.map((v, j) => qAbove[j] * v);
-    const lower = fhat.map((f, j) => f - down[j]);
-    const upper = fhat.map((f, j) => f + up[j]);
+    let lower = fhat.map((f, j) => f - qBelow[j] * se[j]);
+    let upper = fhat.map((f, j) => f + qAbove[j] * se[j]);
     // the band at level ½: the replicates' median, reflected as the edges are. Phase 2 pulls toward it rather than
     // toward the midpoint of the edges, which a long tail on one side moves away from the estimate.
-    const median = fhat.map((f, j) => f - quantileAt(table, 'hi', j, TAIL_LEVELS - 1) * tauBar[j] * se[j]);
+    let median = fhat.map((f, j) => f - quantileAt(table, 'hi', j, TAIL_LEVELS - 1) * tauBar[j] * se[j]);
+    let capShare = null;
+    if (construction !== 'band') {
+        const refitEdges = pointwiseRefits(deviations, kept, fhat, alpha);
+        if (construction === 'percentile') {
+            ({ lower, upper, median } = refitEdges);
+        }
+        else {
+            let capped = 0;
+            for (let j = 0; j < G; j++) {
+                if (refitEdges.min[j] > lower[j] || refitEdges.max[j] < upper[j])
+                    capped++;
+                lower[j] = Math.max(lower[j], refitEdges.min[j]);
+                upper[j] = Math.min(upper[j], refitEdges.max[j]);
+                median[j] = Math.min(upper[j], Math.max(lower[j], median[j]));
+            }
+            capShare = capped / G;
+        }
+    }
+    const down = lower.map((l, j) => fhat[j] - l);
+    const up = upper.map((u, j) => u - fhat[j]);
     const params = {
-        n: fit.system.n, alpha, B: Bused, seed, covariance: 'bootstrap', weights, window, windowBy, refit,
+        n: fit.system.n, alpha, B: Bused, seed, covariance: 'bootstrap', construction, capShare, weights, window,
+        windowBy, refit,
         tailLevel: table.levels[level], qBelow, qAbove, q: (mean(qBelow) + mean(qAbove)) / 2,
         criterion: opts.criterion ?? 'gcv', lambdaSource, lambdaChosen, rule, atEdge, undersmooth, lambda: fit.lambda,
         ed: fit.ed, sigma: fit.sigma, df: fit.system.n - fit.ed, xl: basis.xl, xr: basis.xr, nseg: basis.nseg,
@@ -544,13 +632,14 @@ export function bootstrapBand(x, y, opts = {}) {
     };
     return {
         kind: 'band',
-        label: `bootstrap band (${round(100 * alpha)}%, ED ${round(fit.ed)})`,
+        label: `${CONSTRUCTION_LABELS[construction]} (${round(100 * alpha)}%, ED ${round(fit.ed)})`,
         claim: bootstrapClaim(params),
         draw: 'ribbon',
         grid,
         center: lower.map((l, j) => (l + upper[j]) / 2),
         half: lower.map((l, j) => (upper[j] - l) / 2),
         lower, upper, target: median, params,
-        replicates: { count: kept, curves: deviations.map((d, k) => d + fhat[k % G]) },
+        replicates: { count: shown,
+            curves: Float64Array.from(deviations.subarray(0, shown * G), (d, k) => fhat[k % G] + d) },
     };
 }

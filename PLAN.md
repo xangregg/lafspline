@@ -204,6 +204,28 @@ to the standard error than in dense data (0.68 against 1.57 on a sine with x in 
 moves only the points beside a gap, so it sees less of the uncertainty there than the standard error does, and the
 bootstrap band is narrower in a gap than the Bayesian band.
 
+**Two simpler constructions, for comparison (region menu; bootstrap.js `construction`).** From the same refits:
+the *pointwise percentile band*, each grid point's central α of the refits f̂ + d_b (the usual quick bootstrap
+band), and the *bootstrap band capped at the refits*, each edge pulled in to the lowest or highest refit at that
+point (proposed to remove the stretches where the band reaches past every refit; it holds every refit the band
+holds). Coverage of E f̂ at 95%, λ by feature scale 10%, 200 replications (scratch scripts; B = 1000 for the
+percentile rows, 2000 for the capped):
+
+| | band | percentile, whole curve | percentile, share of grid points | envelope of the central 95% of refits | capped | capped at reflected refits |
+|---|---|---|---|---|---|---|
+| n = 100, Gaussian | 96–97.5% | 0.5–1% | 87.8–89.3% | 14.5–17% | 25.5–26% | 45–45.5% |
+| n = 100, skewed | 96.5–98% | 0–0.5% | 84.1–86.2% | 4.5–9% | 5% | 8–9% |
+| n = 500, Gaussian | 93.5–96.5% | 10–11.5% | 93.4–94.3% | 64.5–69% | 76% | 84.5–85% |
+| n = 500, skewed | 95.5–97% | 3.5–4% | 91.9–93.2% | 37–45.5% | 54.5% | 45% |
+| gap, n = 100–500 | 92.5–97.5% | | | | 16.5–85% | 20.5–90% |
+
+(Percentile rows over a line, sine, ramp and HeaviSine, even x; capped over a line and a sine, even x and a gap.)
+Half-widths at n = 100: band 1.56σ, percentile 0.77σ, envelope 1.14σ, capped 1.12–1.32σ. The cap bound over
+65–89% of the grid, not only in dead zones: the refits' raw spread understates f̂ − E f̂, which the band corrects by
+studentizing each refit by its own σ̂* (a bootstrap-t), and a gap in x widens the shortfall. The envelope (the 95%
+of refits nearest f̂ in max |d|/sd) fails for the reason of the 60% finding above: a local spread that is sometimes
+too small. Both are offered in the region menu, marked for comparison, with these figures in their claims.
+
 **Noise check** (`noisecheck.js`, the "σ̂ check" readout of both bands). The band fit's σ̂ against σ̂ from
 neighboring observations (sigma.js GSJS: local linear pseudo-residuals, pure error at tied x), which does not depend
 on λ, and the lag-1 autocorrelation r₁ of the residuals' means at successive distinct x (judged from 10 distinct x).

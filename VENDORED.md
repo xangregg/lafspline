@@ -134,3 +134,5 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   lines, a layer that `hidden` can leave out ('replicates'), with a legend item and their range at x in the tooltip;
   an interactive chart draws a rug of the data's x along the bottom of the plot.
 - `src/ui/urlstate.js`: `showReplicates`, the bootstrap refits layer.
+- `src/ui/urlstate.js`: `region` also takes `bootPct` and `bootCap`, the bootstrap band's two comparison
+  constructions (`BOOT_REGIONS` maps each bootstrap region to its construction).

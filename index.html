@@ -138,6 +138,12 @@
                 the smoothness of f, but more than the bands about the noise: skewed or uneven noise lowers its
                 coverage far more. By default it checks only the intervals spanning at least 5% of the x range,
                 so it answers to features at least that wide.</li>
+            <li>For comparison, two simpler regions from the bootstrap band's refits, which show why it is built as
+                it is. The <strong>pointwise percentile band</strong> is the central 95% of the refits at each x: it
+                holds at each x separately, not for the whole curve, which in simulations was inside it in only
+                0–11.5% of samples. The <strong>bootstrap band capped at the refits</strong> pulls each edge in to
+                the lowest or highest refit: the refits spread less than the fit truly varies, most of all across
+                gaps in x, so it covered in only 5–90% of samples.</li>
         </ul>
         <p>
             The bands' λ comes from a feature scale: the shortest features of interest, as a share of the x range

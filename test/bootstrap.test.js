@@ -287,3 +287,41 @@ test('a grid point on a window\'s edge is in it whatever the rounding: the band 
         assert.ok(Math.abs(v - nudged.half[j]) <= TOL * v, `nudged, j = ${j}: ${v} vs ${nudged.half[j]}`);
     });
 });
+
+test('the comparison constructions: a pointwise percentile band and the band capped at the refits', () => {
+    const { x, y } = simulate('sine', 150, 0.3, SEED);
+    const opts = { B, criterion: 'scale', scale: 0.1 };
+    const band = bootstrapBand(x, y, opts);
+    const pct = bootstrapBand(x, y, { ...opts, construction: 'percentile', keep: B });
+    const capped = bootstrapBand(x, y, { ...opts, construction: 'capped', keep: B });
+    const G = band.grid.length;
+    const { curves, count } = pct.replicates;
+    assert.equal(count, B);
+    // the percentile band holds the central α of the refits at each point (within one refit's share at each end)
+    for (let j = 0; j < G; j += 17) {
+        let inside = 0;
+        for (let b = 0; b < count; b++)
+            inside += curves[b * G + j] >= pct.lower[j] && curves[b * G + j] <= pct.upper[j];
+        assert.ok(Math.abs(inside / count - 0.95) <= 3 / count, `j = ${j}: ${inside / count}`);
+    }
+    // the capped band lies inside the band, and holds every refit that lies inside the band
+    let lost = 0;
+    for (let b = 0; b < count; b++) {
+        let inBand = true;
+        let inCapped = true;
+        for (let j = 0; j < G; j++) {
+            const v = curves[b * G + j];
+            inBand &&= v >= band.lower[j] && v <= band.upper[j];
+            inCapped &&= v >= capped.lower[j] && v <= capped.upper[j];
+        }
+        lost += inBand && !inCapped;
+    }
+    assert.equal(lost, 0);
+    band.lower.forEach((l, j) => assert.ok(capped.lower[j] >= l && capped.upper[j] <= band.upper[j]));
+    assert.ok(capped.params.capShare > 0 && capped.params.capShare <= 1);
+    // their claims say what they are not
+    assert.match(pct.claim, /not a band for the whole curve/);
+    assert.match(capped.claim, /coverage claim no longer holds/);
+    assert.match(pct.label, /pointwise/);
+    assert.throws(() => bootstrapBand(x, y, { ...opts, construction: 'envelope' }), RangeError);
+});

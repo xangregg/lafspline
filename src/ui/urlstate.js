@@ -33,7 +33,10 @@ export const AN_SHARE_START = 0.05; // share of the x range: Aₙ's default shor
 export const BOX_VIEWS = ['tightest', 'all', 'off']; // Aₙ boxes drawn on the chart
 export const AN_MAX_SEGMENTS = 100; // phase-2 basis for Aₙ: its long intervals make the Newton system dense
 export const TAU_RANGE = [0.1, 20];
-export const REGIONS = ['band', 'boot', 'An']; // P-spline band, bootstrap band, Aₙ
+// P-spline band, bootstrap band, its two comparison constructions (bootstrap.js CONSTRUCTIONS), Aₙ
+export const REGIONS = ['band', 'boot', 'bootPct', 'bootCap', 'An'];
+// the regions built from bootstrap refits, and the construction each uses
+export const BOOT_REGIONS = { boot: 'band', bootPct: 'percentile', bootCap: 'capped' };
 export const VIEWS = ['single', 'gallery']; // one chart with its readouts, or several data sets at once
 export const FEATURE_SCALE_RANGE = [0.01, 1]; // λ by feature scale: a share of the x range (thumb.js scaleLambda)
 export const FEATURE_SCALE_START = 0.1; // share of the x range: the scale on choosing λ by feature scale, always

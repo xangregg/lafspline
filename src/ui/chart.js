@@ -74,7 +74,7 @@ function tickFormat(scale, count) {
  * @property {string|null} [boxesLabel]  legend text for the Aₙ boxes layer (null: no legend item)
  * @property {{points: Array<{x: number, y: number}>, label: string, plural: string}} [markers]  features of the
  *     primary fit (kinks, inflections) marked with circles at (x, y), named in the legend and tooltip
- * @property {{x: Float64Array, curves: Float32Array, count: number, of: number}|null} [replicates]  a sample of a
+ * @property {{x: Float64Array, curves: Float64Array, count: number, of: number}|null} [replicates]  a sample of a
  *     bootstrap band's refits at their sorted abscissae x, refit b at [b·G, (b + 1)·G), count of the band's `of`
  * @property {Set<string>} [hidden]  layers not drawn: 'data', 'truth' (f), 'band', 'replicates', or a fit's key. They leave the
  *     legend but still set the scales (so toggling one does not move the others) and keep their rows in the tooltip.

@@ -9,7 +9,7 @@ import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import { lambdaSourceName, MIN_POINTS_PER_PERIOD } from '../core/thumb.js';
 import {
     MAX_N, MAX_SEGMENTS, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
-    BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_START,
+    BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_START, BOOT_REGIONS,
 } from './urlstate.js';
 import { fmtExp } from './format.js';
 import { infoIcon, setInfo } from './info.js';
@@ -61,6 +61,8 @@ const DIFF_OPTIONS = [[1, '1: toward flat'], [2, '2: toward straight'], [3, '3: 
 const REGION_OPTIONS = [
     ['band', 'P-spline band'],
     ['boot', 'bootstrap band'],
+    ['bootPct', 'pointwise percentile band (for comparison)'],
+    ['bootCap', 'bootstrap band capped at the refits (for comparison)'],
     ['An', 'Aₙ (multiresolution)'],
 ];
 const WEIGHT_OPTIONS = [
@@ -102,6 +104,15 @@ const TIPS = {
         + '- **P-spline band**: a simultaneous band around a P-spline fit, which covers f if f is smooth.\n'
         + '- **Bootstrap band**: around the same fit, from refits with random fractional weights on the observations, '
         + 'so it can be asymmetric and wider where the noise is; it covers the smoothed f.\n'
+        + '- **Pointwise percentile band** (for comparison): at each x, the central 95% of the same refits. It is '
+        + 'the usual quick bootstrap band, but it holds at each x separately, not for the whole curve: in '
+        + 'simulations the whole smoothed f was inside it in only 0–11.5% of samples (and even point by point in '
+        + '84–94%), so a fit kept inside it is held far too tightly. About half as wide as the bootstrap band.\n'
+        + '- **Bootstrap band capped at the refits** (for comparison): the bootstrap band, with each edge pulled in '
+        + 'to the lowest or highest refit at that x, so it is never wider than any refit reaches. It still holds '
+        + 'every refit the band holds, but the refits spread less than the fit truly varies (the bootstrap band '
+        + 'corrects for this by studentizing them), most of all across gaps in x, so in simulations it covered the '
+        + 'smoothed f in only 5–90% of samples, against 92.5–98% for the band.\n'
         + '- **Aₙ** (Davies, Kovac & Meise 2009): bounds on the sums of the residuals over intervals of the '
         + 'observations, assuming nothing about the smoothness of f.',
     alphaBand: 'The probability that the band contains f at every point of the check grid at once (the data x and '
@@ -109,6 +120,10 @@ const TIPS = {
     alphaBoot: 'The probability that the band contains the smoothed f at every point of the check grid at once (the '
         + 'data x and 4 points per segment), by the bootstrap with B = 2000 replicates (1000 above 1000 '
         + 'observations).',
+    alphaPct: 'The share of the refits inside the band at each point of the check grid separately (not at every '
+        + 'point at once, as for the bootstrap band), from B = 2000 refits (1000 above 1000 observations).',
+    alphaCap: 'The coverage the bootstrap band is built for, before its edges are capped at the refits; capped, it '
+        + 'covers less (see region).',
     weights: 'Every observation gets a positive weight in each replicate, and the weights sum to n.\n'
         + '- **Like resampled counts**: the same mean, variance and skewness (about a fifth of the weights are below '
         + '0.1, as a count is 0 with probability 0.37); it held its coverage best in simulations.\n'
@@ -701,13 +716,15 @@ export function createControls(container, state, onChange, examples = [], local 
         // Aₙ has no band or phase-1 fit to draw, only its boxes
         centerToggle.hidden = an;
         bandToggle.hidden = an;
-        replicatesToggle.hidden = st.region !== 'boot';
+        replicatesToggle.hidden = !BOOT_REGIONS[st.region];
         boxesField.hidden = !an;
         tauField.hidden = !an || st.calibrate;
         alphaField.hidden = an && !st.calibrate;
         covarianceField.hidden = st.region !== 'band';
-        weightsField.hidden = st.region !== 'boot';
-        setInfo(alphaInfo, an ? TIPS.alphaAn : st.region === 'boot' ? TIPS.alphaBoot : TIPS.alphaBand);
+        weightsField.hidden = !BOOT_REGIONS[st.region];
+        const alphaTip = { bootPct: TIPS.alphaPct, bootCap: TIPS.alphaCap }[st.region]
+            ?? (BOOT_REGIONS[st.region] ? TIPS.alphaBoot : TIPS.alphaBand);
+        setInfo(alphaInfo, an ? TIPS.alphaAn : alphaTip);
         nsegInput.placeholder = nsegAuto !== null ? `auto (${nsegAuto})` : 'auto';
         setInfo(nsegInfo, TIPS.nseg + (an ? TIPS.nsegAn : ''));
         if (document.activeElement !== alphaInput)

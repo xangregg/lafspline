@@ -106,6 +106,10 @@ were tried and kept.
   is the paper's dyadic blocks with lengths doubling; by default blocks spanning less than 5% of the x range are
   merged, so Aₙ answers only to features at least that wide. It assumes nothing about the smoothness of f, but more
   than the bands about the noise: skewed or unequal noise lowers its coverage far more.
+- For comparison, two simpler regions from the bootstrap band's refits: the **pointwise percentile band** (the
+  central α of the refits at each x, which holds at each x separately, not for the whole curve) and the **bootstrap
+  band capped at the refits** (each edge pulled in to the lowest or highest refit). Both undercover badly as regions
+  for the curve; their claims give the simulated figures.
 
 For both bands, λ comes from a **feature scale**, the shortest features of interest as a share of the x range (10%
 by default): λ is set so that a sine of that period keeps half its amplitude through the smoother, so the same scale
