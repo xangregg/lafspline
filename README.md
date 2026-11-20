@@ -98,6 +98,7 @@ Two kinds of known facts can be added to the fit (PLAN §1.3b):
 - **Anchors**: points the fit must pass through, such as (0, 0), imposed exactly in every solve. They are not data:
   the region does not know about them, so an anchor the data disagree with pushes the fit out of the region, and
   the check says so. Beyond the data the fit reaches an anchor by a straight line, the tangent at the nearer end.
+  An anchor can also set the fit's slope there (`10, 1, 0`: level at 1), for a curve known to level off.
 - **Bounds**: a lower and upper limit on the fit, such as 0 and 1 for a proportion. Each of the band's boxes is
   intersected with them; if f lies within the bounds, the intersection covers it whenever the band does. Bands
   only, since an Aₙ box bounds an interval mean rather than the values.

@@ -6,7 +6,8 @@
 // mean does not bound the values.
 //
 // Anchors are points the fit must pass through, (x_a, y_a), imposed as exact equalities on the coefficients in
-// every phase-2 solve (fit.js). Beyond the knot range the fit continues as the tangent line at the nearer end
+// every phase-2 solve (fit.js); an anchor may also set the fit's slope there (0: the fit levels off), one more
+// equality. Beyond the knot range the fit continues as the tangent line at the nearer end
 // (fit.js pointRows), so an anchor there ties the end's value and slope; the basis is not widened. A widened basis
 // was tried first: its segments past the data have no region rows, and with little ambition (the a* scan's low
 // end, the counting penalties' unpenalized first solve) the system lost positive definiteness for an anchor half
@@ -19,28 +20,49 @@ const MAX_ANCHORS = 20; // more points than this is data, not a constraint
  * @typedef {object} Anchors  points the phase-2 fit must pass through, x distinct and increasing
  * @property {Float64Array} x
  * @property {Float64Array} y
+ * @property {Float64Array} slope  the fit's slope at x (units of y per unit of x), NaN where it is free
  */
 
 /**
- * Anchors from [x, y] pairs: sorted by x, checked for finite values and distinct x.
+ * Anchors from [x, y] or [x, y, slope] tuples: sorted by x, checked for finite values and distinct x.
  *
- * @param {ArrayLike<[number, number]>} pairs
- * @returns {Anchors|null}  null for no pairs
- * @throws {RangeError} on a non-finite value, a repeated x or more than MAX_ANCHORS pairs
+ * @param {ArrayLike<number[]>} tuples
+ * @returns {Anchors|null}  null for no tuples
+ * @throws {RangeError} on a non-finite value, a repeated x, a tuple of another length or more than MAX_ANCHORS
  */
-export function makeAnchors(pairs) {
-    if (pairs.length === 0)
+export function makeAnchors(tuples) {
+    if (tuples.length === 0)
         return null;
-    if (pairs.length > MAX_ANCHORS)
+    if (tuples.length > MAX_ANCHORS)
         throw new RangeError(`at most ${MAX_ANCHORS} anchors`);
-    const sorted = Array.from(pairs, ([x, y]) => [Number(x), Number(y)]).sort((a, b) => a[0] - b[0]);
-    for (let k = 0; k < sorted.length; k++) {
-        if (!Number.isFinite(sorted[k][0]) || !Number.isFinite(sorted[k][1]))
-            throw new RangeError('anchors need finite x and y');
-        if (k > 0 && sorted[k][0] === sorted[k - 1][0])
+    if (!Array.from(tuples).every(t => t.length === 2 || t.length === 3))
+        throw new RangeError('an anchor is x, y or x, y, slope');
+    for (const t of tuples) {
+        if (!Array.from(t).every(v => Number.isFinite(Number(v))))
+            throw new RangeError('anchors need finite x, y and slope');
+    }
+    // NaN marks a free slope from here on
+    const sorted = Array.from(tuples, t => [Number(t[0]), Number(t[1]), t.length === 3 ? Number(t[2]) : NaN])
+        .sort((a, b) => a[0] - b[0]);
+    for (let k = 1; k < sorted.length; k++) {
+        if (sorted[k][0] === sorted[k - 1][0])
             throw new RangeError(`two anchors at x = ${sorted[k][0]}`);
     }
-    return { x: Float64Array.from(sorted, p => p[0]), y: Float64Array.from(sorted, p => p[1]) };
+    return { x: Float64Array.from(sorted, t => t[0]), y: Float64Array.from(sorted, t => t[1]),
+        slope: Float64Array.from(sorted, t => t[2]) };
+}
+
+/**
+ * Anchors as tuples again, [x, y] or [x, y, slope], for the UI and the link.
+ *
+ * @param {Anchors|null} anchors
+ * @returns {number[][]}
+ */
+export function anchorTuples(anchors) {
+    if (!anchors)
+        return [];
+    return Array.from(anchors.x, (x, k) => (Number.isNaN(anchors.slope[k]) ? [x, anchors.y[k]]
+        : [x, anchors.y[k], anchors.slope[k]]));
 }
 
 /**

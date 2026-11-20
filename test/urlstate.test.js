@@ -217,6 +217,17 @@ test('anchors and bounds round-trip; anchors are sorted; a repeated x or a malfo
     const bad = await hashToState('#anchors=1_2*1_3', DEFAULTS);
     assert.deepEqual(bad.rejected, ['anchors']);
     assert.deepEqual(bad.state.anchors, []);
-    for (const raw of ['1_', '1', '1_2_3', 'a_b', '1_2*'])
+    for (const raw of ['1_', '1', 'a_b', '1_2*'])
+        assert.deepEqual((await hashToState(`#anchors=${raw}`, DEFAULTS)).rejected, ['anchors'], raw);
+});
+
+test('an anchor\'s slope round-trips as a third value', async () => {
+    const st = { ...DEFAULTS, anchors: [[0, 0], [10, 1, 0], [12, 1.5, -0.25]] };
+    const { hash } = await stateToHash(st, DEFAULTS);
+    assert.match(hash, /anchors=0_0\*10_1_0\*12_1\.5_-0\.25/);
+    const back = await hashToState(hash, DEFAULTS);
+    assert.deepEqual(back.rejected, []);
+    assert.deepEqual(back.state.anchors, st.anchors);
+    for (const raw of ['1_2_', '1_2_3_4', '1_2_x'])
         assert.deepEqual((await hashToState(`#anchors=${raw}`, DEFAULTS)).rejected, ['anchors'], raw);
 });

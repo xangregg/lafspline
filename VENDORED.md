@@ -140,3 +140,6 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   fit's color, with a legend item; they and the fits' own x widen the x axis past the data, and their y the y axis.
 - `src/ui/urlstate.js`: `anchors` (x_y pairs joined by `*`, checked as `core/anchors.js` `makeAnchors` checks them),
   `lower` and `upper` (the fit's bounds).
+- `src/ui/chart.js`: an anchor's set slope (`anchors.slope`, NaN where free) is drawn as a short ink tick through
+  its diamond.
+- `src/ui/urlstate.js`: an anchor may carry a slope as a third value (`x_y_slope`).

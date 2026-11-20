@@ -124,7 +124,7 @@ const state = {
     inflectionCost: SHAPE_DEFAULTS.inflection, // and of an inflection
     logKappa: 4, // log₁₀ κ
     logEpsilon: -2, // log₁₀ ε
-    anchors: [], // phase 2: [x, y] points the fit passes through exactly (core/anchors.js)
+    anchors: [], // phase 2: [x, y] points the fit passes through exactly, or [x, y, slope] (core/anchors.js)
     lower: null, // phase 2: bounds on the fit, applied to a band's boxes (null: none); not to Aₙ
     upper: null,
     showData: true, // chart layers (the readouts are unchanged): the data points,
@@ -393,7 +393,7 @@ function starKey(st, data) {
 /** The anchors and the bounds that apply (bounds: bands only), as a cache key. */
 function constraintKey(st) {
     const bounds = st.region === 'An' ? '' : `${st.lower}:${st.upper}`;
-    return `${st.anchors.map(([x, y]) => `${x},${y}`).join(';')}|${bounds}`;
+    return `${st.anchors.map(t => t.join(',')).join(';')}|${bounds}`;
 }
 
 /**
@@ -663,16 +663,22 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
         : 'cubic, on the band\'s knots');
     if (fit.anchors) {
         const k = fit.knots;
-        const list = Array.from(fit.anchors.x, (v, a) => `(${fmt(v)}, ${fmt(fit.anchors.y[a])})`).join(', ');
+        const slopeText = v => (v === 0 ? 'level' : `slope ${fmt(v)}`);
+        const list = Array.from(fit.anchors.x, (v, a) => `(${fmt(v)}, ${fmt(fit.anchors.y[a])}${Number.isNaN(
+            fit.anchors.slope[a]) ? '' : `, ${slopeText(fit.anchors.slope[a])}`})`).join(', ');
         const beyond = Array.from(fit.anchors.x).filter(v => v < k.xl || v > k.xr).length;
+        const slopes = fit.slopeGap === undefined ? ''
+            : `, and its slope where one is set (largest miss ${fmtExp(fit.slopeGap)})`;
         add(fit.anchors.x.length === 1 ? 'anchor' : 'anchors', list, `the fit passes through ${fit.anchors.x.length
-            === 1 ? 'it' : 'them'} exactly (largest miss ${fmtExp(fit.anchorGap)}, rounding)${beyond
+            === 1 ? 'it' : 'them'} exactly (largest miss ${fmtExp(fit.anchorGap)}, rounding)${slopes}${beyond
             ? `; beyond x = ${fmt(k.xl)} – ${fmt(k.xr)} by a straight line, the tangent at that end` : ''}`,
-        'Points you set that the fit must pass through, imposed as exact equalities in every solve. They are not '
-            + 'data: the region does not know about them, so an anchor the data disagree with pushes the fit out of '
-            + 'the region, and the check above says so. Each anchor spends one effective dimension. Beyond the '
-            + 'basis\'s knots the fit continues as the tangent line at the nearer end, so an anchor there sets the '
-            + 'end\'s value and slope together: the straight bridge is the least ambitious way to reach it.');
+        'Points you set that the fit must pass through, imposed as exact equalities in every solve; an anchor '
+            + 'with a slope also sets the fit\'s slope there (level: 0). They are not data: the region does not '
+            + 'know about them, so an anchor the data disagree with pushes the fit out of the region, and the check '
+            + 'above says so. Each anchor, and each slope, spends one effective dimension. Beyond the basis\'s knots '
+            + 'the fit continues as the tangent line at the nearer end, so an anchor there sets the end\'s value and '
+            + 'slope together (a slope there is that line\'s): the straight bridge is the least ambitious way to '
+            + 'reach it.');
     }
     if (fit.power) {
         add('solver', `${fit.iterations} solves`, `majorize-minimize: ${fit.reweights} reweighting`

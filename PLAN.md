@@ -336,11 +336,18 @@ because each is linear in β:
   region rows, so with little ambition (the a* scan's low end, the counting penalties' unpenalized first solve) the
   Newton system lost positive definiteness, and the anchor system became singular for an anchor half the data's x
   range away. The straight bridge is also the least ambitious way to reach the point.
-- **Phase 1 is not anchored.** The region stays a summary of the data alone, so an anchor the data disagree with
-  pushes the fit out of the region, and the check reports it (with no ambition at all: no a*). Anchoring phase 1
-  as well (a band that pinches to zero width at a known point) would need every bootstrap refit constrained and the
-  studentization to divide by an se(x) that reaches 0; possible later.
-- **Not yet:** slope conditions (g′(x_a) = 0, "levels off"), another linear equality per anchor.
+- **Phase 1 is not anchored (decided).** Phase 1 says what the data support, and the region's claim is about the
+  data alone; an anchored region would cover the true curve only if the anchors are true, and its coverage would
+  need new simulations (every bootstrap refit constrained, and a studentization dividing by an se(x) that reaches
+  0). Kept unanchored, the region also checks the anchors: one the data disagree with pushes the fit out of the
+  region, and the check reports it (with no ambition at all: no a*). Bounds differ because they only cut the
+  region's boxes, which keeps its claim; cutting a box to the anchor's point adds nothing the phase-2 equality
+  does not already do. An anchored region would be narrower only near the anchors, where the fit is pinned anyway.
+- **Slopes:** an anchor may also set the fit's slope, g′(x_a) = s_a (0: it levels off), one more equality, from
+  the derivative formula Σ_k (β_{k+1} − β_k)/δ · M_k with M the degree-(p − 1) basis (`slopeRows`); beyond the
+  knots it is the tangent line's slope, the end's. It spends one more effective dimension (a level anchor with
+  great ambition toward straight gives a constant, ED 0). Typed as a third number, `10, 1, 0`, and drawn as a
+  short ink tick through the anchor's diamond.
 
 Decision: phase 2 only; anchors as exact equalities with tangent lines beyond the data; bounds as an intersection
 with the band. The readouts list the anchors (and the largest miss, a rounding error), the bounds and how many boxes
@@ -780,7 +787,10 @@ the default fit, toward straight, is a line.
       on a logistic rise.
 - [x] UI: anchors (x, y; …) and bounds in the Fit section and the link; diamonds on the chart; readout rows; "No
       fit" when the bounds and the band disagree (UI check 3, a regression) or the basis cannot take the anchors.
-- [ ] Slope conditions at an anchor (levels off); anchoring phase 1.
+- [x] Slope conditions at an anchor (`x, y, slope`; 0 levels off): equality rows from the derivative, in the
+      solve, the QP and the effective dimension; a tick on the chart. Tests: the slope rows against finite
+      differences, exact slopes, iteration vs QP, one more ED per slope, a level anchor giving a constant.
+- [x] Anchoring phase 1: decided against; the region stays a summary of the data alone (see §1.3b).
 
 ### Phase 5 — Polish and deploy
 - [x] About panel; export of the data and fits (CSV at the observations and on the check grid) and of the chart

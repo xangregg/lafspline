@@ -11,7 +11,7 @@
 import { SIGNALS } from '../core/signals.js';
 import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import { WEIGHTS } from '../core/bootstrap.js';
-import { makeAnchors } from '../core/anchors.js';
+import { makeAnchors, anchorTuples } from '../core/anchors.js';
 
 const MAX_DATA_CHARS = 8000; // encoded data longer than this stays out of the link (chat apps truncate long URLs)
 // pasted data unpacked from a link, at most: far above what MAX_DATA_CHARS packs, so a crafted link cannot inflate
@@ -64,19 +64,18 @@ const int = (min, max) => ({
         return s !== '' && Number.isInteger(v) && v >= min && v <= max ? v : undefined;
     },
 });
-// anchors as x_y pairs joined by * (characters URLSearchParams leaves unencoded, unlike , ; and ~), checked as
-// the core checks them
+// anchors as x_y or x_y_slope joined by * (characters URLSearchParams leaves unencoded, unlike , ; and ~), checked
+// as the core checks them
 const anchorList = {
-    write: v => v.map(([x, y]) => `${x}_${y}`).join('*'),
+    write: v => v.map(t => t.join('_')).join('*'),
     read: s => {
         if (s === '')
             return [];
-        const pairs = s.split('*').map(p => p.split('_'));
-        if (!pairs.every(p => p.length === 2 && p[0] !== '' && p[1] !== ''))
+        const tuples = s.split('*').map(p => p.split('_'));
+        if (!tuples.every(t => (t.length === 2 || t.length === 3) && t.every(v => v !== '')))
             return undefined;
         try {
-            const a = makeAnchors(pairs.map(([x, y]) => [Number(x), Number(y)]));
-            return Array.from(a.x, (x, k) => [x, a.y[k]]);
+            return anchorTuples(makeAnchors(tuples.map(t => t.map(Number))));
         }
         catch {
             return undefined;

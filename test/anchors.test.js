@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loadHighs from 'highs';
-import { makeAnchors, boundBand } from '../src/core/anchors.js';
+import { makeAnchors, anchorTuples, boundBand } from '../src/core/anchors.js';
 import {
     fitIterated, buildQP, qpResult, regionSpec, leavingAmbition, fitShaped, shapedLambdas, fitSparse, sparseLambdas,
-    splineValues, maxAmbition, ambitionLambdas, pointRows,
+    splineValues, maxAmbition, ambitionLambdas, pointRows, slopeRows,
 } from '../src/core/fit.js';
 import { bandRegion } from '../src/core/band.js';
 import { selectLambda, evaluate, standardErrors, bsplineBasis } from '../src/core/pspline.js';
@@ -226,4 +226,88 @@ test('a bounded band: the fit stays within the bounds at the check grid', () => 
     const slack = 1e-3; // the soft region: violations shrink like 1/κ
     assert.ok(fit.g.every(v => v >= -slack && v <= 1 + slack), `range ${Math.min(...fit.g)} – ${Math.max(...fit.g)}`);
     assert.ok(fit.maxRatio < 1 + 1e-3);
+});
+
+/** The fit's slope at x by its slope row (fit.js slopeRows). */
+function slopeAt(beta, x, knots) {
+    const r = slopeRows([x], knots);
+    let v = 0;
+    for (let q = 0; q < r.width[0]; q++)
+        v += r.values[q] * beta[r.first[0] + q];
+    return v;
+}
+
+test('an anchor may set a slope: makeAnchors keeps it, NaN where free, and anchorTuples gives the tuples back', () => {
+    const a = makeAnchors([[2, 1, 0], [1, 0]]);
+    assert.deepEqual(Array.from(a.x), [1, 2]);
+    assert.ok(Number.isNaN(a.slope[0]));
+    assert.equal(a.slope[1], 0);
+    assert.deepEqual(anchorTuples(a), [[1, 0], [2, 1, 0]]);
+    assert.deepEqual(anchorTuples(null), []);
+    assert.throws(() => makeAnchors([[1, 0, Infinity]]), /finite/);
+    assert.throws(() => makeAnchors([[1, 0, 0, 0]]), /x, y or x, y, slope/);
+});
+
+test('slope rows: the derivative within the knots, the end\'s tangent slope beyond them', () => {
+    const knots = { xl: 1, xr: 3, nseg: 7, deg: 3 };
+    const beta = Float64Array.from({ length: 10 }, (_, k) => Math.sin(1.3 * k) + 0.1 * k * k);
+    const h = 1e-6;
+    for (const x of [1.4, 1.77, 2.5, 2.9]) {
+        const [a, b] = splineValues(beta, [x - h, x + h], knots);
+        const fd = (b - a) / (2 * h);
+        assert.ok(Math.abs(slopeAt(beta, x, knots) - fd) < 1e-6 * (1 + Math.abs(fd)), `${x}`);
+    }
+    // beyond the knots: the slope of the tangent line, which pointRows extends
+    const [far1, far2] = splineValues(beta, [5, 6], knots);
+    assert.ok(Math.abs(slopeAt(beta, 7, knots) - (far2 - far1)) < 1e-9);
+    assert.equal(slopeAt(beta, 7, knots), slopeAt(beta, 3, knots));
+});
+
+test('a zero-slope anchor levels the fit off there, exactly, and the iteration and the HiGHS QP agree', async () => {
+    const G_TOL = 1e-4; // max |Δg|/h: HiGHS's own tolerance
+    const highs = await loadHighs();
+    const region = makeRegion('sine', 0.2);
+    const s = median(region.half);
+    const { xl, xr } = region.params;
+    for (const tuples of [[[0.5, 0, 0]], [[xr, 0, 0]], [[0.25, 1, 0], [0.6, 0.2]], [[xl - 0.2, -1, 0]]]) {
+        const anchors = makeAnchors(tuples);
+        const spec = regionSpec(region, { ambition: 1e-3, anchors });
+        const it = fitIterated(spec);
+        assert.equal(it.converged, true);
+        assert.ok(it.anchorGap < ANCHOR_TOL * s, `gap ${it.anchorGap}`);
+        assert.ok(it.slopeGap < ANCHOR_TOL * s / (xr - xl) * 100, `slope gap ${it.slopeGap}`);
+        for (const [x, , slope] of tuples.filter(t => t.length === 3))
+            assert.ok(Math.abs(slopeAt(it.beta, x, spec) - slope) < 1e-8, `slope at ${x}`);
+        const qp = qpResult(spec, solveQP(highs, spec));
+        assert.equal(qp.status, 'optimal');
+        let worst = 0;
+        for (let j = 0; j < it.g.length; j++)
+            worst = Math.max(worst, Math.abs(it.g[j] - qp.g[j]) / region.half[j]);
+        assert.ok(worst < G_TOL, `iteration vs QP ${worst}`);
+    }
+});
+
+test('a slope spends one more effective dimension; with great ambition, a level anchor gives a constant', () => {
+    const region = makeRegion('line', 0.2);
+    const point = fitIterated(regionSpec(region, { ambition: 0, anchors: makeAnchors([[0.5, 0.5]]) }));
+    const level = fitIterated(regionSpec(region, { ambition: 0, anchors: makeAnchors([[0.5, 0.5, 0]]) }));
+    assert.ok(Math.abs(point.ed - (level.ed + 1)) < 1e-6, `${point.ed} vs ${level.ed}`);
+    // toward straight at the top of the range, on pure noise (a band a constant fits in): a line through (0.5, 0)
+    // with slope 0 is the constant 0
+    const flat = makeRegion('noise', 0.2);
+    const base = regionSpec(flat, { ambition: 0, anchors: makeAnchors([[0.5, 0, 0]]) });
+    const top = maxAmbition(base);
+    const fit = fitIterated({ ...base, ...ambitionLambdas({ ambition: top, G: flat.grid.length,
+        nseg: base.nseg }) });
+    const s = median(flat.half);
+    assert.ok(fit.maxRatio < 1, `the constant should fit inside (ratio ${fit.maxRatio})`);
+    assert.ok(fit.g.every(v => Math.abs(v) < 1e-4 * s), 'not the constant');
+    assert.ok(Math.abs(fit.ed) < 0.01, `ED ${fit.ed}`);
+});
+
+test('anchors and slopes together beyond what the basis has are refused', () => {
+    const region = makeRegion('line', 0.2, { nseg: 5 });
+    const four = makeAnchors(Array.from({ length: 4 }, (_, k) => [0.2 + 0.2 * k, 0, 0]));
+    assert.throws(() => fitIterated(regionSpec(region, { ambition: 0, anchors: four })),
+        /4 anchors and 4 slopes for 8 coefficients/);
 });

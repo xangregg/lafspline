@@ -23,6 +23,7 @@ const GAP_FACTOR = 3;
 const LONE_TICK = 3; // px half-width of the tick for a single point stranded between gaps
 const KINK_RADIUS = 4; // px
 const ANCHOR_SIZE = 64; // d3.symbol area of an anchor's diamond, px²
+const ANCHOR_TICK = 16; // px, half-length of the tick showing an anchor's set slope
 const REPLICATE_WIDTH = 0.75; // px, a bootstrap refit in the spaghetti layer
 const REPLICATE_ALPHA = 0.14; // of each refit's line: about 7 overlapping refits read as solid
 const RUG_LENGTH = 6; // px, a data x tick along the bottom of the plot (interactive charts)
@@ -75,8 +76,9 @@ function tickFormat(scale, count) {
  * @property {string|null} [boxesLabel]  legend text for the Aₙ boxes layer (null: no legend item)
  * @property {{points: Array<{x: number, y: number}>, label: string, plural: string}} [markers]  features of the
  *     primary fit (kinks, inflections) marked with circles at (x, y), named in the legend and tooltip
- * @property {{x: Float64Array, y: Float64Array}|null} [anchors]  points the primary fit passes through, marked with
- *     diamonds; they and the fits' own x widen the x axis past the data
+ * @property {{x: Float64Array, y: Float64Array, slope?: Float64Array}|null} [anchors]  points the primary fit
+ *     passes through, marked with diamonds, with a short tick at the slope where one is set (NaN: free); they and
+ *     the fits' own x widen the x axis past the data
  * @property {{x: Float64Array, curves: Float64Array, count: number, of: number}|null} [replicates]  a sample of a
  *     bootstrap band's refits at their sorted abscissae x, refit b at [b·G, (b + 1)·G), count of the band's `of`
  * @property {Set<string>} [hidden]  layers not drawn: 'data', 'truth' (f), 'band', 'replicates', or a fit's key. They leave the
@@ -536,7 +538,20 @@ export function createMainChart(container, opts = {}) {
             .attr('stroke-width', 1.5);
 
         const anchorPoints = anchors && primaryFit && !hidden.has(primaryFit.key)
-            ? Array.from(anchors.x, (v, k) => ({ x: v, y: anchors.y[k] })) : [];
+            ? Array.from(anchors.x, (v, k) => ({ x: v, y: anchors.y[k], slope: anchors.slope?.[k] ?? NaN })) : [];
+        // a set slope as a short tick through the diamond, drawn in pixels so it reads the same at any zoom
+        const ticks = anchorPoints.filter(p => !Number.isNaN(p.slope)).map(p => {
+            const dx = sx(p.x + 1) - sx(p.x);
+            const dy = sy(p.y + p.slope) - sy(p.y);
+            const r = ANCHOR_TICK / Math.hypot(dx, dy);
+            return { x1: sx(p.x) - r * dx, y1: sy(p.y) - r * dy, x2: sx(p.x) + r * dx, y2: sy(p.y) + r * dy };
+        });
+        // in ink: the tick lies along the fit, so in the fit's color it would not show
+        gAnchors.selectAll('line').data(ticks).join('line')
+            .attr('x1', t => t.x1).attr('y1', t => t.y1).attr('x2', t => t.x2).attr('y2', t => t.y2)
+            .attr('stroke', colors.ink)
+            .attr('stroke-width', 1.5)
+            .attr('stroke-linecap', 'round');
         gAnchors.selectAll('path').data(anchorPoints).join('path')
             .attr('d', d3.symbol(d3.symbolDiamond, ANCHOR_SIZE)())
             .attr('transform', p => `translate(${sx(p.x)},${sy(p.y)})`)

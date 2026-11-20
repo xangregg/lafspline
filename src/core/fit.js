@@ -28,9 +28,10 @@
 // I = everything), still nb × nb. Specs carry such rows in `rows`; without them the rows are the basis at `grid`.
 //
 // Anchors (anchors.js, PLAN §1.3b) are points the fit must pass through: k linear equalities Cβ = d, C the basis
-// at the anchors' x. Every phase-2 solve goes through one banded system Aβ = r (fitIterated's Newton steps, which
-// the adaptive-ridge fits repeat), so the equalities enter there, exactly, by the bordered (Lagrange) solve
-// β = β₀ − Zλ with β₀ = A⁻¹r, Z = A⁻¹Cᵀ and (CZ)λ = Cβ₀ − d: k + 1 banded solves and a k × k system. Both β₀
+// at the anchors' x, and below it the derivative's rows for the anchors that also set the slope. Every phase-2
+// solve goes through one banded system Aβ = r (fitIterated's Newton steps, which the adaptive-ridge fits repeat),
+// so the equalities enter there, exactly, by the bordered (Lagrange) solve β = β₀ − Zλ with β₀ = A⁻¹r,
+// Z = A⁻¹Cᵀ and (CZ)λ = Cβ₀ − d: k + 1 banded solves and a k × k system. Both β₀
 // and the anchored β satisfy the equalities along the line search's segment, so the iteration is unchanged.
 
 import {
@@ -135,6 +136,8 @@ export const SHAPE_DEFAULTS = Object.freeze({
  * @property {number} outside        rows (grid points) with ratio > 1
  * @property {number} ms             wall-clock time
  * @property {number} [anchorGap]    with anchors: the largest |g(x_a) − y_a| (units of y), rounding only
+ * @property {number} [slopeGap]     with anchors that set a slope: the largest |g'(x_a) − slope_a| (units of y per
+ *     unit of x), rounding only
  */
 
 function prepare(spec) {
@@ -161,13 +164,36 @@ function prepare(spec) {
     const W = Math.min(nb, Math.max(widest, Math.max(deg, 2) + 1));
     let anchorRows = null;
     let anchorTargets = null;
+    let anchorValues = 0; // the first rows of anchorRows are values, the rest slopes
     if (spec.anchors) {
-        if (spec.anchors.x.length > nb - 1)
-            throw new RangeError(`phase 2: ${spec.anchors.x.length} anchors for ${nb} coefficients`);
-        anchorRows = pointRows(spec.anchors.x, { xl, xr, nseg, deg });
-        anchorTargets = Float64Array.from(spec.anchors.y, v => v / s);
+        const { x, y } = spec.anchors;
+        const slope = spec.anchors.slope ?? new Float64Array(x.length).fill(NaN);
+        const sloped = Array.from(x).filter((_, a) => !Number.isNaN(slope[a]));
+        const k = x.length + sloped.length;
+        if (k > nb - 1) {
+            throw new RangeError(`phase 2: ${x.length} anchors${sloped.length ? ` and ${sloped.length} slopes`
+                : ''} for ${nb} coefficients`);
+        }
+        const knots = { xl, xr, nseg, deg };
+        anchorRows = concatRows(pointRows(x, knots), slopeRows(sloped, knots));
+        anchorTargets = Float64Array.from([...y, ...Array.from(slope).filter(v => !Number.isNaN(v))], v => v / s);
+        anchorValues = x.length;
     }
-    return { spec, s, cs, hs, ts, rows, W, nb, anchorRows, anchorTargets };
+    return { spec, s, cs, hs, ts, rows, W, nb, anchorRows, anchorTargets, anchorValues };
+}
+
+/** Rows a, then rows b. */
+function concatRows(a, b) {
+    const n = a.n + b.n;
+    const offset = new Int32Array(n + 1);
+    offset.set(a.offset);
+    for (let k = 0; k < b.n; k++)
+        offset[a.n + k + 1] = a.offset[a.n] + b.offset[k + 1];
+    const values = new Float64Array(offset[n]);
+    values.set(a.values.subarray(0, a.offset[a.n]));
+    values.set(b.values.subarray(0, b.offset[b.n]), a.offset[a.n]);
+    return { n, first: Int32Array.from([...a.first, ...b.first]), width: Int32Array.from([...a.width, ...b.width]),
+        offset, values };
 }
 
 /**
@@ -465,7 +491,15 @@ function finish(p, betaScaled, start) {
     };
     if (p.anchorRows) {
         const at = rowValues(p.anchorRows, betaScaled);
-        fit.anchorGap = at.reduce((m, v, a) => Math.max(m, Math.abs(v - p.anchorTargets[a]) * p.s), 0);
+        const miss = (from, to) => {
+            let m = 0;
+            for (let a = from; a < to; a++)
+                m = Math.max(m, Math.abs(at[a] - p.anchorTargets[a]) * p.s);
+            return m;
+        };
+        fit.anchorGap = miss(0, p.anchorValues);
+        if (at.length > p.anchorValues)
+            fit.slopeGap = miss(p.anchorValues, at.length);
     }
     return fit;
 }
@@ -845,6 +879,34 @@ export function ambitionLambdas({ ambition, flat = 0, G, nseg }) {
         lambda1: ambition * flat * G * nseg,
         lambda2: ambition * (1 - flat) * G * nseg ** 3,
     };
+}
+
+/**
+ * The fit's slope at points as Rows, from the derivative formula in pointRows; beyond [xl, xr] the slope of the
+ * tangent line, the end's. Each row spans p + 1 coefficients.
+ *
+ * @param {ArrayLike<number>} at
+ * @param {{xl: number, xr: number, nseg: number, deg?: number}} knots  deg ≥ 1
+ * @returns {Rows}
+ */
+export function slopeRows(at, { xl, xr, nseg, deg = 3 }) {
+    if (deg < 1)
+        throw new RangeError('slopeRows: a degree-0 spline has no slope');
+    const n = at.length;
+    const dx = (xr - xl) / nseg;
+    const M = bsplineBasis(Array.from(at, v => Math.min(xr, Math.max(xl, v))), xl, xr, nseg, deg - 1);
+    const first = Int32Array.from(M.first);
+    const width = new Int32Array(n).fill(deg + 1);
+    const offset = Int32Array.from({ length: n + 1 }, (_, i) => i * (deg + 1));
+    const values = new Float64Array(n * (deg + 1));
+    for (let i = 0; i < n; i++) {
+        for (let r = 0; r < deg; r++) {
+            const w = M.values[i * deg + r] / dx;
+            values[i * (deg + 1) + r] -= w;
+            values[i * (deg + 1) + r + 1] += w;
+        }
+    }
+    return { n, first, width, offset, values };
 }
 
 /**
