@@ -33,6 +33,10 @@ const POWER_STEP = 0.05; // the power penalty's q
 const LOG_LAMBDA_STEP = 0.1; // natural log units on the given-λ slider
 const FEATURE_SCALE_STEP = 0.01; // share of the x range on the feature-scale slider
 const AN_SHARE_STEP = 0.01; // share of the x range on Aₙ's shortest-interval slider
+// Coverage α on its slider. The top stops short of 1: at α = 1 every region takes the largest of its Monte Carlo
+// draws, which is no 100% region. A link may still hold up to 0.999 (urlstate.js).
+const ALPHA_SLIDER = [0.5, 0.99];
+const ALPHA_STEP = 0.01;
 const FEATURE_SCALE_MIN = 0.02; // the slider's low end: finer than a few knot spacings the basis cannot follow
 // The sliders span less than a link may hold (urlstate.js AMBITION_RANGE, FEATURE_SCALE_RANGE, AN_SHARE_RANGE), for
 // finer steps where the useful values are; a value beyond the span shows its thumb at the nearer end, and its own
@@ -565,9 +569,11 @@ export function createControls(container, state, onChange, examples = [], local 
     ]);
 
     // --- region: band
-    const alphaInput = numberInput('alpha', { min: 0.5, max: 0.999, step: 0.01 });
+    // a link's α between the slider's steps (0.995) shows as given, not as the step the thumb snaps to
+    const showAlpha = v => (Math.abs(100 * v - Math.round(100 * v)) < 1e-9 ? v.toFixed(2) : String(v));
+    const alpha = slider('alpha', ALPHA_SLIDER[0], ALPHA_SLIDER[1], ALPHA_STEP, showAlpha);
     const alphaInfo = infoIcon(TIPS.alphaBand, 'coverage α');
-    const alphaField = field('coverage α', alphaInput, alphaInfo);
+    const alphaField = field('coverage α', alpha.row, alphaInfo);
     const covariance = select('covariance', COVARIANCE_OPTIONS);
     const covarianceField = field('covariance', covariance, TIPS.covariance);
     const weightsField = field('weights', select('bootWeights', WEIGHT_OPTIONS), TIPS.weights);
@@ -627,7 +633,6 @@ export function createControls(container, state, onChange, examples = [], local 
         diffField,
         field('segments', nsegInput, nsegInfo),
         calibrateField,
-        alphaField,
         tauField,
     ]);
 
@@ -705,6 +710,7 @@ export function createControls(container, state, onChange, examples = [], local 
         field('region', regionKind, TIPS.region),
         anBox,
         bandBox,
+        alphaField,
         regionAdvanced,
         heading('Fit', TIPS.fitHead),
         field('ambition penalty', penalty, TIPS.penalty),
@@ -784,8 +790,8 @@ export function createControls(container, state, onChange, examples = [], local 
         setInfo(alphaInfo, an ? TIPS.alphaAn : alphaTip);
         nsegInput.placeholder = nsegAuto !== null ? `auto (${nsegAuto})` : 'auto';
         setInfo(nsegInfo, TIPS.nseg + (an ? TIPS.nsegAn : ''));
-        if (document.activeElement !== alphaInput)
-            alphaInput.value = String(st.alpha);
+        if (document.activeElement !== alpha.input)
+            alpha.set(st.alpha);
         let now = '';
         if (amb?.capped) {
             now = amb.sparse
