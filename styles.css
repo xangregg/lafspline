@@ -290,7 +290,7 @@ aside,
     opacity: 0.4;
 }
 
-/* --- gallery: the readouts give way to the panes, two per row, with one legend */
+/* --- gallery: the readouts give way to the panes, two per row (three for twelve), with one legend */
 body.gallery main {
     grid-template-columns: 15rem minmax(0, 1fr);
 }
@@ -328,8 +328,20 @@ body.gallery main {
     gap: 0.75rem;
 }
 
+/* twelve panes, three per row (four rows); two per row again where three would be too narrow */
+.gallery-grid.three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1250px) and (min-width: 1001px), (max-width: 860px) {
+    .gallery-grid.three {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 700px) {
-    .gallery-grid {
+    .gallery-grid,
+    .gallery-grid.three {
         grid-template-columns: minmax(0, 1fr);
     }
 }

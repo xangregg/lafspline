@@ -82,10 +82,14 @@ const LOCAL_PROBE = 'README.md'; // in LOCAL_DIR, committed, so it is always the
 const LISTING_SERVER = /^SimpleHTTP\//; // the Server header of Python's http.server, which lists directories
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 // The gallery's default data sets, in order (fewer panes show the first ones): real data with different features
-// (level stretches, a level shift, leveling off, a hump), then two signals.
+// (level stretches, a level shift, leveling off, a hump), then two signals; twelve panes add a decline that levels
+// off, a hump, a surge from near zero and a 0/1 response.
 const GALLERY_SOURCES = ['example:gistemp-global', 'example:ozone-annual', 'example:nile-flow', 'example:dog-ages',
-    'example:auto-mpg-horsepower', 'example:bike-sharing-temperature', 'ramp', 'step'];
+    'example:auto-mpg-horsepower', 'example:bike-sharing-temperature', 'ramp', 'step',
+    'example:arctic-sea-ice-september', 'example:chess-recall', 'example:oklahoma-earthquakes',
+    'example:exam-pass-simulated'];
 const DEFAULT_PANES = PANE_COUNTS[2];
+const THREE_ACROSS = 12; // panes: from this many the gallery shows three per row (4 rows), not two
 
 const state = {
     view: 'single', // 'single' (one chart with its readouts) | 'gallery' (several data sets, the settings shared)
@@ -1661,6 +1665,7 @@ async function startup() {
             pane.select.value = pane.source;
         });
         paneCount.value = String(state.panes.length);
+        galleryGrid.classList.toggle('three', state.panes.length >= THREE_ACROSS);
     }
 
     function openPane(i) {

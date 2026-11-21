@@ -241,3 +241,14 @@ test('an older link\'s log₁₀ ε is read as ε; one outside today\'s range is
         assert.deepEqual((await hashToState(`#logEpsilon=${raw}`, DEFAULTS)).rejected, ['logEpsilon'], raw);
     assert.ok(!(await stateToHash({ ...DEFAULTS, epsilon: 0.2 }, DEFAULTS)).hash.includes('logEpsilon'));
 });
+
+test('a gallery of twelve panes round-trips; other counts are rejected', async () => {
+    const panes = ['example:nile-flow', 'sine', 'box', 'step', 'example:ozone-annual', 'ramp', 'heavisine', 'exp5',
+        'noise', 'line', 'example:dog-ages', 'example:chess-recall'];
+    const { hash } = await stateToHash({ ...DEFAULTS, view: 'gallery', panes }, DEFAULTS);
+    const back = await hashToState(hash, DEFAULTS);
+    assert.deepEqual(back.rejected, []);
+    assert.deepEqual(back.state.panes, panes);
+    const ten = await hashToState(`#view=gallery&panes=${panes.slice(0, 10).join(',')}`, DEFAULTS);
+    assert.deepEqual(ten.rejected, ['panes']);
+});

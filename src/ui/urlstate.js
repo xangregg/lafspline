@@ -41,7 +41,7 @@ export const BOOT_REGIONS = { boot: 'band', bootPct: 'percentile', bootCap: 'cap
 export const VIEWS = ['single', 'gallery']; // one chart with its readouts, or several data sets at once
 export const FEATURE_SCALE_RANGE = [0.01, 1]; // λ by feature scale: a share of the x range (thumb.js scaleLambda)
 export const FEATURE_SCALE_START = 0.1; // share of the x range: the scale on choosing λ by feature scale, always
-export const PANE_COUNTS = [4, 6, 8]; // gallery panes, two per row
+export const PANE_COUNTS = [4, 6, 8, 12]; // gallery panes, two per row (12: three, main.js THREE_ACROSS)
 
 const MAX_COLUMN = 10000; // column index sanity cap
 const USER = 'user';

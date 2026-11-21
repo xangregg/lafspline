@@ -795,9 +795,10 @@ the default fit, toward straight, is a line.
 ### Phase 5 — Polish and deploy
 - [x] About panel; export of the data and fits (CSV at the observations and on the check grid) and of the chart
       (SVG, PNG and JPEG at 2×, as drawn).
-- [x] Gallery view: several data sets at once with the same settings, two per row (4, 6 or 8 panes), each chosen
-      above its compact chart (no axes; the tooltip has the values), one legend, a line per pane saying whether its
-      fit stays inside its region, ↗ to open a pane in the single view; in the link as `view` and `panes`.
+- [x] Gallery view: several data sets at once with the same settings, two per row (4, 6 or 8 panes; 12 three per
+      row in four rows), each chosen above its compact chart (no axes; the tooltip has the values), one legend, a
+      line per pane saying whether its fit stays inside its region, ↗ to open a pane in the single view; in the
+      link as `view` and `panes`.
 - [x] Animated export (Export → Steps as animated GIF or SVG; `src/ui/story.js`): the fit built up step by step,
       each step the chart with only its layers under a banner (a headline, and a detail line that a menu checkbox
       leaves out, as for social media). Bands: the data, the P-spline, its band, the fit inside the band, the fit
