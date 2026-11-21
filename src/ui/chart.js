@@ -10,6 +10,10 @@ import { showTooltip, hideTooltip } from './tooltip.js';
 const HEIGHT = 340; // px
 const COMPACT_HEIGHT = 215; // px, a gallery pane's plot
 const COMPACT_MARGIN = { top: 6, right: 6, bottom: 6, left: 6 }; // px: no axes
+const TITLE_ROOM = 14; // px added below and to the left of a full chart's plot for the axis titles
+const TITLE_X_BASELINE = 4; // px above the chart's bottom edge: the x title's baseline (room for descenders)
+const TITLE_Y_BASELINE = 12; // px from the left edge: the rotated y title's baseline, its letters to the left
+const TITLED_MARGIN = { ...MARGIN, bottom: MARGIN.bottom + TITLE_ROOM, left: MARGIN.left + TITLE_ROOM };
 const POINT_ALPHA = 0.55;
 const MARK_ROW = 9; // px above the x axis for extreme-plateau marks
 const MARK_SIZE = 42; // d3.symbol area, px²
@@ -126,7 +130,7 @@ export function createMainChart(container, opts = {}) {
     const compact = opts.compact ?? false;
     const interactive = (opts.interactive ?? false) && !compact;
     let H = opts.height ?? (compact ? COMPACT_HEIGHT : interactive ? storedHeight() : HEIGHT);
-    const M = compact ? COMPACT_MARGIN : MARGIN;
+    const M = compact ? COMPACT_MARGIN : TITLED_MARGIN;
     container.classList.add('chart');
     if (compact)
         container.classList.add('compact');
@@ -153,6 +157,10 @@ export function createMainChart(container, opts = {}) {
     const gMarks = svg.append('g').attr('class', 'extreme-marks').attr('clip-path', `url(#${clipId})`);
     const gAxisX = svg.append('g').attr('class', 'axis');
     const gAxisY = svg.append('g').attr('class', 'axis');
+    // axis titles: the variables' names, or the data file's xlabel and ylabel; a compact chart has none
+    const gTitles = svg.append('g').attr('class', 'axis-titles');
+    const titleX = compact ? null : gTitles.append('text').attr('class', 'axis-title').attr('text-anchor', 'middle');
+    const titleY = compact ? null : gTitles.append('text').attr('class', 'axis-title').attr('text-anchor', 'middle');
     const cross = svg.append('g').attr('class', 'crosshair').attr('visibility', 'hidden');
     const crossLine = cross.append('line');
     const crossDot = cross.append('circle').attr('r', 4);
@@ -344,6 +352,10 @@ export function createMainChart(container, opts = {}) {
                 .call(d3.axisBottom(sx).ticks(width / 90).tickFormat(tickFormat(sx, width / 90)).tickSizeOuter(0));
             gAxisY.attr('transform', `translate(${M.left},0)`)
                 .call(d3.axisLeft(sy).ticks(H / 50).tickFormat(tickFormat(sy, H / 50)).tickSizeOuter(0));
+            titleX.attr('x', M.left + plotWidth / 2).attr('y', H - TITLE_X_BASELINE).text(m.xLabel ?? '');
+            // rotated a quarter turn, so its baseline runs up the left edge with the letters facing the plot
+            titleY.attr('transform', `translate(${TITLE_Y_BASELINE},${(M.top + H - M.bottom) / 2}) `
+                + 'rotate(-90)').text(m.yLabel ?? '');
             gGrid.selectAll('line').data(sy.ticks(H / 50)).join('line')
                 .attr('x1', M.left).attr('x2', width - M.right)
                 .attr('y1', d => sy(d)).attr('y2', d => sy(d));

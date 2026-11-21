@@ -191,6 +191,7 @@ function deriveData(st, exampleTexts, examples) {
     let dataKey;
     let label;
     let story = {}; // the animated export's first and last text, from the file's intro and outro lines
+    let axes; // the chart's axis titles: the file's xlabel and ylabel, or the columns' names
     const notes = [];
     if (examples.has(st.source)) {
         const id = st.source;
@@ -206,6 +207,7 @@ function deriveData(st, exampleTexts, examples) {
         x = d.x;
         y = d.y;
         columns = [d.xName, d.yName];
+        axes = { x: d.meta.xlabel || d.xName, y: d.meta.ylabel || d.yName };
         dataKey = st.source;
         story = { intro: d.meta.intro, outro: d.meta.outro };
         notes.push(`Source: ${d.meta.source}`);
@@ -236,6 +238,13 @@ function deriveData(st, exampleTexts, examples) {
         x = d.x;
         y = d.y;
         dataKey = `user|${hashText(st.userText)}|${xCol}|${yCol}`;
+        // a file's xlabel and ylabel title the columns it names (x and y, or the first two), not others chosen
+        const xDefault = xCol === named(meta.x, two ? 0 : -1);
+        const yDefault = yCol === named(meta.y, two ? 1 : 0);
+        axes = {
+            x: (xDefault && meta.xlabel) || (xCol < 0 ? 'row number' : columns[xCol]),
+            y: (yDefault && meta.ylabel) || columns[yCol],
+        };
         story = { intro: meta.intro, outro: meta.outro };
         if (meta.source)
             notes.push(`Source: ${meta.source}`);
@@ -252,6 +261,7 @@ function deriveData(st, exampleTexts, examples) {
         y = sim.y;
         fAt = signalFunction(st.source, st.n);
         label = SIGNALS[st.source].label;
+        axes = { x: 't', y: 'y' };
         story = SIGNAL_STORIES[st.source] ?? {};
         dataKey = `${st.source}|${st.n}|${st.sigma}|${st.seed}`;
         notes.push(`tᵢ = i/n; y = f(t) + ${fmt(st.sigma)}·Z, seed ${st.seed}`);
@@ -260,7 +270,7 @@ function deriveData(st, exampleTexts, examples) {
     const m = distinctCount(x);
     if (m < 4)
         return { error: 'Need at least 4 distinct x values.', columns };
-    return { columns, notes, label, story, x, y, fAt, n, m, dataKey, edges: cellEdges(x) };
+    return { columns, notes, label, story, axes, x, y, fAt, n, m, dataKey, edges: cellEdges(x) };
 }
 
 function bandKey(st, data) {
@@ -1482,6 +1492,8 @@ async function startup() {
                 : null,
             boxesLabel: boxes ? boxes.label : null,
             anchors: phase2?.fit.anchors ?? null,
+            xLabel: data.axes.x,
+            yLabel: data.axes.y,
             hidden,
         };
         return { model, boxes };

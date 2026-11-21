@@ -2,6 +2,8 @@
 # source: NMMAPS (National Morbidity, Mortality and Air Pollution Study), via chicagoNMMAPS in the R package dlnm 2.4.10 by Antonio Gasparrini (https://CRAN.R-project.org/package=dlnm, GPL-2 or later), retrieved 2026-11-21
 # x: temp_c
 # y: deaths
+# xlabel: Daily mean temperature (°C)
+# ylabel: Deaths per day
 # note: 4748 days; deaths from all causes except accidents (cvd: cardiovascular, resp: respiratory), temperature the day's mean in °C (converted from whole °F, so many days tie); 2000 is left out to stay under the app's 5000 rows; deaths are higher in the cold and much higher in the heat, lowest at about 15–25 °C; the July 1995 heat wave gives the outliers up to 411 deaths a day; the days are serially correlated and winter deaths are also raised by influenza, so the curve is not the effect of temperature alone
 # intro: Deaths per day and that day's temperature, Chicago, 1987–1999
 # outro: The top outliers are the July 1995 heat wave

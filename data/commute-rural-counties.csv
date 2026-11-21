@@ -2,6 +2,8 @@
 # source: US Census Bureau (public domain): 2020 Census urban and rural counts by county (2020_UA_COUNTY.xlsx, https://www2.census.gov/geo/docs/reference/ua/) and American Community Survey 2019–2023 5-year tables B08013 and B08303 (https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/), retrieved 2026-11-21
 # x: pct_rural
 # y: mean_commute_min
+# xlabel: Share of people in rural areas (%)
+# ylabel: Mean commute (minutes)
 # note: 3132 counties of the 50 states and DC; mean_commute_min is the mean one-way travel time to work of workers 16 and over who did not work at home (aggregate minutes in B08013 over the count in B08303), pct_rural the share of the 2020 population outside urban areas, log10_density people per square mile of land; 1,102 counties are entirely rural and tie at 100; Connecticut is left out (its 2023 ACS figures are by planning region, not county), as are two Texas counties with no ACS mean; small counties' means are noisy (ACS samples), and commutes are longest in fully urban and mostly rural counties, shortest in between
 # intro: Mean commute and the share of people living outside towns, US counties
 # outro: Commutes are longest in the most urban counties and in mostly rural ones

@@ -22,6 +22,8 @@ Each `.csv` file here appears in the app's dataset list under **Examples** and i
    - `source` (required): where the data come from, shown with every fit, so the provenance travels with
      the data.
    - `x`, `y`: column names to use; default the first two columns.
+   - `xlabel`, `ylabel`: the chart's axis titles, with units (e.g. `Wind speed (mph)`); default the column names.
+     The gallery's small charts have no axes or titles.
    - `note`: anything a reader should know (known features, units, caveats such as serial correlation).
    - `intro`, `outro`: optional text for the animated export (Export → Steps as animated GIF or SVG). `intro` is the
      first step's headline, in place of the label, for a reader who does not know the data; `outro` is the last

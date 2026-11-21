@@ -2,6 +2,8 @@
 # source: R datasets::airquality (Chambers, Cleveland, Kleiner & Tukey 1983, Graphical Methods for Data Analysis); ozone from the New York State Department of Conservation, weather from the National Weather Service; distributed with R (GPL-2 or later)
 # x: wind_mph
 # y: ozone_ppb
+# xlabel: Morning wind speed (mph)
+# ylabel: Afternoon ozone (ppb)
 # note: 116 days of May–September 1973 with ozone measured (37 missing days left out); ozone is the mean from 13:00 to 15:00 at Roosevelt Island, ppb; wind the mean from 7:00 to 10:00 at LaGuardia Airport, mph; wind takes only 29 distinct values, so many days tie; ozone falls steeply as the wind rises, then levels off, and its spread shrinks with it
 # intro: Afternoon ozone and morning wind, New York, summer 1973
 # outro: Wind disperses ozone; on calm days it builds up

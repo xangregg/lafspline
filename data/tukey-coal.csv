@@ -2,6 +2,8 @@
 # source: J. W. Tukey (1977), Exploratory Data Analysis, Addison-Wesley
 # x: year                                                                                                                                             
 # y: coal
+# xlabel: Year
+# ylabel: Coal production
 # note: sinusoidal pattern
 # intro: US coal production, 1920–1968 (from Tukey's Exploratory Data Analysis)
 year,coal

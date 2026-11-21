@@ -1,13 +1,14 @@
 // Example data sets bundled as CSV files in data/ (see data/README.md). A file may start with metadata lines
 //     # key: value
-// (keys: label and source required; x and y name the columns, default the first two; note optional; intro and outro
-// optional, the first and last frames' text in the animated export), followed
+// (keys: label and source required; x and y name the columns, default the first two; xlabel and ylabel optional,
+// the chart's axis titles in place of the column names; note optional; intro and outro optional, the first and
+// last frames' text in the animated export), followed
 // by an ordinary CSV/TSV table that data.js parses. tools/data-index.mjs turns the files into data/index.json,
 // which the app reads because a static site cannot list a directory.
 
 import { parseTable, prepareXY } from './data.js';
 
-export const META_KEYS = ['label', 'source', 'x', 'y', 'note', 'intro', 'outro'];
+export const META_KEYS = ['label', 'source', 'x', 'y', 'xlabel', 'ylabel', 'note', 'intro', 'outro'];
 const REQUIRED = ['label', 'source'];
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const MIN_DISTINCT_X = 3;

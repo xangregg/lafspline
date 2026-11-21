@@ -2,6 +2,8 @@
 # source: R datasets::Nile; Durbin & Koopman (2001), Time Series Analysis by State Space Methods; Cobb (1978), Biometrika 65:243–251
 # x: year
 # y: flow
+# xlabel: Year
+# ylabel: Annual flow (10⁸ m³)
 # note: annual flow in 10⁸ m³, "with apparent changepoint near 1898" (Cobb 1978); the example in R's help fits ar(Nile), which selects order 2: the noise is serially correlated
 # intro: The Nile's yearly flow at Aswan, 1871–1970
 # outro: The classic reading: a drop near 1898, as the first Aswan dam was begun

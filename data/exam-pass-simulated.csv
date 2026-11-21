@@ -2,6 +2,8 @@
 # source: simulated by tools/make-exam-pass.mjs, seed 2026
 # x: hours
 # y: pass
+# xlabel: Hours of study
+# ylabel: Passed (1) or failed (0)
 # note: 200 students, hours uniform on 0.5–6.5; pass is 1 or 0, drawn with probability p = 1/(1 + e^(−1.5(hours − 3))), a logistic curve through ½ at 3 hours; column p is the true probability. The noise is Bernoulli: its spread p(1 − p) is largest at the midpoint and shrinks toward the ends
 # intro: Pass or fail by hours of study: each dot is one student (simulated)
 # outro: The truth: P(pass) = 1/(1 + e^(−1.5(hours − 3))), a logistic curve

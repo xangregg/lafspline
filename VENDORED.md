@@ -151,3 +151,5 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   `FEATURE_SCALE_START` 0.08 (was 0.1).
 - `src/ui/urlstate.js`: links write the settings first and the data source after them (`source`, then the
   simulation's `n`, `sigma`, `seed`, `showTruth` and the columns), then `view`, `panes` and pasted `data`.
+- `src/ui/chart.js`: axis titles (the model's `xLabel` and `yLabel`) below the x axis and up the left of the y axis on
+  full charts, in 14 px more margin on those two sides (`TITLED_MARGIN`); compact (gallery) charts have none.

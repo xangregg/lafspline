@@ -2,6 +2,8 @@
 # source: USGS ANSS Comprehensive Earthquake Catalog (ComCat), events of magnitude ≥ 3 in 33.6–37° N, 94.4–103° W with "Oklahoma" in the place name (https://earthquake.usgs.gov/fdsnws/event/1/, retrieved 2026-11-06); USGS data, public domain
 # x: year
 # y: count
+# xlabel: Year
+# ylabel: Earthquakes of magnitude ≥ 3 per month
 # note: count of earthquakes per month at mid-month (decimal year); at most a few a year until 2008, then a surge to 80–116 a month in late 2015 and January 2016, linked to the disposal of wastewater by deep injection, and a decline after injection was cut back in 2016; counts, so the spread grows with the level
 # intro: Oklahoma earthquakes of magnitude 3 or more, per month, 1990–2025
 # outro: Linked to deep wastewater injection, which was cut back in 2016

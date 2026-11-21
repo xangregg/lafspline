@@ -2,6 +2,8 @@
 # source: Quinlan (1993), Auto MPG [Dataset], UCI Machine Learning Repository, doi:10.24432/C5859H (CC BY 4.0); from the StatLib library, Carnegie Mellon (1983 ASA Data Exposition)
 # x: horsepower
 # y: mpg
+# xlabel: Horsepower
+# ylabel: Miles per gallon
 # note: 392 models (6 without horsepower dropped); miles per gallon falls steeply and then levels off with horsepower, and spreads more at low power; weight and model year explain much of the rest
 # intro: Miles per gallon against horsepower, 392 cars of 1970–1982
 # outro: Weight and model year explain much of what horsepower leaves

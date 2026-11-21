@@ -2,6 +2,8 @@
 # source: Agro-Climatic Data by County (ACDC) 1.0, Yun & Gramig, Purdue University Research Repository, doi:10.4231/R72F7KK2 (CC BY 3.0), retrieved 2026-11-21; yields from USDA NASS, precipitation from PRISM
 # x: ppt_mm
 # y: pct_trend
+# xlabel: March–August precipitation (mm)
+# ylabel: Corn yield (% of trend)
 # note: 3461 county-years (99 counties); ppt_mm is the total precipitation from March to August over the county's farmland, mm; pct_trend is the corn yield as a percentage of Iowa's linear trend over the years (103.4 + 2.138 × (year − 1981) bu/acre, fitted here to all the county-years), which takes out the steady rise over the years; corn_bu_ac is the yield as reported, bushels per acre; yield holds near the trend over most of the range and falls in dry seasons (1988, 2012) and in the wettest (1993, the year of the Midwest floods, then 2010 and 2008); county-years in the same season share its weather, so the points are not independent
 # intro: Iowa corn yield against March–August rain, county by county, 1981–2015
 # outro: The dry end is mostly 1988 and 2012; the wettest seasons include 1993's floods

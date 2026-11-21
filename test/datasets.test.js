@@ -33,6 +33,13 @@ test('metadata lines are read, and unknown or missing keys are reported', () => 
     assert.match(bad.errors.join(' '), /missing '# source/);
 });
 
+test('axis titles are read from xlabel and ylabel', () => {
+    const d = readDataset('# label: t\n# source: s\n# xlabel: Wind speed (mph)\n# ylabel: Ozone (ppb)\nw,o\n1,2\n2,3\n3,1\n');
+    assert.deepEqual(d.errors, []);
+    assert.equal(d.meta.xlabel, 'Wind speed (mph)');
+    assert.equal(d.meta.ylabel, 'Ozone (ppb)');
+});
+
 test('the named columns are used, incomplete rows dropped, ties kept, and x sorted', () => {
     const d = readDataset(SAMPLE);
     assert.deepEqual(d.errors, []);

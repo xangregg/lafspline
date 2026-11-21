@@ -2,6 +2,8 @@
 # source: Gapminder (https://www.gapminder.org/data/, CC BY 4.0), via the R package gapminder by Jennifer Bryan (https://github.com/jennybc/gapminder, CC0), retrieved 2026-11-06
 # x: log10_gdp
 # y: life_expectancy
+# xlabel: GDP per capita (log₁₀ US$)
+# ylabel: Life expectancy (years)
 # note: 142 countries; GDP per capita in inflation-adjusted US dollars, x its base-10 log; life expectancy at birth, years; rises steeply at low incomes and levels off above about $20,000 (4.3), with low outliers mostly in southern Africa (HIV)
 # intro: Life expectancy and income, 142 countries in 2007
 # outro: Low outliers are mostly in southern Africa, where HIV cut life expectancy

@@ -2,6 +2,8 @@
 # source: NOAA Global Monitoring Laboratory, co2_gr_mlo.txt (https://gml.noaa.gov/ccgg/trends/, retrieved 2026-11-06); Lan, Tans & Thoning, NOAA/GML, with Keeling (Scripps) before 1974; NOAA data, freely available, citation requested
 # x: year
 # y: growth
+# xlabel: Year
+# ylabel: CO₂ increase (ppm per year)
 # note: increase of the CO₂ mole fraction from January 1 to December 31, ppm per year (uncertainty about 0.11 ppm); rising, with large year-to-year swings from El Niño (1998, 2016, 2023–24) and the Pinatubo dip (1992)
 # intro: How fast CO₂ is rising: the yearly increase at Mauna Loa, 1959–2025
 # outro: El Niño years jump up (1998, 2016, 2023–24)

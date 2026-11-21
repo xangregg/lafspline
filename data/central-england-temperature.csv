@@ -2,6 +2,8 @@
 # source: Met Office Hadley Centre, HadCET v2.1 meantemp_monthly_totals.txt (https://www.metoffice.gov.uk/hadobs/hadcet/, retrieved 2026-11-06); Manley (1974), Q. J. R. Meteorol. Soc. 100:389–405; Parker, Legg & Folland (1992), Int. J. Climatol. 12:317–342; © Crown copyright, Met Office, Open Government Licence v3
 # x: year
 # y: temperature
+# xlabel: Year
+# ylabel: Annual mean temperature (°C)
 # note: annual mean temperature, °C, of a triangle between Lancashire, London and Bristol; monthly values before 1699 are given to the whole or half degree, so less precise; nearly level for two and a half centuries (cold 1690s), warmer since about 1990
 # intro: Central England's yearly temperature since 1659
 year,temperature

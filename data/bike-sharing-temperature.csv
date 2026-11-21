@@ -2,6 +2,8 @@
 # source: Fanaee-T (2013), Bike Sharing [Dataset], UCI Machine Learning Repository, doi:10.24432/C5W894 (CC BY 4.0); Capital Bikeshare system data; Fanaee-T & Gama (2014), Prog. Artif. Intell. 2:113–127
 # x: temp_c
 # y: rentals
+# xlabel: Temperature (°C)
+# ylabel: Rentals per day
 # note: rentals per day (casual and registered) against the day's temperature, °C (UCI's normalized temp × 41); rises with temperature and falls off on the hottest days; 2012 (yr = 1) has about 65% more rentals than 2011 at the same temperature, so the noise is two clusters, and days are serially correlated
 # intro: Daily bike rentals in Washington DC by temperature, 2011–2012
 # outro: 2012 had about 65% more rentals than 2011, so the scatter is two clusters

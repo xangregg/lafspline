@@ -2,6 +2,8 @@
 # source: NSIDC Sea Ice Index, Version 4 (G02135), N_09_extent_v4.0.csv (https://nsidc.org/data/g02135, retrieved 2026-11-06); Fetterer, Knowles, Meier, Savoie & Windnagel, doi:10.7265/a98x-0f50; US government work (NOAA@NSIDC)
 # x: year
 # y: extent
+# xlabel: Year
+# ylabel: September extent (million km²)
 # note: monthly mean extent of the September minimum, million km² (area: the ice-covered area); decline since the 1990s, the record low in 2012, and little net change since about 2007
 # intro: Arctic sea ice at its September minimum, 1979–2026
 # outro: The record low came in September 2012
