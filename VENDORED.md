@@ -143,3 +143,5 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/chart.js`: an anchor's set slope (`anchors.slope`, NaN where free) is drawn as a short ink tick through
   its diamond.
 - `src/ui/urlstate.js`: an anchor may carry a slope as a third value (`x_y_slope`).
+- `src/ui/urlstate.js`: ε is written as itself (`epsilon`, 0.01 to 1), not as `logEpsilon`; a link's `logEpsilon` is
+  still read (a small table of legacy keys in `hashToState`), dropped when 10^v falls outside today's range.

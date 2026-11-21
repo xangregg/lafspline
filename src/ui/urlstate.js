@@ -21,7 +21,7 @@ export const MAX_N = 5000; // simulated sample size cap, used by controls.js
 export const MAX_SEGMENTS = 400; // phase-1 basis segments, used by controls.js
 export const AMBITION_RANGE = [-8, 4]; // decades of a/a* (fit.js leavingAmbition); the slider spans less
 export const LOG_KAPPA_RANGE = [1, 8]; // log₁₀ κ
-export const LOG_EPSILON_RANGE = [-6, 0]; // log₁₀ ε
+export const EPSILON_RANGE = [0.01, 1]; // ε, the pull toward the region's center (fit.js); below 0.01 changed little
 export const UNDERSMOOTH_VALUES = [1, 1 / 4, 1 / 16, 1 / 64];
 export const PENALTIES = ['quadratic', 'sparse', 'shaped', 'power']; // ambition penalty: squared differences, their
 // count, the count of bends with rounding (fit.js fitShaped), or Σ|second differences|^q (fit.js fitPower)
@@ -150,7 +150,7 @@ const FIELDS = {
     inflectionCost: num(...SHAPE_COST_RANGE),
     q: num(...POWER_RANGE),
     logKappa: num(...LOG_KAPPA_RANGE),
-    logEpsilon: num(...LOG_EPSILON_RANGE),
+    epsilon: num(...EPSILON_RANGE),
     anchors: anchorList,
     lower: num(-Infinity),
     upper: num(-Infinity),
@@ -171,6 +171,10 @@ const FIELDS = {
                 : undefined;
         },
     },
+};
+// Keys older links used, read into today's: ε was given as log₁₀ ε until 2026-11.
+const LEGACY = {
+    logEpsilon: s => ['epsilon', FIELDS.epsilon.read(String(10 ** Number(s)))],
 };
 const USER_ONLY = new Set(['xCol', 'yCol']);
 const SIMULATED_ONLY = new Set(['n', 'sigma', 'seed', 'showTruth']);
@@ -310,12 +314,16 @@ export async function hashToState(hash, defaults) {
     for (const [key, raw] of params) {
         if (key === 'source' || key === 'data')
             continue;
-        const codec = FIELDS[key];
-        const value = codec ? codec.read(raw) : undefined;
+        let name = key;
+        let value;
+        if (FIELDS[key])
+            value = FIELDS[key].read(raw);
+        else if (LEGACY[key] && raw !== '')
+            [name, value] = LEGACY[key](raw);
         if (value === undefined)
             rejected.push(key);
         else
-            st[key] = value;
+            st[name] = value;
     }
     if (params.has('data')) {
         try {

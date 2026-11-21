@@ -9,7 +9,7 @@ const DEFAULTS = {
     xCol: null, yCol: null, region: 'band', family: 'blocks', anShare: 0.05, calibrate: true, tau: 3, boxes: 'tightest',
     alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
     nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, bendLength: 0.05, extremumCost: 2,
-    inflectionCost: 1, logKappa: 4, logEpsilon: -2, showData: true, showCenter: true, showBand: true, showFit: true,
+    inflectionCost: 1, logKappa: 4, epsilon: 0.1, showData: true, showCenter: true, showBand: true, showFit: true,
     featureScale: 0.1, view: 'single', anchors: [], lower: null, upper: null,
     panes: ['example:nile-flow', 'sine', 'box', 'step', 'example:ozone-annual', 'ramp'],
 };
@@ -25,12 +25,12 @@ test('changed settings round-trip and only they are written', async () => {
     const st = {
         ...DEFAULTS, source: 'sine', n: 300, sigma: SIGNALS.sine.sigma, seed: 42, alpha: 0.9, covariance: 'sandwich',
         undersmooth: 1 / 4, nseg: 25, diff: 3, penalty: 'sparse', ambition: -2.5, flat: 0.3, logKappa: 6,
-        logEpsilon: -3,
+        epsilon: 0.05,
     };
     const { hash } = await stateToHash(st, DEFAULTS);
     // σ is the sine's own default, so it is not written
     assert.equal(hash, '#source=sine&n=300&seed=42&alpha=0.9&covariance=sandwich&undersmooth=4&nseg=25&diff=3'
-        + '&penalty=sparse&ambition=-2.5&flat=0.3&logKappa=6&logEpsilon=-3');
+        + '&penalty=sparse&ambition=-2.5&flat=0.3&logKappa=6&epsilon=0.05');
     const back = await hashToState(hash, DEFAULTS);
     assert.deepEqual(back.state, st);
     assert.deepEqual(back.rejected, []);
@@ -94,10 +94,10 @@ test('choosing a signal brings its own σ and n', async () => {
 test('invalid and unknown values are ignored and reported', async () => {
     const { state, rejected } = await hashToState(
         '#source=nope&n=1&alpha=2&covariance=hc3&undersmooth=3&nseg=2&diff=4&ambition=9&flat=-0.1&logKappa=0'
-        + '&logEpsilon=x&zzz=1&seed=7&penalty=l1',
+        + '&epsilon=x&zzz=1&seed=7&penalty=l1',
         DEFAULTS);
     assert.deepEqual(state, { ...DEFAULTS, seed: 7 });
-    assert.deepEqual(rejected.sort(), ['alpha', 'ambition', 'covariance', 'diff', 'flat', 'logEpsilon', 'logKappa', 'n',
+    assert.deepEqual(rejected.sort(), ['alpha', 'ambition', 'covariance', 'diff', 'epsilon', 'flat', 'logKappa', 'n',
         'nseg', 'penalty', 'source', 'undersmooth', 'zzz']);
 });
 
@@ -230,4 +230,14 @@ test('an anchor\'s slope round-trips as a third value', async () => {
     assert.deepEqual(back.state.anchors, st.anchors);
     for (const raw of ['1_2_', '1_2_3_4', '1_2_x'])
         assert.deepEqual((await hashToState(`#anchors=${raw}`, DEFAULTS)).rejected, ['anchors'], raw);
+});
+
+test('an older link\'s log₁₀ ε is read as ε; one outside today\'s range is dropped', async () => {
+    const old = await hashToState('#logEpsilon=-1.5', DEFAULTS);
+    assert.deepEqual(old.rejected, []);
+    assert.ok(Math.abs(old.state.epsilon - 10 ** -1.5) < 1e-15);
+    assert.equal((await hashToState('#logEpsilon=-2', DEFAULTS)).state.epsilon, 0.01);
+    for (const raw of ['-3', 'x', ''])
+        assert.deepEqual((await hashToState(`#logEpsilon=${raw}`, DEFAULTS)).rejected, ['logEpsilon'], raw);
+    assert.ok(!(await stateToHash({ ...DEFAULTS, epsilon: 0.2 }, DEFAULTS)).hash.includes('logEpsilon'));
 });

@@ -9,7 +9,7 @@ import { LOG_LAMBDA_RANGE } from '../core/pspline.js';
 import { lambdaSourceName, MIN_POINTS_PER_PERIOD } from '../core/thumb.js';
 import { makeAnchors, anchorTuples } from '../core/anchors.js';
 import {
-    MAX_N, MAX_SEGMENTS, LOG_KAPPA_RANGE, LOG_EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
+    MAX_N, MAX_SEGMENTS, LOG_KAPPA_RANGE, EPSILON_RANGE, AN_MAX_SEGMENTS, TAU_RANGE,
     BEND_LENGTH_RANGE, SHAPE_COST_RANGE, POWER_RANGE, FEATURE_SCALE_START, BOOT_REGIONS,
 } from './urlstate.js';
 import { fmtExp } from './format.js';
@@ -37,6 +37,10 @@ const AN_SHARE_STEP = 0.01; // share of the x range on Aₙ's shortest-interval 
 // draws, which is no 100% region. A link may still hold up to 0.999 (urlstate.js).
 const ALPHA_SLIDER = [0.5, 0.99];
 const ALPHA_STEP = 0.01;
+// ε's spinner steps by EPSILON_FINE below EPSILON_COARSE_FROM and by EPSILON_COARSE from there up
+const EPSILON_FINE = 0.01;
+const EPSILON_COARSE = 0.1;
+const EPSILON_COARSE_FROM = 0.1;
 const FEATURE_SCALE_MIN = 0.02; // the slider's low end: finer than a few knot spacings the basis cannot follow
 // The sliders span less than a link may hold (urlstate.js AMBITION_RANGE, FEATURE_SCALE_RANGE, AN_SHARE_RANGE), for
 // finer steps where the useful values are; a value beyond the span shows its thumb at the nearer end, and its own
@@ -238,7 +242,7 @@ const TIPS = {
     kappa: 'Weight on the squared distance outside the region, per squared half-width: larger makes the region '
         + 'harder.',
     epsilon: 'Weight on the squared distance from the region\'s center: a slight pull inside the region, which also '
-        + 'makes the fit unique.',
+        + 'makes the fit unique. 0.1 by default, from 0.01 to 1; the arrows step by 0.01 below 0.1 and by 0.1 above.',
     anchors: 'Points the fit must pass through, as x, y separated by semicolons (0, 0; 16, 1). A third number '
         + 'sets the fit\'s slope there too: 0 makes it level off (10, 1, 0). They are imposed exactly in every '
         + 'solve but are not data: the region knows nothing of them, so one the data disagree with pushes the fit '
@@ -275,6 +279,69 @@ function el(tag, attrs = {}, children = []) {
     }
     node.append(...children);
     return node;
+}
+
+/**
+ * The number input for ε, whose spinner and arrow keys step by EPSILON_FINE below EPSILON_COARSE_FROM and by
+ * EPSILON_COARSE from there up: 0.09 ↑ 0.1 ↑ 0.2, and 0.2 ↓ 0.1 ↓ 0.09. A number input has a single step, and the
+ * spinner's buttons cannot be told apart from where the pointer is (they are smaller than the box), so while a key
+ * or the pointer is down the input steps finely, the direction is read from the value's move, and the value is
+ * then set to the step the rule gives. Otherwise the step is 'any', so a typed 0.15 is no step mismatch. Its min
+ * is 0, not EPSILON_RANGE[0], so a step down from the low end is seen, and pulled back to it.
+ *
+ * @param {number} value                    starting ε
+ * @param {(patch: object) => void} apply   debounced state update
+ * @returns {HTMLInputElement}
+ */
+function epsilonInput(value, apply) {
+    const [lo, hi] = EPSILON_RANGE;
+    const input = el('input', { type: 'number', min: '0', max: String(hi), step: 'any', value: String(value) });
+    const tidy = v => Number(Math.min(hi, Math.max(lo, v)).toFixed(10));
+    // the next value up or down from v, on the fine grid below the boundary and the coarse one from it up
+    const next = (v, up) => {
+        const size = (up ? v < EPSILON_COARSE_FROM : v <= EPSILON_COARSE_FROM) ? EPSILON_FINE : EPSILON_COARSE;
+        const k = up ? Math.floor(v / size + 1e-9) + 1 : Math.ceil(v / size - 1e-9) - 1;
+        return tidy(k * size);
+    };
+    let stepping = false;
+    let before = value;
+    const start = () => {
+        stepping = true;
+        before = input.valueAsNumber;
+        input.step = String(EPSILON_FINE);
+    };
+    const stop = () => {
+        stepping = false;
+        input.step = 'any';
+    };
+    input.addEventListener('keydown', e => {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+            start();
+    });
+    input.addEventListener('keyup', stop);
+    input.addEventListener('pointerdown', start);
+    input.addEventListener('pointerup', stop);
+    input.addEventListener('pointercancel', stop);
+    input.addEventListener('blur', stop);
+    input.addEventListener('input', () => {
+        let v = input.valueAsNumber;
+        if (stepping && Number.isFinite(v) && Number.isFinite(before) && v !== before) {
+            v = next(before, v > before);
+            input.value = String(v);
+            before = v;
+        }
+        if (Number.isFinite(v) && v >= lo && v <= hi)
+            apply({ epsilon: v });
+    });
+    // a typed value outside the range is pulled to the nearer end once the edit is done
+    input.addEventListener('change', () => {
+        const v = input.valueAsNumber;
+        if (Number.isFinite(v) && tidy(v) !== v) {
+            input.value = String(tidy(v));
+            apply({ epsilon: tidy(v) });
+        }
+    });
+    return input;
 }
 
 /**
@@ -656,7 +723,7 @@ export function createControls(container, state, onChange, examples = [], local 
         field('per inflection', numberInput('inflectionCost', costAttrs), TIPS.inflectionCost),
     ]);
     const logKappa = numberInput('logKappa', { min: LOG_KAPPA_RANGE[0], max: LOG_KAPPA_RANGE[1], step: 0.5 });
-    const logEpsilon = numberInput('logEpsilon', { min: LOG_EPSILON_RANGE[0], max: LOG_EPSILON_RANGE[1], step: 0.5 });
+    const epsilon = epsilonInput(state.epsilon, later);
     // anchors: typed as text, applied once the whole list parses; an empty box clears them
     const anchorsInput = el('input', { type: 'text', placeholder: 'x, y; x, y, slope', spellcheck: 'false',
         value: state.anchors.map(t => t.join(', ')).join('; ') });
@@ -686,7 +753,7 @@ export function createControls(container, state, onChange, examples = [], local 
         bendLengthField,
         shapeCosts,
         el('div', { class: 'row' }, [field('log₁₀ κ', logKappa, TIPS.kappa),
-            field('log₁₀ ε', logEpsilon, TIPS.epsilon)]),
+            field('ε', epsilon, TIPS.epsilon)]),
     ]);
 
     // --- display: chart layers only (main.js redraws without refitting)

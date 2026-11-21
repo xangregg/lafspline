@@ -123,7 +123,7 @@ const state = {
     extremumCost: SHAPE_DEFAULTS.extremum, // shaped bends: extra cost of an extremum, in plain bends
     inflectionCost: SHAPE_DEFAULTS.inflection, // and of an inflection
     logKappa: 4, // log₁₀ κ
-    logEpsilon: -2, // log₁₀ ε
+    epsilon: 0.1, // pull toward the region's center (the core's default is 0.01: fit.js DEFAULT_EPSILON)
     anchors: [], // phase 2: [x, y] points the fit passes through exactly, or [x, y, slope] (core/anchors.js)
     lower: null, // phase 2: bounds on the fit, applied to a band's boxes (null: none); not to Aₙ
     upper: null,
@@ -387,7 +387,7 @@ function starKey(st, data) {
         shape = [st.bendLength, st.extremumCost, st.inflectionCost, st.flat];
     else if (st.penalty === 'power')
         shape = [st.q, st.flat];
-    return [regionKey(st, data), st.penalty, ...shape, st.logKappa, st.logEpsilon, constraintKey(st)].join('|');
+    return [regionKey(st, data), st.penalty, ...shape, st.logKappa, st.epsilon, constraintKey(st)].join('|');
 }
 
 /** The anchors and the bounds that apply (bounds: bands only), as a cache key. */
@@ -434,7 +434,7 @@ function boundsText({ lower, upper }) {
 function phase2Options(st) {
     const shaped = st.penalty === 'shaped';
     const power = st.penalty === 'power';
-    return { flat: st.flat, kappa: 10 ** st.logKappa, epsilon: 10 ** st.logEpsilon,
+    return { flat: st.flat, kappa: 10 ** st.logKappa, epsilon: st.epsilon,
         shape: shaped ? { length: st.bendLength, extremum: st.extremumCost, inflection: st.inflectionCost }
             : undefined,
         q: power ? st.q : undefined, anchors: makeAnchors(st.anchors) };
@@ -657,7 +657,7 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     else if (region.target)
         pullNote = 'weight on the squared distance from the bootstrap replicates\' median (reflected as the band\'s '
             + 'edges are), not the midpoint of the edges, which a long tail on one side moves away from the estimate';
-    add('ε', fmtExp(fit.opts.epsilon), pullNote);
+    add('ε', fmt(fit.opts.epsilon), pullNote);
     add('basis', `${region.params.nseg} segments`, an
         ? `cubic, equal segments over the data's x range${region.nsegCapped ? `; capped at ${AN_MAX_SEGMENTS}` : ''}`
         : 'cubic, on the band\'s knots');

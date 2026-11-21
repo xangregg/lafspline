@@ -34,7 +34,8 @@ The phase-2 fit is a cubic P-spline g = Bβ on a fine check grid. It minimizes
 
 where c and h are the region's center and half-width at each grid point (for Aₙ, each term is one interval instead:
 a box for the fit's mean over it). The first term makes the region nearly
-hard (κ = 10⁴); the second is a slight pull toward the center (ε = 10⁻²) that also makes the fit unique. The
+hard (κ = 10⁴); the second is a slight pull toward the center (ε = 0.1 in the app, from 0.01 to 1; 0.01 in the
+core's default) that also makes the fit unique. The
 ambition weight a is set relative to **a\***, the largest ambition at which the fit still stays inside the region (to
 within 1% of its half-width): the knob is in decades from a\*, so 0 is the simplest fit inside on any data set, lower
 values follow more detail, and higher ones give up on the region. All terms are scaled by the region's median
