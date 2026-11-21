@@ -88,6 +88,28 @@
     "note": "largest instantaneous flow of each water year (October–September), cubic feet per second (date: its day); Glen Canyon Dam, 15 miles upstream, began storing water in 1963 (water year 1963: 19,200 cfs, after 85,000 in 1962), which cut the spring floods to releases from the dam: a step down; the high-flow releases (1983–86 spills, the 1996 and later experiments) are visible after it; the historic 1884 peak (210,000 cfs, its date unknown) is left out"
   },
   {
+    "id": "commute-rural-counties",
+    "file": "commute-rural-counties.csv",
+    "label": "Commute time and ruralness, US counties",
+    "source": "US Census Bureau (public domain): 2020 Census urban and rural counts by county (2020_UA_COUNTY.xlsx, https://www2.census.gov/geo/docs/reference/ua/) and American Community Survey 2019–2023 5-year tables B08013 and B08303 (https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/), retrieved 2026-11-21",
+    "x": "pct_rural",
+    "y": "mean_commute_min",
+    "n": 3132,
+    "m": 824,
+    "note": "3132 counties of the 50 states and DC; mean_commute_min is the mean one-way travel time to work of workers 16 and over who did not work at home (aggregate minutes in B08013 over the count in B08303), pct_rural the share of the 2020 population outside urban areas, log10_density people per square mile of land; 1,102 counties are entirely rural and tie at 100; Connecticut is left out (its 2023 ACS figures are by planning region, not county), as are two Texas counties with no ACS mean; small counties' means are noisy (ACS samples), and commutes are longest in fully urban and mostly rural counties, shortest in between"
+  },
+  {
+    "id": "corn-rainfall-iowa",
+    "file": "corn-rainfall-iowa.csv",
+    "label": "Corn yield and growing-season rain, Iowa counties, 1981–2015",
+    "source": "Agro-Climatic Data by County (ACDC) 1.0, Yun & Gramig, Purdue University Research Repository, doi:10.4231/R72F7KK2 (CC BY 3.0), retrieved 2026-11-21; yields from USDA NASS, precipitation from PRISM",
+    "x": "ppt_mm",
+    "y": "pct_trend",
+    "n": 3461,
+    "m": 2607,
+    "note": "3461 county-years (99 counties); ppt_mm is the total precipitation from March to August over the county's farmland, mm; pct_trend is the corn yield as a percentage of Iowa's linear trend over the years (103.4 + 2.138 × (year − 1981) bu/acre, fitted here to all the county-years), which takes out the steady rise over the years; corn_bu_ac is the yield as reported, bushels per acre; yield holds near the trend over most of the range and falls in dry seasons (1988, 2012) and in the wettest (1993, the year of the Midwest floods, then 2010 and 2008); county-years in the same season share its weather, so the points are not independent"
+  },
+  {
     "id": "bike-sharing-temperature",
     "file": "bike-sharing-temperature.csv",
     "label": "Daily bike rentals by temperature, Washington DC, 2011–2012",
@@ -97,6 +119,17 @@
     "n": 731,
     "m": 499,
     "note": "rentals per day (casual and registered) against the day's temperature, °C (UCI's normalized temp × 41); rises with temperature and falls off on the hottest days; 2012 (yr = 1) has about 65% more rentals than 2011 at the same temperature, so the noise is two clusters, and days are serially correlated"
+  },
+  {
+    "id": "chicago-deaths-temperature",
+    "file": "chicago-deaths-temperature.csv",
+    "label": "Daily deaths and temperature, Chicago, 1987–1999",
+    "source": "NMMAPS (National Morbidity, Mortality and Air Pollution Study), via chicagoNMMAPS in the R package dlnm 2.4.10 by Antonio Gasparrini (https://CRAN.R-project.org/package=dlnm, GPL-2 or later), retrieved 2026-11-21",
+    "x": "temp_c",
+    "y": "deaths",
+    "n": 4748,
+    "m": 196,
+    "note": "4748 days; deaths from all causes except accidents (cvd: cardiovascular, resp: respiratory), temperature the day's mean in °C (converted from whole °F, so many days tie); 2000 is left out to stay under the app's 5000 rows; deaths are higher in the cold and much higher in the heat, lowest at about 15–25 °C; the July 1995 heat wave gives the outliers up to 411 deaths a day; the days are serially correlated and winter deaths are also raised by influenza, so the curve is not the effect of temperature alone"
   },
   {
     "id": "dog-ages",
@@ -196,6 +229,17 @@
     "n": 432,
     "m": 432,
     "note": "count of earthquakes per month at mid-month (decimal year); at most a few a year until 2008, then a surge to 80–116 a month in late 2015 and January 2016, linked to the disposal of wastewater by deep injection, and a decline after injection was cut back in 2016; counts, so the spread grows with the level"
+  },
+  {
+    "id": "ozone-wind-new-york",
+    "file": "ozone-wind-new-york.csv",
+    "label": "Ozone and wind speed, New York, summer 1973",
+    "source": "R datasets::airquality (Chambers, Cleveland, Kleiner & Tukey 1983, Graphical Methods for Data Analysis); ozone from the New York State Department of Conservation, weather from the National Weather Service; distributed with R (GPL-2 or later)",
+    "x": "wind_mph",
+    "y": "ozone_ppb",
+    "n": 116,
+    "m": 29,
+    "note": "116 days of May–September 1973 with ozone measured (37 missing days left out); ozone is the mean from 13:00 to 15:00 at Roosevelt Island, ppb; wind the mean from 7:00 to 10:00 at LaGuardia Airport, mph; wind takes only 29 distinct values, so many days tie; ozone falls steeply as the wind rises, then levels off, and its spread shrinks with it"
   },
   {
     "id": "nostalgia-music",
