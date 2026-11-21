@@ -8,8 +8,9 @@ const DEFAULTS = {
     source: 'ramp', n: SIGNALS.ramp.n, sigma: SIGNALS.ramp.sigma, seed: 1, showTruth: true, userText: '',
     xCol: null, yCol: null, region: 'band', family: 'blocks', anShare: 0.05, calibrate: true, tau: 3, boxes: 'tightest',
     alpha: 0.95, covariance: 'bayes', bootWeights: 'matched', lambdaMode: 'gcv', logLambda: 0, undersmooth: 1 / 16,
-    nseg: null, diff: 2, penalty: 'quadratic', ambition: 0, flat: 0, bendLength: 0.05, extremumCost: 2,
-    inflectionCost: 1, logKappa: 4, epsilon: 0.1, showData: true, showCenter: true, showBand: true, showFit: true,
+    nseg: null, diff: 2, penalty: 'quadratic', ambitionFrom: 'ratio', logRatio: -2, ambition: 0, flat: 0,
+    bendLength: 0.05, extremumCost: 2, inflectionCost: 1, logKappa: 4, epsilon: 0.1, showData: true, showCenter: true,
+    showBand: true, showFit: true,
     featureScale: 0.1, view: 'single', anchors: [], lower: null, upper: null,
     panes: ['example:nile-flow', 'sine', 'box', 'step', 'example:ozone-annual', 'ramp'],
 };
@@ -24,13 +25,14 @@ test('defaults give an empty hash and an empty hash gives the defaults', async (
 test('changed settings round-trip and only they are written', async () => {
     const st = {
         ...DEFAULTS, source: 'sine', n: 300, sigma: SIGNALS.sine.sigma, seed: 42, alpha: 0.9, covariance: 'sandwich',
-        undersmooth: 1 / 4, nseg: 25, diff: 3, penalty: 'sparse', ambition: -2.5, flat: 0.3, logKappa: 6,
+        undersmooth: 1 / 4, nseg: 25, diff: 3, penalty: 'sparse', ambitionFrom: 'star', ambition: -2.5, flat: 0.3,
+        logKappa: 6,
         epsilon: 0.05,
     };
     const { hash } = await stateToHash(st, DEFAULTS);
     // σ is the sine's own default, so it is not written
     assert.equal(hash, '#source=sine&n=300&seed=42&alpha=0.9&covariance=sandwich&undersmooth=4&nseg=25&diff=3'
-        + '&penalty=sparse&ambition=-2.5&flat=0.3&logKappa=6&epsilon=0.05');
+        + '&penalty=sparse&ambitionFrom=star&ambition=-2.5&flat=0.3&logKappa=6&epsilon=0.05');
     const back = await hashToState(hash, DEFAULTS);
     assert.deepEqual(back.state, st);
     assert.deepEqual(back.rejected, []);
@@ -141,9 +143,9 @@ test('unpackText stops at its byte limit: a small link cannot inflate without bo
 });
 
 test('bundled examples are kept in links by id; simulation settings are not written for them', async () => {
-    const st = { ...DEFAULTS, source: 'example:nile-flow', seed: 7, ambition: -1 };
+    const st = { ...DEFAULTS, source: 'example:nile-flow', seed: 7, logRatio: -1 };
     const { hash } = await stateToHash(st, DEFAULTS);
-    assert.equal(hash, '#source=example%3Anile-flow&ambition=-1');
+    assert.equal(hash, '#source=example%3Anile-flow&logRatio=-1');
     const back = await hashToState(hash, DEFAULTS);
     assert.equal(back.state.source, 'example:nile-flow');
     assert.deepEqual(back.rejected, []);
@@ -251,4 +253,24 @@ test('a gallery of twelve panes round-trips; other counts are rejected', async (
     assert.deepEqual(back.state.panes, panes);
     const ten = await hashToState(`#view=gallery&panes=${panes.slice(0, 10).join(',')}`, DEFAULTS);
     assert.deepEqual(ten.rejected, ['panes']);
+});
+
+test('only the ambition knob in use is written, and an older link\'s ambition keeps its measure', async () => {
+    // a/ε in use: decades from a* left over from the other knob stay out of the link
+    const ratio = { ...DEFAULTS, logRatio: -1.5, ambition: -3 };
+    assert.equal((await stateToHash(ratio, DEFAULTS)).hash, '#logRatio=-1.5');
+    const star = { ...DEFAULTS, ambitionFrom: 'star', logRatio: -1.5, ambition: -3 };
+    const { hash } = await stateToHash(star, DEFAULTS);
+    assert.equal(hash, '#ambitionFrom=star&ambition=-3');
+    assert.equal((await hashToState(hash, DEFAULTS)).state.ambitionFrom, 'star');
+    // before the a/ε knob every link's ambition was decades from a*
+    const old = await hashToState('#ambition=-3', DEFAULTS);
+    assert.equal(old.state.ambitionFrom, 'star');
+    assert.equal(old.state.ambition, -3);
+    // an invalid one is dropped and leaves the measure alone
+    const bad = await hashToState('#ambition=99', DEFAULTS);
+    assert.equal(bad.state.ambitionFrom, 'ratio');
+    assert.deepEqual(bad.rejected, ['ambition']);
+    const both = await hashToState('#ambitionFrom=ratio&ambition=-3', DEFAULTS);
+    assert.equal(both.state.ambitionFrom, 'ratio');
 });

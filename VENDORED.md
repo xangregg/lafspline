@@ -145,3 +145,7 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
 - `src/ui/urlstate.js`: an anchor may carry a slope as a third value (`x_y_slope`).
 - `src/ui/urlstate.js`: ε is written as itself (`epsilon`, 0.01 to 1), not as `logEpsilon`; a link's `logEpsilon` is
   still read (a small table of legacy keys in `hashToState`), dropped when 10^v falls outside today's range.
+- `src/ui/urlstate.js`: the ambition knob's measure, `ambitionFrom` (`ratio` or `star`), and `logRatio` (log₁₀ a/ε);
+  only the knob in use is written (an `INACTIVE` table in `stateToHash`), and a link that sets `ambition` without
+  `ambitionFrom` is read as decades from a*, the only measure before. `AN_SHARE_START` 0.08 (was 0.05) and
+  `FEATURE_SCALE_START` 0.08 (was 0.1).

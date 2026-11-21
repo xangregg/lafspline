@@ -307,9 +307,11 @@ wanted, is κ → ∞ in the iteration (violations shrink like 1/κ).
 - **ambition:** one multiplier on (λ₁, λ₂), on a log scale: a slider from detail (short-term patterns) to
   simplicity (long-term patterns). Advanced: the balance between flat and straight, or λ₁ and λ₂ separately.
   *Done (phase 2):* the slider is log₁₀(a/a*), from −8 to +4, default 0, and a share θ of a goes toward flat
-  (open question 1 has the normalization).
+  (open question 1 has the normalization). *Since (2026-11-21, trying):* the default knob is a/ε (log slider,
+  default 0.01), with decades from a* kept in Advanced (open question 1).
 - **region:** coverage α, undersmoothing, and the phase-1 λ (GCV or manual), the region's own long-term versus
-  short-term choice. *Since:* λ by feature scale is the default (open question 7).
+  short-term choice. *Since:* λ by feature scale is the default (open question 7). *Defaults since 2026-11-21:*
+  α = 0.9 (was 0.95), feature scale 8% (was 10%), Aₙ's shortest interval 8% (was 5%).
 - **advanced:** κ (how hard the region is), ε (center pull), the check-grid density.
 
 ### 1.3b Anchors and bounds
@@ -592,6 +594,15 @@ the default fit, toward straight, is a line.
    - a* is found by scanning up a decade at a time to the first fit that leaves, then bisecting to 0.02 decades:
      15–25 fits, 1–50 ms on the examples and signals.
    - The ratio is not proven monotone in a; a* is the first crossing found.
+   - *Revisited (2026-11-21, trying a/ε):* decades from a* drift between data sets. a* is set by the region's
+     tightest spot, which has nothing to do with the trade-off inside the region, where the only terms are ε and
+     the ambition. With Aₙ (α = 0.9, shaped bends) a*/ε runs from 0.5 (gapminder: 12 countries at 71–76 years
+     beside the HIV outliers) to 600 (exam passes), so −3 decades gave gapminder a/ε = 5e-4 and 10 bends, 9
+     inflections, while most examples stayed simple. a/ε is unitless and means the same everywhere: with a count
+     of bends, a plain bend must lower the mean of ((g − c)/h)² by a/ε·(1 − θ). Gapminder turns noisy between
+     a/ε = 0.02 (3 bends) and 0.005 (7). The knob is now log₁₀(a/ε), default 0.01, capped at the top of the range;
+     a* stays as a readout (decades below or above it) and as the old knob, which links that set `ambition`
+     without `ambitionFrom` keep.
    - a is capped where λ_d·nb/(ε·G) = 1e10. Above about 1e12 the Newton system lost enough digits that a line
      inside the region came back outside it, with no Cholesky failure. When no ambition up to the cap leaves the
      region, a* is the cap and the fit is the limiting polynomial: the weighted least-squares line of c, to

@@ -20,6 +20,8 @@ const MAX_UNPACKED_BYTES = 1 << 20; // bytes
 export const MAX_N = 5000; // simulated sample size cap, used by controls.js
 export const MAX_SEGMENTS = 400; // phase-1 basis segments, used by controls.js
 export const AMBITION_RANGE = [-8, 4]; // decades of a/a* (fit.js leavingAmbition); the slider spans less
+export const LOG_RATIO_RANGE = [-8, 8]; // log₁₀ a/ε; the slider spans less
+export const AMBITION_FROM = ['ratio', 'star']; // the ambition knob's measure (main.js)
 export const LOG_KAPPA_RANGE = [1, 8]; // log₁₀ κ
 export const EPSILON_RANGE = [0.01, 1]; // ε, the pull toward the region's center (fit.js); below 0.01 changed little
 export const UNDERSMOOTH_VALUES = [1, 1 / 4, 1 / 16, 1 / 64];
@@ -30,7 +32,7 @@ export const BEND_LENGTH_RANGE = [0, 0.25]; // shaped bends' length L, fraction 
 export const SHAPE_COST_RANGE = [0, 20]; // shaped bends' extremum and inflection costs, in plain bends
 export const FAMILIES = ['blocks', 'quarter', 'every', 'all']; // Aₙ intervals
 export const AN_SHARE_RANGE = [0, 0.5]; // Aₙ's shortest interval, share of the x range (0: every interval)
-export const AN_SHARE_START = 0.05; // share of the x range: Aₙ's default shortest interval (PLAN open question 6)
+export const AN_SHARE_START = 0.08; // share of the x range: Aₙ's default shortest interval (PLAN open question 6)
 export const BOX_VIEWS = ['tightest', 'all', 'off']; // Aₙ boxes drawn on the chart
 export const AN_MAX_SEGMENTS = 100; // phase-2 basis for Aₙ: its long intervals make the Newton system dense
 export const TAU_RANGE = [0.1, 20];
@@ -40,7 +42,7 @@ export const REGIONS = ['band', 'boot', 'bootPct', 'bootCap', 'An'];
 export const BOOT_REGIONS = { boot: 'band', bootPct: 'percentile', bootCap: 'capped' };
 export const VIEWS = ['single', 'gallery']; // one chart with its readouts, or several data sets at once
 export const FEATURE_SCALE_RANGE = [0.01, 1]; // λ by feature scale: a share of the x range (thumb.js scaleLambda)
-export const FEATURE_SCALE_START = 0.1; // share of the x range: the scale on choosing λ by feature scale, always
+export const FEATURE_SCALE_START = 0.08; // share of the x range: the scale on choosing λ by feature scale, always
 export const PANE_COUNTS = [4, 6, 8, 12]; // gallery panes, two per row (12: three, main.js THREE_ACROSS)
 
 const MAX_COLUMN = 10000; // column index sanity cap
@@ -143,6 +145,8 @@ const FIELDS = {
     },
     diff: int(1, 3),
     penalty: enumOf(PENALTIES),
+    ambitionFrom: enumOf(AMBITION_FROM),
+    logRatio: num(...LOG_RATIO_RANGE),
     ambition: num(...AMBITION_RANGE),
     flat: num(0, 1),
     bendLength: num(...BEND_LENGTH_RANGE),
@@ -180,6 +184,12 @@ const USER_ONLY = new Set(['xCol', 'yCol']);
 const SIMULATED_ONLY = new Set(['n', 'sigma', 'seed', 'showTruth']);
 const GALLERY_ONLY = new Set(['panes']);
 const GALLERY_SIMULATED = new Set(['seed', 'showTruth']);
+// Settings left out of a link while another one makes them unused: only the ambition knob in use is written,
+// and an older link's ambition (decades from a*) is read as that measure (hashToState).
+const INACTIVE = {
+    logRatio: st => st.ambitionFrom !== 'ratio',
+    ambition: st => st.ambitionFrom !== 'star',
+};
 
 // n and σ default to the chosen signal's starting values, so a link names them only when changed.
 function defaultFor(key, st, defaults) {
@@ -267,7 +277,7 @@ export async function stateToHash(st, defaults) {
         // the gallery's simulated panes use the seed and show their true f, whatever the single view's source
         const forGallery = isGallery && GALLERY_SIMULATED.has(key);
         if ((USER_ONLY.has(key) && !isUser) || (SIMULATED_ONLY.has(key) && !isSimulated && !forGallery)
-            || (GALLERY_ONLY.has(key) && !isGallery))
+            || (GALLERY_ONLY.has(key) && !isGallery) || INACTIVE[key]?.(st))
             continue;
         const value = st[key];
         if (value === undefined || (value === null && key !== 'nseg'))
@@ -325,6 +335,9 @@ export async function hashToState(hash, defaults) {
         else
             st[name] = value;
     }
+    // before 2026-11-21 the knob was always decades from a*: an older link that sets it keeps that measure
+    if (!params.has('ambitionFrom') && FIELDS.ambition.read(params.get('ambition') ?? '') !== undefined)
+        st.ambitionFrom = 'star';
     if (params.has('data')) {
         try {
             st.userText = await unpackText(params.get('data'));

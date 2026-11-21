@@ -46,6 +46,8 @@ const FEATURE_SCALE_MIN = 0.02; // the slider's low end: finer than a few knot s
 // finer steps where the useful values are; a value beyond the span shows its thumb at the nearer end, and its own
 // value beside it.
 const AMBITION_SLIDER = [-6, 1]; // decades of a/a*
+const RATIO_SLIDER = [-5, 3]; // log₁₀ a/ε
+const DECADES_SAME = 0.05; // decades: closer to a* than this reads as at a*
 const FEATURE_SCALE_MAX = 0.4; // share of the x range
 const AN_SHARE_MAX = 0.3; // share of the x range
 const UNDERSMOOTH_OPTIONS = [
@@ -88,6 +90,10 @@ const BOX_OPTIONS = [
     ['tightest', 'the level of the tightest box'],
     ['all', 'all levels (outlines)'],
     ['off', 'none'],
+];
+const AMBITION_FROM_OPTIONS = [
+    ['ratio', 'a/ε (against the center pull)'],
+    ['star', 'decades from a*'],
 ];
 const PENALTY_OPTIONS = [
     ['quadratic', 'squared differences'],
@@ -150,7 +156,7 @@ const TIPS = {
         + 'the previous x to midway to the next, so where x is sparse a lone observation can be enough). Of the '
         + 'paper\'s blocks, those that span enough stay as they are; runs of shorter blocks are merged with each other '
         + 'into parts about equally wide, and a run too short even then is widened over its neighbors. So Aₙ answers '
-        + 'only to features at least this wide, much as the band\'s feature scale does. 5% by default; "all" keeps '
+        + 'only to features at least this wide, much as the band\'s feature scale does. 8% by default; "all" keeps '
         + 'every interval as it is, the paper\'s family.\n'
         + 'With fewer intervals a calibrated τ is smaller, so the wide intervals are tighter. In simulations, 5% held '
         + 'f about as often as every interval did under Gaussian noise (92.8–99.3%) and more often under skewed or '
@@ -233,6 +239,15 @@ const TIPS = {
         + 'does so instead of peaking and falling back. 0: extremes cost nothing extra.',
     inflectionCost: 'Extra cost of each change of bending direction (an inflection), in plain bends: discourages '
         + 'wiggles even where the fit keeps rising. The fit tries stretches kept bending one way, as for extremes.',
+    ratio: 'The ambition a over ε, the weight on the distance from the region\'s center: inside the region these '
+        + 'two are the whole trade-off, and both are unitless, so a/ε means the same on any data set. With a '
+        + 'count of bends or steps, a plain bend is kept only if it lowers the mean squared distance from the '
+        + 'center, in half-widths, by more than a/ε times (1 − toward flat), a step by a/ε times toward flat. '
+        + 'Above a*, the largest ambition before the fit leaves the region, the fit leaves it.',
+    ambitionFrom: 'How the ambition knob is measured:\n'
+        + '• a/ε: against the pull toward the region\'s center (ε), the same meaning on every data set.\n'
+        + '• decades from a*: from the largest ambition before the fit leaves the region. 0 is the simplest fit '
+        + 'inside, but the same setting can mean little ambition on one data set and a lot on another.',
     ambition: 'Decades from a*, the largest ambition before the fit leaves the region by more than 1% of its '
         + 'half-width. 0 is the simplest fit inside; below it the fit follows more detail, above it the fit '
         + 'leaves the region.',
@@ -427,7 +442,7 @@ export function sourceSelect(examples, local) {
  * @param {Array<{id: string, label: string}>} [local]  data sets in localdata/ (this machine only)
  * @returns {{sync: function(object, {columns: string[], nsegAuto: number|null, lambdaChosen: number|null,
  *     lambdaUsed: number|null, scaleRaised: {scale: number, minPoints: number, n: number}|null,
- *     ambition: {a: number, star: number, capped: boolean, clamped: boolean,
+ *     ambition: {a: number, star: number, capped: boolean, unreachable: boolean, clamped: boolean,
  *     sparse: boolean}|null}): void}}  sync refreshes the parts that depend on state or data; lambdaChosen is the
  *     λ GCV or AIC chose, lambdaUsed the band's λ (after undersmoothing), scaleRaised the feature scale used when
  *     the n-based floor raised it (scaleLambda)
@@ -706,9 +721,18 @@ export function createControls(container, state, onChange, examples = [], local 
     // --- fit
     const signed = v => (v > 0 ? `+${v.toFixed(1)}` : v < 0 ? `−${(-v).toFixed(1)}` : '0');
     const ambition = slider('ambition', AMBITION_SLIDER[0], AMBITION_SLIDER[1], AMBITION_STEP, signed);
-    const ambitionEnds = el('div', { class: 'slider-ends' }, [el('span', { text: '← detail' }),
+    const ends = () => el('div', { class: 'slider-ends' }, [el('span', { text: '← detail' }),
         el('span', { text: 'simplicity →' })]);
+    // under each knob, the ambition in the other knob's measure
+    const ambitionRatio = el('span', { class: 'field-hint' });
     const ambitionInfo = infoIcon(TIPS.ambition, 'ambition');
+    const ambitionField = field('ambition (decades from a*)', el('div', {}, [ambition.row, ends(), ambitionRatio]),
+        ambitionInfo);
+    const ratio = slider('logRatio', RATIO_SLIDER[0], RATIO_SLIDER[1], AMBITION_STEP, v => fmtExp(10 ** v));
+    const ratioDecades = el('span', { class: 'field-hint' });
+    const ratioInfo = infoIcon(TIPS.ratio, 'ambition a/ε');
+    const ratioField = field('ambition (a/ε)', el('div', {}, [ratio.row, ends(), ratioDecades]), ratioInfo);
+    const ambitionFrom = select('ambitionFrom', AMBITION_FROM_OPTIONS);
     const penalty = select('penalty', PENALTY_OPTIONS);
     const flat = slider('flat', 0, 1, FLAT_STEP, v => `${Math.round(100 * v)}%`);
     const flatField = field('toward flat', flat.row, TIPS.flat);
@@ -750,6 +774,7 @@ export function createControls(container, state, onChange, examples = [], local 
     // Shaped bends' knobs are rarely changed from their defaults, so they sit here rather than beside the penalty.
     const advanced = el('details', {}, [
         el('summary', { text: 'Advanced' }),
+        field('ambition measured as', ambitionFrom, TIPS.ambitionFrom),
         bendLengthField,
         shapeCosts,
         el('div', { class: 'row' }, [field('log₁₀ κ', logKappa, TIPS.kappa),
@@ -781,7 +806,8 @@ export function createControls(container, state, onChange, examples = [], local 
         regionAdvanced,
         heading('Fit', TIPS.fitHead),
         field('ambition penalty', penalty, TIPS.penalty),
-        field('ambition (decades from a*)', el('div', {}, [ambition.row, ambitionEnds]), ambitionInfo),
+        ratioField,
+        ambitionField,
         flatField,
         powerField,
         field('anchors', anchorsInput, TIPS.anchors),
@@ -872,6 +898,35 @@ export function createControls(container, state, onChange, examples = [], local 
                 + (amb.clamped ? (amb.sparse ? ' (the top of the range).' : ' (the largest computed reliably).') : '.');
         }
         setInfo(ambitionInfo, TIPS.ambition + now);
+        const byRatio = st.ambitionFrom === 'ratio';
+        ratioField.hidden = !byRatio;
+        ambitionField.hidden = byRatio;
+        setInfo(ratioInfo, TIPS.ratio + (amb && !amb.capped && !amb.unreachable
+            ? ` Here a* = ${fmtExp(amb.star)}, so a/ε = ${fmtExp(amb.star / st.epsilon)} at a*.` : ''));
+        ratioDecades.hidden = !amb || amb.unreachable;
+        if (amb && !amb.unreachable) {
+            const d = Math.log10(amb.a / amb.star);
+            const r = Math.abs(d) < DECADES_SAME ? '0' : Math.abs(d).toFixed(1);
+            const where = amb.capped ? 'the top of the range' : 'a*';
+            let text = r === '0' ? `at ${where}` : `${r} decades ${d > 0 ? 'above' : 'below'} ${where}`;
+            if (amb.clamped)
+                text = `beyond ${amb.sparse ? 'the top of the range' : 'the largest computed reliably'}; using that`;
+            else if (amb.capped)
+                text += ', where the fit still stays inside';
+            ratioDecades.textContent = text;
+            ratioDecades.title = `a = ${fmtExp(amb.a)}; a* = ${fmtExp(amb.star)}, the largest ambition before the `
+                + 'fit leaves the region';
+        }
+        ambitionRatio.hidden = !amb;
+        if (amb) {
+            ambitionRatio.textContent = `a/ε = ${fmtExp(amb.a / st.epsilon)}`;
+            ambitionRatio.title = amb.sparse
+                ? 'The ambition in use over ε. A plain bend is kept only if it lowers the mean squared distance '
+                    + `from the center, in half-widths, by more than ${fmtExp((1 - st.flat) * amb.a / st.epsilon)} `
+                    + `(a/ε times 1 − toward flat), a step by more than ${fmtExp(st.flat * amb.a / st.epsilon)}.`
+                : 'The ambition in use over ε: the weight on the mean squared derivative (∫g″², or ∫g′² toward '
+                    + 'flat, x in [0, 1]) against the mean squared distance from the center, in half-widths.';
+        }
         powerField.hidden = st.penalty !== 'power';
         bendLengthField.hidden = st.penalty !== 'shaped';
         shapeCosts.hidden = st.penalty !== 'shaped';

@@ -109,7 +109,7 @@ const state = {
     calibrate: true, // Aₙ: τ calibrated for coverage alpha, instead of tau
     tau: 3, // Aₙ: τ when not calibrated
     boxes: 'tightest', // Aₙ boxes on the chart: 'tightest' (the level of the largest ratio) | 'all' | 'off'
-    alpha: 0.95, // coverage: the band's, and Aₙ's when calibrated
+    alpha: 0.9, // coverage: the band's, and Aₙ's when calibrated
     covariance: 'bayes', // 'bayes' | 'sandwich'
     bootWeights: 'matched', // bootstrap band: 'matched' (like resampled counts) | 'dirichlet' (Bayesian bootstrap)
     lambdaMode: 'scale', // 'gcv' | 'aic' | 'silverman' | 'rot' (rules of thumb, core/thumb.js) | 'scale' | 'given'
@@ -121,6 +121,8 @@ const state = {
     penalty: 'shaped', // phase-2 ambition: 'quadratic' (squared differences) | 'sparse' (their number) |
     // 'shaped' (shaped bends: the number, plus rounding, extrema, inflections) | 'power' (Σ|second differences|^q)
     q: 1, // power penalty's exponent: 2 is 'quadratic', 1 is ℓ₁ trend filtering, toward 0 the count
+    ambitionFrom: 'ratio', // the ambition knob: 'ratio' (a/ε, logRatio) | 'star' (decades from a*, ambition)
+    logRatio: -2, // log₁₀ a/ε: the ambition against the pull toward the region's center
     ambition: -3.4, // decades from a*, the largest ambition before the fit leaves the region
     flat: 0.15, // share of the ambition toward flat (D₁) rather than straight (D₂)
     bendLength: SHAPE_DEFAULTS.length, // shaped bends: fraction of the x range (fit.js fitShaped)
@@ -459,7 +461,7 @@ function dataPositions(grid, x) {
 }
 
 /**
- * The phase-2 fit at the knob setting: a = a*·10^ambition, at most the top of the range. Re-checked against the
+ * The phase-2 fit at the knob setting: a = ε·10^logRatio or a*·10^ambition, at most the top of the range. Re-checked against the
  * region on the whole check grid and at the data x.
  */
 function computeFit(st, region, star) {
@@ -467,7 +469,8 @@ function computeFit(st, region, star) {
     const shaped = st.penalty === 'shaped';
     const sparse = st.penalty === 'sparse' || shaped;
     const power = st.penalty === 'power';
-    const wanted = star.ambition * 10 ** st.ambition;
+    const wanted = st.ambitionFrom === 'ratio' ? st.epsilon * 10 ** st.logRatio
+        : star.ambition * 10 ** st.ambition;
     const a = Math.min(wanted, star.top);
     const spec = { ...regionSpec(region, { ...opts, ambition: a }), shape: opts.shape, q: opts.q };
     const knots = { xl: spec.xl, xr: spec.xr, nseg: spec.nseg };
@@ -580,20 +583,38 @@ function renderFitReadouts(sel, region, star, fit, st, x) {
     }
     const rows = [];
     const add = (label, value, note, tip) => rows.push({ label, value, note, tip });
-    const decades = `${Math.abs(st.ambition)} decade${Math.abs(st.ambition) === 1 ? '' : 's'} `
-        + `${st.ambition > 0 ? 'above' : 'below'} a*`;
     const top = fit.sparse ? 'the top of the range' : 'the largest ambition computed reliably';
     let ambitionNote;
-    if (star.unreachable)
-        ambitionNote = 'no a*: the fit is outside the region at every ambition searched';
-    else if (star.capped)
-        ambitionNote = `a*: no ambition up to ${top} takes the fit outside the region`;
-    else if (fit.clamped)
-        ambitionNote = `${decades} is beyond ${top}; using that`;
-    else if (st.ambition === 0)
-        ambitionNote = 'a*, the largest ambition before the fit leaves the region';
-    else
-        ambitionNote = `${decades}; a* = ${fmtExp(star.ambition)} is the largest before the fit leaves the region`;
+    if (st.ambitionFrom === 'ratio') {
+        ambitionNote = `a/ε = ${fmtExp(10 ** st.logRatio)} with ε = ${fmt(st.epsilon)}`;
+        const d = Math.log10(fit.a / star.ambition);
+        const shown = Math.abs(d).toFixed(1);
+        if (fit.clamped)
+            ambitionNote += `, beyond ${top}; using that`;
+        else if (star.unreachable)
+            ambitionNote += '; no a*: the fit is outside the region at every ambition searched';
+        else if (star.capped)
+            ambitionNote += `; no ambition up to ${top} (${fmtExp(star.ambition)}) takes the fit outside the region`;
+        else if (shown === '0.0')
+            ambitionNote += `; at a*, the largest ambition before the fit leaves the region`;
+        else
+            ambitionNote += `; ${shown} decades ${d > 0 ? 'above' : 'below'} a* = ${fmtExp(star.ambition)}, the `
+                + 'largest before the fit leaves the region';
+    }
+    else {
+        const decades = `${Math.abs(st.ambition)} decade${Math.abs(st.ambition) === 1 ? '' : 's'} `
+            + `${st.ambition > 0 ? 'above' : 'below'} a*`;
+        if (star.unreachable)
+            ambitionNote = 'no a*: the fit is outside the region at every ambition searched';
+        else if (star.capped)
+            ambitionNote = `a*: no ambition up to ${top} takes the fit outside the region`;
+        else if (fit.clamped)
+            ambitionNote = `${decades} is beyond ${top}; using that`;
+        else if (st.ambition === 0)
+            ambitionNote = 'a*, the largest ambition before the fit leaves the region';
+        else
+            ambitionNote = `${decades}; a* = ${fmtExp(star.ambition)} is the largest before the fit leaves the region`;
+    }
     if (fit.sparse)
         ambitionNote += `. Each bend or step costs a per ${an ? 'interval' : 'check-grid point'}`;
     add('ambition a', fmtExp(fit.a), ambitionNote);
@@ -1569,7 +1590,8 @@ async function startup() {
                 ? { scale: region.params.rule.scale, minPoints: region.params.rule.minPoints, n: data.x.length }
                 : null,
             ambition: phase2 ? { a: phase2.fit.a, star: phase2.star.ambition, capped: phase2.star.capped,
-                clamped: phase2.fit.clamped, sparse: phase2.fit.sparse } : null,
+                unreachable: phase2.star.unreachable, clamped: phase2.fit.clamped, sparse: phase2.fit.sparse }
+                : null,
         });
         draw();
         renderReadouts(readouts, data, result, truthCheck, phase2, state, view.fitError);

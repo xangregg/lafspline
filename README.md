@@ -35,11 +35,14 @@ The phase-2 fit is a cubic P-spline g = Bβ on a fine check grid. It minimizes
 where c and h are the region's center and half-width at each grid point (for Aₙ, each term is one interval instead:
 a box for the fit's mean over it). The first term makes the region nearly
 hard (κ = 10⁴); the second is a slight pull toward the center (ε = 0.1 in the app, from 0.01 to 1; 0.01 in the
-core's default) that also makes the fit unique. The
-ambition weight a is set relative to **a\***, the largest ambition at which the fit still stays inside the region (to
-within 1% of its half-width): the knob is in decades from a\*, so 0 is the simplest fit inside on any data set, lower
-values follow more detail, and higher ones give up on the region. All terms are scaled by the region's median
-half-width, so the knob means the same whatever the units, the number of segments or the grid density.
+core's default) that also makes the fit unique. All
+terms are scaled by the region's median half-width, with x mapped to [0, 1], so they mean the same whatever the
+units, the number of segments or the grid density. Inside the region only the ambition weight a and ε trade off, so
+the knob is **a/ε** (default 0.01): with a count of bends, a plain bend is kept only if it brings the fit closer to
+the center by more than a/ε in mean squared half-widths. The readout also gives a relative to **a\***, the largest
+ambition at which the fit still stays inside the region (to within 1% of its half-width); above a\* the fit gives
+up on the region. Advanced has the older knob, decades from a\*, where 0 is the simplest fit inside; its meaning
+drifts between data sets, since a\* depends on how tight the region's tightest spot is.
 
 "Ambition" is departure from a straight line (second differences of β) and, with a share toward flat (15% by
 default), from a constant (first differences). How it is counted is the choice of penalty.
@@ -116,7 +119,7 @@ Two kinds of known facts can be added to the fit (PLAN §1.3b):
   it covers the P-spline's mean, as the bootstrap band does, for independent Gaussian noise.
 - **Aₙ** (Davies, Kovac & Meise 2009): every interval I of a family must satisfy |Σ_I (y − g)| ≤ c·√|I|, with
   c = σ̂·√(τ log n), σ̂ from differences of neighboring y and τ calibrated by Monte Carlo for coverage α. The family
-  is the paper's dyadic blocks with lengths doubling; by default blocks spanning less than 5% of the x range are
+  is the paper's dyadic blocks with lengths doubling; by default blocks spanning less than 8% of the x range are
   merged, so Aₙ answers only to features at least that wide. It assumes nothing about the smoothness of f, but more
   than the bands about the noise: skewed or unequal noise lowers its coverage far more.
 - For comparison, two simpler regions from the bootstrap band's refits: the **pointwise percentile band** (the
@@ -124,7 +127,7 @@ Two kinds of known facts can be added to the fit (PLAN §1.3b):
   band capped at the refits** (each edge pulled in to the lowest or highest refit). Both undercover badly as regions
   for the curve; their claims give the simulated figures.
 
-For both bands, λ comes from a **feature scale**, the shortest features of interest as a share of the x range (10%
+For both bands, λ comes from a **feature scale**, the shortest features of interest as a share of the x range (8%
 by default): λ is set so that a sine of that period keeps half its amplitude through the smoother, so the same scale
 means the same on every data set. GCV (undersmoothed), AIC, two rules of thumb and a given λ are the alternatives.
 Coverage figures from simulations (`tools/sim-band.mjs`, `tools/sim-an.mjs`) are cited in each region's claim.

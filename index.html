@@ -136,7 +136,7 @@
             <li><strong>Aₙ</strong> (Davies, Kovac &amp; Meise): bounds on the sums of the residuals over intervals
                 of the observations, with τ calibrated by Monte Carlo for the coverage. It assumes nothing about
                 the smoothness of f, but more than the bands about the noise: skewed or uneven noise lowers its
-                coverage far more. By default it checks only the intervals spanning at least 5% of the x range,
+                coverage far more. By default it checks only the intervals spanning at least 8% of the x range,
                 so it answers to features at least that wide.</li>
             <li>For comparison, two simpler regions from the bootstrap band's refits, which show why it is built as
                 it is. The <strong>pointwise percentile band</strong> is the central 95% of the refits at each x: it
@@ -147,7 +147,7 @@
         </ul>
         <p>
             The bands' λ comes from a feature scale: the shortest features of interest, as a share of the x range
-            (10% by default, raised for small data sets so that a feature spans at least 10 observations). λ is set
+            (8% by default, raised for small data sets so that a feature spans at least 10 observations). λ is set
             so that a sine of that period keeps half its amplitude, so the same scale means the same on every data
             set. GCV (divided by 4, undersmoothing), AIC, two rules of thumb and a given λ are the alternatives.
             Each region states what it covers, with what probability and under which assumptions; the coverage
