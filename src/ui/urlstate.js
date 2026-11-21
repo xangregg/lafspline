@@ -1,7 +1,7 @@
 // App state ⇄ URL hash, for shareable links and reloads.
 //
 // Only settings that differ from the defaults are written, as readable key=value pairs
-// (#source=sine&ambition=-2&alpha=0.9). Pasted data goes in `data`, deflate-compressed
+// (#alpha=0.9&logRatio=-1&source=sine). Pasted data goes in `data`, deflate-compressed
 // and base64url-encoded, when the result is short enough for a link; larger data is left out and the
 // caller says so. Reading validates every value against the same ranges the controls allow and drops
 // anything else, so a hand-edited or stale link can never put the app in an impossible state.
@@ -105,18 +105,10 @@ const EXAMPLE = /^(example|local):[a-z0-9][a-z0-9-]*$/;
 
 const isSource = s => Boolean(SIGNALS[s]) || s === USER || EXAMPLE.test(s);
 
-// Every persisted state key with its codec, in link order. Ranges match the inputs in controls.js.
+// Every persisted state key with its codec, in link order. Ranges match the inputs in controls.js. The settings
+// come first and the data source after them, since its value (example%3Agapminder-2007) is long and seldom edited
+// by hand; hashToState reads the source first wherever it is.
 const FIELDS = {
-    source: {
-        write: v => v,
-        read: s => (isSource(s) ? s : undefined),
-    },
-    n: int(3, MAX_N),
-    sigma: num(0),
-    seed: int(-1e9, 1e9),
-    showTruth: bool,
-    xCol: int(-1, MAX_COLUMN),
-    yCol: int(0, MAX_COLUMN),
     region: enumOf(REGIONS),
     family: enumOf(FAMILIES),
     anShare: num(...AN_SHARE_RANGE),
@@ -163,6 +155,16 @@ const FIELDS = {
     showBand: bool,
     showReplicates: bool,
     showFit: bool,
+    source: {
+        write: v => v,
+        read: s => (isSource(s) ? s : undefined),
+    },
+    n: int(3, MAX_N),
+    sigma: num(0),
+    seed: int(-1e9, 1e9),
+    showTruth: bool,
+    xCol: int(-1, MAX_COLUMN),
+    yCol: int(0, MAX_COLUMN),
     // last in a link (before only the pasted data), so the settings ahead of them are easier to edit by hand
     view: enumOf(VIEWS),
     // the gallery's data sets, comma-separated: simulated signals and data files (pasted data has one slot, the

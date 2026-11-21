@@ -149,3 +149,5 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   only the knob in use is written (an `INACTIVE` table in `stateToHash`), and a link that sets `ambition` without
   `ambitionFrom` is read as decades from a*, the only measure before. `AN_SHARE_START` 0.08 (was 0.05) and
   `FEATURE_SCALE_START` 0.08 (was 0.1).
+- `src/ui/urlstate.js`: links write the settings first and the data source after them (`source`, then the
+  simulation's `n`, `sigma`, `seed`, `showTruth` and the columns), then `view`, `panes` and pasted `data`.

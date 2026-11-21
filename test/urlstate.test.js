@@ -31,8 +31,9 @@ test('changed settings round-trip and only they are written', async () => {
     };
     const { hash } = await stateToHash(st, DEFAULTS);
     // σ is the sine's own default, so it is not written
-    assert.equal(hash, '#source=sine&n=300&seed=42&alpha=0.9&covariance=sandwich&undersmooth=4&nseg=25&diff=3'
-        + '&penalty=sparse&ambitionFrom=star&ambition=-2.5&flat=0.3&logKappa=6&epsilon=0.05');
+    // the settings first, the source and its simulation after them
+    assert.equal(hash, '#alpha=0.9&covariance=sandwich&undersmooth=4&nseg=25&diff=3&penalty=sparse'
+        + '&ambitionFrom=star&ambition=-2.5&flat=0.3&logKappa=6&epsilon=0.05&source=sine&n=300&seed=42');
     const back = await hashToState(hash, DEFAULTS);
     assert.deepEqual(back.state, st);
     assert.deepEqual(back.rejected, []);
@@ -145,7 +146,7 @@ test('unpackText stops at its byte limit: a small link cannot inflate without bo
 test('bundled examples are kept in links by id; simulation settings are not written for them', async () => {
     const st = { ...DEFAULTS, source: 'example:nile-flow', seed: 7, logRatio: -1 };
     const { hash } = await stateToHash(st, DEFAULTS);
-    assert.equal(hash, '#source=example%3Anile-flow&logRatio=-1');
+    assert.equal(hash, '#logRatio=-1&source=example%3Anile-flow');
     const back = await hashToState(hash, DEFAULTS);
     assert.equal(back.state.source, 'example:nile-flow');
     assert.deepEqual(back.rejected, []);
