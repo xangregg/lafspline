@@ -304,28 +304,51 @@ body.gallery main {
 #gallery {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 5px; /* between the legend and the panes */
 }
 
+/* The bar is as tall as the legend: the pane-count menu, taller than a legend line, is pinned to its bottom right and
+   reaches up into the free space above (the header's right side, or the gap below the controls), so it does not
+   push the panes down. The legend keeps clear of it on the right. */
 .gallery-bar {
-    display: flex;
-    align-items: start;
-    justify-content: space-between;
-    gap: 0.5rem 1rem;
+    position: relative;
 }
 
 .gallery-bar .legend {
     margin-bottom: 0;
+    padding-right: 7.5rem;
 }
 
 .gallery-bar select {
+    position: absolute;
+    right: 0;
+    bottom: 0;
     width: auto;
+}
+
+/* on a phone the legend wraps anyway, so the menu goes beside it rather than costing the legend a line */
+@media (max-width: 700px) {
+    .gallery-bar {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 0.5rem 1rem;
+    }
+
+    .gallery-bar .legend {
+        padding-right: 0;
+    }
+
+    .gallery-bar select {
+        position: static;
+        flex: none;
+    }
 }
 
 .gallery-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
+    gap: 10px 12px; /* rows, columns */
 }
 
 /* twelve panes, three per row (four rows); two per row again where three would be too narrow */
@@ -350,7 +373,7 @@ body.gallery main {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 0.5rem;
+    padding: 7px;
     min-width: 0;
 }
 
