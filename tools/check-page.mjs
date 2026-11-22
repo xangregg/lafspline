@@ -182,12 +182,27 @@ async function main() {
             problems.push(`[timeout] --until not satisfied after ${opts.timeout} ms: ${opts.until}`);
         await new Promise(r => setTimeout(r, SETTLE));
 
-        // Evaluate before printing so console output produced by the expression is reported too.
-        const evalResult = opts.eval ? await evaluate(opts.eval) : undefined;
+        // Evaluate before printing so console output produced by the expression is reported too. Not on a page
+        // that never got ready: the expression would fail on what is missing and hide why (a module that did not
+        // load, say). A throw is a problem like the others, so they are still printed.
+        let evalResult;
+        let evalRan = false;
+        if (opts.eval && ready) {
+            try {
+                evalResult = await evaluate(opts.eval);
+                evalRan = true;
+            }
+            catch (e) {
+                problems.push(`[eval] ${e.message}`);
+            }
+        }
+        else if (opts.eval) {
+            problems.push('[eval] skipped: the page never satisfied --until');
+        }
         await new Promise(r => setTimeout(r, SETTLE));
         for (const line of messages)
             console.log(line);
-        if (opts.eval)
+        if (evalRan)
             console.log(`eval: ${JSON.stringify(evalResult)}`);
         if (opts.screenshot) {
             const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' }, pageSession);

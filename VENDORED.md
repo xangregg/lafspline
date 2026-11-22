@@ -153,3 +153,6 @@ rules are appended at the end), `LICENSE` (0BSD), `.gitignore`, `.nojekyll`.
   simulation's `n`, `sigma`, `seed`, `showTruth` and the columns), then `view`, `panes` and pasted `data`.
 - `src/ui/chart.js`: axis titles (the model's `xLabel` and `yLabel`) below the x axis and up the left of the y axis on
   full charts, in 14 px more margin on those two sides (`TITLED_MARGIN`); compact (gallery) charts have none.
+- `tools/check-page.mjs`: `--eval` runs only once `--until` is met, and an exception in it is listed with the other
+  problems instead of ending the run, so a page that never started (modules reset by an overloaded server) reports
+  why rather than an expression's TypeError. The dev server is now `tools/serve.py` (lafspline's own).

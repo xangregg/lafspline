@@ -41,6 +41,7 @@ data/                   example data sets (CSV with # label: / # source: lines) 
 localdata/              data sets kept on this machine (git ignores all but its README); listed by the app on localhost
 tools/check-page.mjs    headless-Chrome page check (console errors, worker exceptions, screenshot)
 tools/ui-checks.js      in-page UI regression checks, run by npm run check:ui
+tools/serve.py          the dev server (http.server with a longer connection queue than python3 -m http.server)
 test/*.test.js          node:test + node:assert/strict
 package.json            "type": "module", scripts below
 ```
@@ -48,8 +49,9 @@ package.json            "type": "module", scripts below
 ## Commands
 
 - Tests: `npm test` (runs `node --test`). Node 20+.
-- Serve locally: `npm run serve` (python3 on port **8002**, leaving 8000 and 8001 to related projects), then
-  open http://localhost:8002/
+- Serve locally: `npm run serve` (python3 tools/serve.py on port **8002**, leaving 8000 and 8001 to related
+  projects), then open http://localhost:8002/. Not `python3 -m http.server`: its queue of 5 connections overflows
+  when the page's modules load at once on a busy machine, and the page checks then fail now and then.
 - Refresh vendored HiGHS: `npm run vendor:highs`.
 - Example data sets: after adding a CSV to `data/`, `npm run data:index` (the test suite fails if
   `data/index.json` is stale). It also writes `localdata/index.json`, which servers that don't list directories
