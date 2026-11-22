@@ -915,7 +915,7 @@ export function slopeRows(at, { xl, xr, nseg, deg = 3 }) {
  * their rows, built for their own segments), with the anchors the fit passes through, if any.
  *
  * @param {{grid: Float64Array, center: Float64Array, half: Float64Array, rows?: Rows, params: {xl: number,
- *     xr: number, nseg: number}}} region
+ *     xr: number, nseg: number}, target?: Float64Array}} region  target: what ε pulls toward (Phase2Spec)
  * @param {{ambition: number, flat?: number, kappa?: number, epsilon?: number, nseg?: number,
  *     anchors?: import('./anchors.js').Anchors|null}} opts
  * @returns {Phase2Spec & {ambition: number, flat: number}}
@@ -957,7 +957,7 @@ export function maxAmbition(spec) {
  * proven monotone in a, so this is the first crossing found, not necessarily the only one. When no ambition up to
  * the cap leaves, a* is the cap: the region holds the limiting polynomial (a line, for D₂).
  *
- * @param {Phase2Spec & {flat?: number}} spec  its λ₁, λ₂ and ambition are ignored
+ * @param {Phase2Spec & {flat?: number, q?: number, shape?: object}} spec  its λ₁, λ₂ and ambition are ignored
  * @param {{sparse?: boolean, shaped?: boolean, power?: boolean}} [opts]  sparse: the adaptive-ridge ambition
  *     (fitSparse, sparseLambdas, sparseMaxAmbition) instead of the quadratic one; shaped: shaped bends (fitShaped,
  *     shapedLambdas, shapedMaxAmbition; spec.shape holds the costs, spec.flat the share on steps); power:

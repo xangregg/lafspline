@@ -40,8 +40,7 @@ test('exportColumns orders data, truth, fits, band, exact; the app can read its 
 
 test('atObservations: tied observations share their x\'s grid value', () => {
     const x = [0, 0.5, 0.5, 1];
-    const grid = [0, 0.25, 0.5, 0.75, 1];
-    const at = [0, 2, 4];
+    const at = [0, 2, 4]; // indices into the grid [0, 0.25, 0.5, 0.75, 1] of the distinct x
     assert.deepEqual(Array.from(atObservations([10, 11, 12, 13, 14], at, x)), [10, 12, 12, 14]);
 });
 

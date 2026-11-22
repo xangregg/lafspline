@@ -7,7 +7,7 @@ import {
     splineValues, maxAmbition, ambitionLambdas, pointRows, slopeRows,
 } from '../src/core/fit.js';
 import { bandRegion } from '../src/core/band.js';
-import { selectLambda, evaluate, standardErrors, bsplineBasis } from '../src/core/pspline.js';
+import { selectLambda, evaluate, standardErrors } from '../src/core/pspline.js';
 import { simulate } from '../src/core/signals.js';
 import { solveModel } from '../src/core/lp-solve.js';
 import { createRng, normals } from '../src/core/rng.js';

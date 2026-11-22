@@ -440,12 +440,12 @@ export function sourceSelect(examples, local) {
  * @param {function(object): void} onChange  receives a partial state patch
  * @param {Array<{id: string, label: string}>} [examples]  bundled data sets (data/index.json)
  * @param {Array<{id: string, label: string}>} [local]  data sets in localdata/ (this machine only)
- * @returns {{sync: function(object, {columns: string[], nsegAuto: number|null, lambdaChosen: number|null,
- *     lambdaUsed: number|null, scaleRaised: {scale: number, minPoints: number, n: number}|null,
- *     ambition: {a: number, star: number, capped: boolean, unreachable: boolean, clamped: boolean,
- *     sparse: boolean}|null}): void}}  sync refreshes the parts that depend on state or data; lambdaChosen is the
- *     λ GCV or AIC chose, lambdaUsed the band's λ (after undersmoothing), scaleRaised the feature scale used when
- *     the n-based floor raised it (scaleLambda)
+ * @returns {{sync: function(object, {columns?: string[], nsegAuto?: number|null, lambdaChosen?: number|null,
+ *     lambdaUsed?: number|null, scaleRaised?: {scale: number, minPoints: number, n: number}|null,
+ *     ambition?: {a: number, star: number, capped: boolean, unreachable: boolean, clamped: boolean,
+ *     sparse: boolean}|null}): void}}  sync refreshes the parts that depend on state or data (each defaults to
+ *     none: [] or null); lambdaChosen is the λ GCV or AIC chose, lambdaUsed the band's λ (after undersmoothing),
+ *     scaleRaised the feature scale used when the n-based floor raised it (scaleLambda)
  */
 export function createControls(container, state, onChange, examples = [], local = []) {
     const later = debounce(onChange, DEBOUNCE);

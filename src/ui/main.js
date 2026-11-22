@@ -471,8 +471,8 @@ function dataPositions(grid, x) {
 }
 
 /**
- * The phase-2 fit at the knob setting: a = ε·10^logRatio or a*·10^ambition, at most the top of the range. Re-checked against the
- * region on the whole check grid and at the data x.
+ * The phase-2 fit at the knob setting: a = ε·10^logRatio or a*·10^ambition, at most the top of the range.
+ * Re-checked against the region on the whole check grid and at the data x.
  */
 function computeFit(st, region, star) {
     const opts = phase2Options(st);

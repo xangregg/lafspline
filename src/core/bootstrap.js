@@ -54,11 +54,11 @@ const DEFAULT_WINDOW = 0.15; // half-width of the window the band's widths avera
 // Window edges reach this far past ±h (relative to the grid's span), so a grid point exactly on an edge is always in:
 // on evenly spaced x with the window at 0.1, rounding put such points in or out and moved the half-width by up to 10%
 const EDGE_SLACK = 1e-9;
-const WINDOW_BY = ['x', 'points'];
+const WINDOW_BY = ['x', 'points']; // the window's half-width as a share of the x range, or of the observations
 // The region built from the refits: the band (studentized, simultaneous), or two simpler constructions offered for
 // comparison, which simulations showed to undercover (PLAN §1.2): each point's central α of the refits (pointwise),
 // and the band capped at each point by the lowest and highest refit
-export const CONSTRUCTIONS = ['band', 'percentile', 'capped']; // the window's half-width as a share of the x range, or of the observations
+export const CONSTRUCTIONS = ['band', 'percentile', 'capped'];
 const MIN_RESIDUAL_VARIANCE = 1e-9; // factors below this (an interpolated point, h_i ≈ 1): the residual counts as 0
 const ZERO_RESIDUAL = 1e-10; // relative to the range of y: residuals no larger leave no spread to resample
 const SCALE_FLOOR = 1e-12; // a scale this small (relative) is raised to it, not left at 0
